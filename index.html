@@ -188,6 +188,8 @@
     .hs:last-child { border-right:none; margin-right:0; }
     .hs-l { font-size: 9px; text-transform:uppercase; letter-spacing:2.5px; color:var(--muted); margin-bottom:4px; }
     .hs-v { font-size: 22px; font-weight: 700; line-height: 1; }
+    .hero-img-mobile { display: none; }
+
     .scroll-cue {
       position: absolute;
       bottom: 40px; right: 64px;
@@ -453,19 +455,29 @@
       box-shadow: 0 0 12px rgba(201,168,117,0.6);
       opacity: 0; transform: translateX(-100%);
     }
-    @keyframes scanSweep {
+    @keyframes scanFwd {
       0%   { opacity: 0;   transform: translateX(-100%); }
       8%   { opacity: 1; }
       90%  { opacity: 0.7; transform: translateX(100%); }
       100% { opacity: 0;   transform: translateX(100%); }
     }
-    .interior-section.in .int-scan {
-      animation: scanSweep 2.2s ease-in-out 0.8s forwards;
+    @keyframes scanRev {
+      0%   { opacity: 0;   transform: translateX(100%); }
+      8%   { opacity: 1; }
+      90%  { opacity: 0.7; transform: translateX(-100%); }
+      100% { opacity: 0;   transform: translateX(-100%); }
+    }
+    .interior-section.scan-fwd .int-scan {
+      animation: scanFwd 2.2s ease-in-out 0.8s forwards;
+    }
+    .interior-section.scan-rev .int-scan {
+      animation: scanRev 2.2s ease-in-out 0.8s forwards;
     }
     @media (max-width: 768px) {
       .int-split { grid-template-columns: 1fr; height: auto; }
       .int-split::after { display: none; }
       .int-panel { height: 300px; }
+      .int-img { transition: none; }
     }
 
     /* ── SERVICE HISTORY ── */
@@ -1147,29 +1159,31 @@
       .rarity-block { padding:32px 24px; }
       .scroll-cue { display:none; }
 
-      /* ── MOBILE HERO: stacked layout (image top, text below) ── */
+      /* ── MOBILE HERO: text-first, image inline after subtitle ── */
       .hero {
         flex-direction: column;
         align-items: stretch;
         height: auto;
+        min-height: 0;
       }
-      #heroBg {
-        position: relative;
-        inset: auto;
-        aspect-ratio: 960 / 540;
-        flex-shrink: 0;
-      }
-      .hero-overlay {
-        bottom: auto;
-        height: 56.25vw;
-        background: linear-gradient(to top, rgba(7,5,5,0.85) 0%, transparent 65%);
-      }
+      /* Desktop canvas hidden on mobile; mirror canvas inside hero-img-mobile is used instead */
+      #heroBg { display: none; }
+      .hero-overlay { display: none; }
       .hero-content {
         position: relative;
         background: var(--bg);
-        padding: 28px 24px 48px;
+        padding: 80px 24px 48px;
       }
-      .hero-sub { margin-bottom: 24px; }
+      .hero-sub { margin-bottom: 0; }
+      .hero-img-mobile {
+        display: block;
+        position: relative;
+        width: calc(100% + 48px);
+        margin: 24px -24px;
+        aspect-ratio: 960 / 540;
+        background: #070505 url('frames/frame_001.jpg') center / cover no-repeat;
+        overflow: hidden;
+      }
     }
     @media (max-width:480px) {
       .hero h1 { font-size:40px; }
@@ -1199,6 +1213,7 @@
     <div class="hero-pill"><span class="hero-dot"></span> Exceptionally Rare &mdash; Likely 1-of-1 US Spec</div>
     <h1>2003 Porsche<br>911 <em>Turbo</em></h1>
     <p class="hero-sub">Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; Tiptronic S &nbsp;&middot;&nbsp; McKinney, TX</p>
+    <div class="hero-img-mobile" role="presentation" aria-hidden="true"></div>
     <div class="hero-stats">
       <div class="hs"><div class="hs-l">Asking</div><div class="hs-v">$59,900</div></div>
       <div class="hs"><div class="hs-l">Mileage</div><div class="hs-v">~94,600</div></div>
@@ -1884,11 +1899,31 @@ const frames = new Array(FRAME_COUNT);
 let curFrame = 0;
 let dpr = window.devicePixelRatio || 1;
 
+/* Mobile mirror canvas — created inside .hero-img-mobile on small screens.
+   #heroBg stays in its original position so the desktop layout is never broken. */
+let mobCanvas = null, mobCtx = null;
+
+function renderFrameTo(canvas, context, img) {
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  if (!w || !h) return;
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const sw    = img.naturalWidth  * scale;
+  const sh    = img.naturalHeight * scale;
+  context.clearRect(0, 0, w, h);
+  context.drawImage(img, (w - sw) / 2, (h - sh) / 2, sw, sh);
+}
+
 function resizeCanvas() {
   dpr = window.devicePixelRatio || 1;
   heroCanvas.width  = heroCanvas.offsetWidth  * dpr;
   heroCanvas.height = heroCanvas.offsetHeight * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (mobCanvas) {
+    mobCanvas.width  = mobCanvas.offsetWidth  * dpr;
+    mobCanvas.height = mobCanvas.offsetHeight * dpr;
+    mobCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
   drawFrame(curFrame);
 }
 
@@ -1896,13 +1931,8 @@ function drawFrame(idx) {
   const img = frames[idx];
   if (!img || !img.complete || img.naturalWidth === 0) return;
   curFrame = idx;
-  const w = heroCanvas.offsetWidth;
-  const h = heroCanvas.offsetHeight;
-  ctx.clearRect(0, 0, w, h);
-  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-  const sw    = img.naturalWidth  * scale;
-  const sh    = img.naturalHeight * scale;
-  ctx.drawImage(img, (w - sw) / 2, (h - sh) / 2, sw, sh);
+  renderFrameTo(heroCanvas, ctx, img);
+  if (mobCanvas && mobCtx) renderFrameTo(mobCanvas, mobCtx, img);
 }
 
 function updateHeroFrame() {
@@ -1921,6 +1951,19 @@ for (let i = 0; i < FRAME_COUNT; i++) {
 }
 
 window.addEventListener('resize', resizeCanvas, { passive: true });
+
+/* On mobile: inject a canvas into .hero-img-mobile and mirror frames there.
+   #heroBg is NOT moved — it stays as the full-width desktop background. */
+(function setupMobileCanvas() {
+  const el = document.querySelector('.hero-img-mobile');
+  if (!el || window.innerWidth > 768) return;
+  const mc = document.createElement('canvas');
+  mc.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;';
+  el.appendChild(mc);
+  mobCanvas = mc;
+  mobCtx    = mc.getContext('2d');
+})();
+
 resizeCanvas();
 
 function updateParallax() {}
@@ -2066,10 +2109,23 @@ function copyPrice(el) {
   const wheel = document.getElementById('intWheel');
   if (!sec) return;
 
+  let lastY = window.scrollY;
+  let scrollDir = 'down';
+  window.addEventListener('scroll', () => {
+    scrollDir = window.scrollY >= lastY ? 'down' : 'up';
+    lastY = window.scrollY;
+  }, { passive: true });
+
   new IntersectionObserver(entries => {
+    const gauge = document.getElementById('gaugeImg');
     if (entries[0].isIntersecting) {
-      sec.classList.add('in');
-      setTimeout(() => document.getElementById('gaugeImg')?.classList.add('kb-active'), 300);
+      sec.classList.remove('scan-fwd', 'scan-rev');
+      void sec.offsetWidth; // force reflow so animation restarts
+      sec.classList.add('in', scrollDir === 'up' ? 'scan-rev' : 'scan-fwd');
+      setTimeout(() => gauge?.classList.add('kb-active'), 300);
+    } else {
+      sec.classList.remove('in', 'scan-fwd', 'scan-rev');
+      gauge?.classList.remove('kb-active');
     }
   }, { threshold: 0.25 }).observe(sec);
 
@@ -2199,17 +2255,18 @@ function startMusic() {
   }).catch(() => {});
 }
 
-/* Scroll: works on Chrome/Firefox desktop */
+/* Scroll trigger — fires at 20px so music starts on first scroll */
 let scrollMusicFired = false;
 window.addEventListener('scroll', () => {
-  if (!scrollMusicFired && window.scrollY > 80 && !bgAudio.dataset.manualPause) {
+  if (!scrollMusicFired && window.scrollY > 20 && !bgAudio.dataset.manualPause) {
     scrollMusicFired = true;
     startMusic();
   }
 }, { passive: true });
 
-/* Gesture fallback — touchend is more reliable than touchstart on iOS */
-['pointerdown', 'touchend', 'keydown'].forEach(evt =>
+/* Gesture fallback: touchstart fires before touchend — unlocks audio
+   on iOS on the very first touch, before the scroll event fires */
+['touchstart', 'pointerdown', 'keydown'].forEach(evt =>
   document.addEventListener(evt, startMusic, { once: true, passive: true })
 );
 
