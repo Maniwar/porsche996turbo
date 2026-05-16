@@ -409,7 +409,7 @@
     .interior-section { overflow: hidden; }
     .int-split { display: grid; grid-template-columns: 1fr 1fr; height: 540px; position: relative; }
     .int-split::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: rgba(191,58,28,0.4); transform: translateX(-50%); pointer-events: none; z-index: 2; }
-    .int-panel { position: relative; overflow: hidden; }
+    .int-panel { position: relative; overflow: hidden; transform: translateZ(0); }
     .int-img { width: 100%; height: 100%; object-fit: cover; object-position: center; will-change: transform; opacity: 0; transition: opacity 0.5s ease; }
     .int-img.loaded { opacity: 1; }
     .int-overlay {
@@ -2123,8 +2123,10 @@ function copyPrice(el) {
     const gauge = document.getElementById('gaugeImg');
     if (entries[0].isIntersecting) {
       sec.classList.remove('scan-fwd', 'scan-rev');
-      void sec.offsetWidth; // force reflow so animation restarts
-      sec.classList.add('in', scrollDir === 'up' ? 'scan-rev' : 'scan-fwd');
+      sec.classList.add('in');
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        sec.classList.add(scrollDir === 'up' ? 'scan-rev' : 'scan-fwd');
+      }));
       setTimeout(() => gauge?.classList.add('kb-active'), 300);
     } else {
       sec.classList.remove('in', 'scan-fwd', 'scan-rev');
@@ -2141,7 +2143,7 @@ function copyPrice(el) {
         const rect = panel.getBoundingClientRect();
         const mid  = rect.top + rect.height / 2;
         const deg  = ((window.innerHeight / 2 - mid) / window.innerHeight) * 10;
-        wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg)`;
+        wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg) translateZ(0)`;
         wheelRafId = null;
       });
     }, { passive: true });
