@@ -2140,9 +2140,14 @@ function copyPrice(el) {
       if (scanEl)  scanEl.style.animationPlayState  = 'paused';
       if (gaugeEl) gaugeEl.style.animationPlayState = 'paused';
     } else {
-      requestAnimationFrame(() => {
-        if (scanEl)  scanEl.style.animationPlayState  = '';
-        if (gaugeEl) gaugeEl.style.animationPlayState = '';
+      const imgs = [...sec.querySelectorAll('.int-img.loaded')];
+      imgs.forEach(img => { img.style.opacity = '0'; });
+      Promise.all(imgs.map(img => img.decode().catch(() => {}))).then(() => {
+        requestAnimationFrame(() => {
+          imgs.forEach(img => { img.style.opacity = ''; });
+          if (scanEl)  scanEl.style.animationPlayState = '';
+          if (gaugeEl) gaugeEl.style.animationPlayState = '';
+        });
       });
     }
   });
@@ -2188,7 +2193,7 @@ function copyPrice(el) {
       wheelRafId = requestAnimationFrame(() => {
         const mid = (panelTop0 - window.scrollY) + panelH / 2;
         const deg = ((window.innerHeight / 2 - mid) / window.innerHeight) * 10;
-        wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg) translateZ(0)`;
+        wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg)`;
         wheelRafId = null;
       });
     }, { passive: true });
