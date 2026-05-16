@@ -303,6 +303,7 @@
       display: block;
     }
     .invest-label { font-size: 12px; text-transform:uppercase; letter-spacing:3px; color:var(--dim); margin-top:8px; display:block; }
+    .invest-eyebrow { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:var(--muted); display:block; margin-bottom:6px; }
     .invest-divider { width:1px; background:var(--border); height:80px; margin:auto; }
     .invest-stats {
       display: grid;
@@ -511,6 +512,13 @@
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease;
+    }
+    .svc-item.expanded .svc-items {
+      max-height: 600px;
+      margin-top: 12px;
     }
     .svc-tag {
       font-size: 11px;
@@ -531,6 +539,17 @@
       margin-top: 10px;
     }
     .svc-shop-badge strong { color: var(--dim); }
+    .svc-toggle {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--muted); cursor: pointer; margin-top: 12px;
+      background: none; border: none; padding: 0;
+      transition: color 0.2s; font-family: inherit;
+    }
+    .svc-toggle:hover { color: var(--gold); }
+    .svc-toggle .chev { display: inline-block; transition: transform 0.3s; }
+    .svc-item.expanded .svc-toggle .chev { transform: rotate(180deg); }
+    .svc-item.expanded .svc-toggle { color: var(--dim); }
 
     /* key work highlights */
     .svc-highlights {
@@ -669,6 +688,17 @@
 
     /* ── SPECS ── */
     .specs-layout { display:grid; grid-template-columns:1fr 1fr; gap:48px 60px; }
+    .specs-extra {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px 60px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.5s ease;
+    }
+    .specs-extra.open { max-height: 1000px; }
+    .specs-toggle-row { grid-column: 1 / -1; text-align: center; margin-top: 16px; }
     .sg-head {
       font-size:9px; font-weight:700;
       text-transform:uppercase; letter-spacing:3.5px;
@@ -843,7 +873,22 @@
     /* ── PRICE BAND ── */
     .price-band { background:var(--bg-1); }
     .price-layout { display:grid; grid-template-columns:1fr 1fr; gap:72px; align-items:start; }
-    .price-tag { font-size:clamp(52px,7vw,80px); font-weight:900; letter-spacing:-0.035em; line-height:1; margin-bottom:8px; }
+    @keyframes pricePulse {
+      0%,100% { text-shadow: none; }
+      50% { text-shadow: 0 0 40px rgba(191,58,28,0.45); }
+    }
+    .price-tag {
+      font-size:clamp(52px,7vw,80px); font-weight:900; letter-spacing:-0.035em; line-height:1; margin-bottom:8px;
+      animation: pricePulse 1.5s ease 0.8s 3;
+      cursor: pointer; position: relative; display: inline-block;
+    }
+    .price-copied {
+      position: absolute; top: -22px; left: 0;
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--gold); opacity: 0; transition: opacity 0.3s;
+      pointer-events: none; white-space: nowrap;
+    }
+    .price-tag.copied .price-copied { opacity: 1; }
     .price-note { color:var(--dim); font-size:15px; margin-bottom:32px; }
     .btn-row { display:flex; gap:12px; flex-wrap:wrap; }
     .snap-grid { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
@@ -1000,6 +1045,7 @@
       .color-cards { grid-template-columns:1fr; }
       .hl-grid { grid-template-columns:1fr; }
       .specs-layout { grid-template-columns:1fr; gap:36px; }
+      .specs-extra { grid-template-columns:1fr; gap:36px; }
       .svc-highlights { grid-template-columns:1fr; }
       .contact-cards { grid-template-columns:1fr; max-width:360px; }
       .invest-stats { grid-template-columns:1fr; gap:16px; }
@@ -1072,11 +1118,46 @@
   <div class="scroll-cue">Scroll<div class="scroll-line"></div></div>
 </header>
 
+<!-- ══ PRICE BAND ══ -->
+<section class="price-band">
+  <div class="container">
+    <div class="price-layout">
+      <div>
+        <div class="eyebrow rv">Asking Price</div>
+        <div class="price-tag rv" onclick="copyPrice(this)" title="Click to copy price">
+          <span class="price-copied">Copied!</span>$59,900</div>
+        <p class="price-note rv">Serious offers considered &mdash; PPI welcome and encouraged</p>
+        <div class="btn-row rv">
+          <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20Inquiry" class="btn btn-red">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Email Inquiry
+          </a>
+          <button class="btn btn-ghost" onclick="copyEmail()" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy Email
+          </button>
+        </div>
+      </div>
+      <div class="snap-grid rv">
+        <div class="snap-cell"><div class="snap-l">Year</div><div class="snap-v">2003</div></div>
+        <div class="snap-cell"><div class="snap-l">Mileage</div><div class="snap-v">~94,600</div></div>
+        <div class="snap-cell"><div class="snap-l">Color</div><div class="snap-v gold">Zanzibar Red</div></div>
+        <div class="snap-cell"><div class="snap-l">Paint Code</div><div class="snap-v gold">L1A8 / 00501</div></div>
+        <div class="snap-cell"><div class="snap-l">Engine</div><div class="snap-v">Mezger Flat-6</div></div>
+        <div class="snap-cell"><div class="snap-l">Output</div><div class="snap-v">420 hp</div></div>
+        <div class="snap-cell"><div class="snap-l">Transmission</div><div class="snap-v">Tiptronic S</div></div>
+        <div class="snap-cell"><div class="snap-l">Location</div><div class="snap-v">McKinney, TX</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ══ INVESTMENT STRIP ══ -->
 <div class="invest-strip">
   <div class="container">
     <div class="invest-inner rv">
       <div class="invest-main">
+        <span class="invest-eyebrow">Repairs &amp; Maintenance</span>
         <span class="invest-num">$<span id="ctrTotal">0</span></span>
         <span class="invest-label">Documented Service Investment</span>
       </div>
@@ -1103,39 +1184,6 @@
     </div>
   </div>
 </div>
-
-<!-- ══ PRICE BAND ══ -->
-<section class="price-band">
-  <div class="container">
-    <div class="price-layout">
-      <div>
-        <div class="eyebrow rv">Asking Price</div>
-        <div class="price-tag rv">$59,900</div>
-        <p class="price-note rv">Serious offers considered &mdash; PPI welcome and encouraged</p>
-        <div class="btn-row rv">
-          <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20Inquiry" class="btn btn-red">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            Email Inquiry
-          </a>
-          <button class="btn btn-ghost" onclick="copyEmail()" type="button">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy Email
-          </button>
-        </div>
-      </div>
-      <div class="snap-grid rv">
-        <div class="snap-cell"><div class="snap-l">Year</div><div class="snap-v">2003</div></div>
-        <div class="snap-cell"><div class="snap-l">Mileage</div><div class="snap-v">~94,600</div></div>
-        <div class="snap-cell"><div class="snap-l">Color</div><div class="snap-v gold">Zanzibar Red</div></div>
-        <div class="snap-cell"><div class="snap-l">Paint Code</div><div class="snap-v gold">L1A8 / 00501</div></div>
-        <div class="snap-cell"><div class="snap-l">Engine</div><div class="snap-v">Mezger Flat-6</div></div>
-        <div class="snap-cell"><div class="snap-l">Output</div><div class="snap-v">420 hp</div></div>
-        <div class="snap-cell"><div class="snap-l">Transmission</div><div class="snap-v">Tiptronic S</div></div>
-        <div class="snap-cell"><div class="snap-l">Location</div><div class="snap-v">McKinney, TX</div></div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- ══ GALLERY ══ -->
 <section>
@@ -1233,7 +1281,7 @@
     <div class="svc-timeline rv">
 
       <!-- Visit 1: MAJOR SERVICE -->
-      <div class="svc-item featured">
+      <div class="svc-item featured expanded">
         <div class="svc-dot-col"><div class="svc-dot"></div></div>
         <div class="svc-card">
           <div class="svc-meta">
@@ -1260,6 +1308,7 @@
             <span class="svc-tag">Vanity Mirror Repair Kit</span>
             <span class="svc-tag">4-Wheel Alignment</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051120 &nbsp;&middot;&nbsp; All OEM Porsche parts</div>
         </div>
       </div>
@@ -1284,6 +1333,7 @@
             <span class="svc-tag">High-Modulus Urethane Adhesive</span>
             <span class="svc-tag">New Seal Molding</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">Blue Star Glass &mdash; Carrollton, TX &nbsp;&middot;&nbsp; Rock damage claim &nbsp;&middot;&nbsp; Premium glass spec</div>
         </div>
       </div>
@@ -1303,6 +1353,7 @@
             <span class="svc-tag">Oil Change &mdash; Mobil 1 5W-40</span>
             <span class="svc-tag">OEM Oil Filter (996 107 225 53)</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051491</div>
         </div>
       </div>
@@ -1322,6 +1373,7 @@
             <span class="svc-tag key">Hood Latch (New OEM)</span>
             <span class="svc-tag key">Hood Actuator (New OEM)</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051495</div>
         </div>
       </div>
@@ -1341,6 +1393,7 @@
             <span class="svc-tag key">Heater Core (New OEM)</span>
             <span class="svc-tag key">Brake Booster Vacuum Hose (New OEM)</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051566 &nbsp;&middot;&nbsp; Major labor job on 996</div>
         </div>
       </div>
@@ -1360,6 +1413,7 @@
             <span class="svc-tag key">Oil Pressure Sender (New OEM)</span>
             <span class="svc-tag">License Plate Bulbs (Complimentary)</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051905</div>
         </div>
       </div>
@@ -1380,6 +1434,7 @@
             <span class="svc-tag">Oil Change &mdash; Mobil 1 5W-40</span>
             <span class="svc-tag">OEM Oil Filter</span>
           </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051923 &nbsp;&middot;&nbsp; Ready to drive</div>
         </div>
       </div>
@@ -1571,31 +1626,36 @@
         <div class="sr"><span class="sr-k">Top Speed</span><span class="sr-v">189 mph</span></div>
         <div class="sr"><span class="sr-k">IMS Risk</span><span class="sr-v g">None &mdash; Mezger block</span></div>
       </div>
-      <div class="rv">
-        <div class="sg-head">Equipment</div>
-        <div class="sr"><span class="sr-k">Seats</span><span class="sr-v">Sport seats, painted backs</span></div>
-        <div class="sr"><span class="sr-k">Heated Seats</span><span class="sr-v">Yes</span></div>
-        <div class="sr"><span class="sr-k">Sunroof</span><span class="sr-v">Electric steel</span></div>
-        <div class="sr"><span class="sr-k">Headlights</span><span class="sr-v">Xenon (Litronic)</span></div>
-        <div class="sr"><span class="sr-k">Stability Control</span><span class="sr-v">PSM</span></div>
-        <div class="sr"><span class="sr-k">Audio</span><span class="sr-v">Bose Premium Sound</span></div>
-        <div class="sr"><span class="sr-k">Wheels</span><span class="sr-v">18&quot; Factory Turbo 5-Spoke</span></div>
-        <div class="sr"><span class="sr-k">Tires</span><span class="sr-v">Continental SportPlus</span></div>
-        <div class="sr"><span class="sr-k">Brake Calipers</span><span class="sr-v">Factory Porsche red</span></div>
-        <div class="sr"><span class="sr-k">Windshield</span><span class="sr-v g">New OEM (2025) &mdash; rain sensor, solar tint</span></div>
+      <div class="specs-extra" id="specsExtra">
+        <div class="rv">
+          <div class="sg-head">Equipment</div>
+          <div class="sr"><span class="sr-k">Seats</span><span class="sr-v">Sport seats, painted backs</span></div>
+          <div class="sr"><span class="sr-k">Heated Seats</span><span class="sr-v">Yes</span></div>
+          <div class="sr"><span class="sr-k">Sunroof</span><span class="sr-v">Electric steel</span></div>
+          <div class="sr"><span class="sr-k">Headlights</span><span class="sr-v">Xenon (Litronic)</span></div>
+          <div class="sr"><span class="sr-k">Stability Control</span><span class="sr-v">PSM</span></div>
+          <div class="sr"><span class="sr-k">Audio</span><span class="sr-v">Bose Premium Sound</span></div>
+          <div class="sr"><span class="sr-k">Wheels</span><span class="sr-v">18&quot; Factory Turbo 5-Spoke</span></div>
+          <div class="sr"><span class="sr-k">Tires</span><span class="sr-v">Continental SportPlus</span></div>
+          <div class="sr"><span class="sr-k">Brake Calipers</span><span class="sr-v">Factory Porsche red</span></div>
+          <div class="sr"><span class="sr-k">Windshield</span><span class="sr-v g">New OEM (2025) &mdash; rain sensor, solar tint</span></div>
+        </div>
+        <div class="rv">
+          <div class="sg-head">Recent Service (Summary)</div>
+          <div class="sr"><span class="sr-k">Last Oil Change</span><span class="sr-v">May 2026 (Mobil 1)</span></div>
+          <div class="sr"><span class="sr-k">Last Alignment</span><span class="sr-v">May 2026</span></div>
+          <div class="sr"><span class="sr-k">Suspension</span><span class="sr-v g">Fully rebuilt Mar 2025</span></div>
+          <div class="sr"><span class="sr-k">Transmission</span><span class="sr-v g">ATF service Mar 2025</span></div>
+          <div class="sr"><span class="sr-k">Brakes</span><span class="sr-v">Flushed Mar 2025</span></div>
+          <div class="sr"><span class="sr-k">Heater Core</span><span class="sr-v g">New Nov 2025</span></div>
+          <div class="sr"><span class="sr-k">Accidents</span><span class="sr-v">None reported</span></div>
+          <div class="sr"><span class="sr-k">Service Records</span><span class="sr-v">All 7 invoices available</span></div>
+          <div class="sr"><span class="sr-k">PPI</span><span class="sr-v">Welcome &mdash; encouraged</span></div>
+          <div class="sr"><span class="sr-k">Asking Price</span><span class="sr-v g">$59,900</span></div>
+        </div>
       </div>
-      <div class="rv">
-        <div class="sg-head">Recent Service (Summary)</div>
-        <div class="sr"><span class="sr-k">Last Oil Change</span><span class="sr-v">May 2026 (Mobil 1)</span></div>
-        <div class="sr"><span class="sr-k">Last Alignment</span><span class="sr-v">May 2026</span></div>
-        <div class="sr"><span class="sr-k">Suspension</span><span class="sr-v g">Fully rebuilt Mar 2025</span></div>
-        <div class="sr"><span class="sr-k">Transmission</span><span class="sr-v g">ATF service Mar 2025</span></div>
-        <div class="sr"><span class="sr-k">Brakes</span><span class="sr-v">Flushed Mar 2025</span></div>
-        <div class="sr"><span class="sr-k">Heater Core</span><span class="sr-v g">New Nov 2025</span></div>
-        <div class="sr"><span class="sr-k">Accidents</span><span class="sr-v">None reported</span></div>
-        <div class="sr"><span class="sr-k">Service Records</span><span class="sr-v">All 7 invoices available</span></div>
-        <div class="sr"><span class="sr-k">PPI</span><span class="sr-v">Welcome &mdash; encouraged</span></div>
-        <div class="sr"><span class="sr-k">Asking Price</span><span class="sr-v g">$59,900</span></div>
+      <div class="specs-toggle-row">
+        <button class="btn btn-ghost" id="specsToggle" onclick="toggleSpecs()">Show All Specs &#9660;</button>
       </div>
     </div>
   </div>
@@ -1808,17 +1868,34 @@ function countUp(el, target, prefix, suffix, duration) {
 const ctrTotal  = document.getElementById('ctrTotal');
 const ctrVisits = document.getElementById('ctrVisits');
 const investStrip = document.querySelector('.invest-strip');
-let ctrFired = false;
 
 const ctrObs = new IntersectionObserver(entries => {
-  if (entries[0].isIntersecting && !ctrFired) {
-    ctrFired = true;
+  if (entries[0].isIntersecting) {
+    ctrTotal.textContent = '0';
+    ctrVisits.textContent = '0';
     countUp(ctrTotal,  20407, '', '', 2200);
     countUp(ctrVisits, 7,     '', '', 1200);
-    ctrObs.disconnect();
   }
 }, { threshold: 0.3 });
 ctrObs.observe(investStrip);
+
+function toggleSvc(btn) {
+  btn.closest('.svc-item').classList.toggle('expanded');
+}
+
+function toggleSpecs() {
+  const extra = document.getElementById('specsExtra');
+  const btn   = document.getElementById('specsToggle');
+  const open  = extra.classList.toggle('open');
+  btn.innerHTML = open ? 'Hide &#9650;' : 'Show All Specs &#9660;';
+}
+
+function copyPrice(el) {
+  navigator.clipboard.writeText('$59,900').then(() => {
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 2000);
+  });
+}
 
 /* ══════════════════════════════════
    MOUSE GLOW ON CARDS
