@@ -2343,11 +2343,14 @@ window.addEventListener('scroll', () => {
   }
 }, { passive: true });
 
-/* Gesture fallback: touchstart fires before touchend — unlocks audio
-   on iOS on the very first touch, before the scroll event fires.
-   Skip if target is the audio button — its click handler owns that. */
+/* Gesture fallback: touchstart fires before scroll — unlocks audio on first touch.
+   Skip if target is the audio button — its click handler owns that.
+   Skip pointerdown when pointerType is 'touch' — touchstart fires immediately
+   after and handles it; letting both run causes two concurrent play() calls
+   which abort each other and leave audio silent. */
 function gestureStart(e) {
   if (audioBtn.contains(e.target)) return;
+  if (e.type === 'pointerdown' && e.pointerType === 'touch') return;
   startMusic();
 }
 ['touchstart', 'pointerdown', 'keydown'].forEach(evt =>
