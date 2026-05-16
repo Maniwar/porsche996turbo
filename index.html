@@ -446,6 +446,7 @@
       0%   { transform: scale(1)    translate(0,   0);  }
       100% { transform: scale(1.45) translate(-7%, 3%); }
     }
+    #gaugeImg { transition: opacity 0.5s ease, transform 0.8s ease-out; }
     #gaugeImg.kb-active {
       animation: gaugeKenBurns 9s ease-in-out forwards;
       transition: none;
@@ -2128,30 +2129,48 @@ function copyPrice(el) {
     lastY = window.scrollY;
   }, { passive: true });
 
+  const scanEl = sec.querySelector('.int-scan');
+  let sectionEntered = false;
+
   new IntersectionObserver(entries => {
     const gauge = document.getElementById('gaugeImg');
     if (entries[0].isIntersecting) {
-      sec.classList.remove('scan-fwd', 'scan-rev');
-      sec.classList.add('in');
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        sec.classList.add(scrollDir === 'up' ? 'scan-rev' : 'scan-fwd');
-      }));
-      setTimeout(() => gauge?.classList.add('kb-active'), 300);
+      if (!sectionEntered) {
+        sectionEntered = true;
+        sec.classList.remove('scan-fwd', 'scan-rev');
+        sec.classList.add('in');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          sec.classList.add(scrollDir === 'up' ? 'scan-rev' : 'scan-fwd');
+        }));
+        setTimeout(() => gauge?.classList.add('kb-active'), 300);
+      }
+      // already entered — IO re-fired (app-switch, address-bar change); skip re-animation
     } else {
-      sec.classList.remove('in', 'scan-fwd', 'scan-rev');
-      gauge?.classList.remove('kb-active');
+      sectionEntered = false;
+      if (scanEl) scanEl.style.opacity = '0';
+      requestAnimationFrame(() => {
+        sec.classList.remove('in', 'scan-fwd', 'scan-rev');
+        if (scanEl) scanEl.style.opacity = '';
+        gauge?.classList.remove('kb-active');
+      });
     }
   }, { threshold: 0.25 }).observe(sec);
 
   if (wheel) {
+    const panel   = wheel.closest('.int-panel');
+    let panelTop0 = panel.getBoundingClientRect().top + window.scrollY;
+    let panelH    = panel.offsetHeight;
+    window.addEventListener('resize', () => {
+      panelTop0 = panel.getBoundingClientRect().top + window.scrollY;
+      panelH    = panel.offsetHeight;
+    }, { passive: true });
+
     let wheelRafId = null;
-    const panel = wheel.closest('.int-panel');
     window.addEventListener('scroll', () => {
       if (wheelRafId) return;
       wheelRafId = requestAnimationFrame(() => {
-        const rect = panel.getBoundingClientRect();
-        const mid  = rect.top + rect.height / 2;
-        const deg  = ((window.innerHeight / 2 - mid) / window.innerHeight) * 10;
+        const mid = (panelTop0 - window.scrollY) + panelH / 2;
+        const deg = ((window.innerHeight / 2 - mid) / window.innerHeight) * 10;
         wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg) translateZ(0)`;
         wheelRafId = null;
       });
