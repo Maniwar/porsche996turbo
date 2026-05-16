@@ -409,7 +409,7 @@
     .interior-section { overflow: hidden; }
     .int-split { display: grid; grid-template-columns: 1fr 1fr; height: 540px; position: relative; }
     .int-split::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: rgba(191,58,28,0.4); transform: translateX(-50%); pointer-events: none; z-index: 2; }
-    .int-panel { position: relative; overflow: hidden; transform: translateZ(0); }
+    .int-panel { position: relative; overflow: hidden; }
     .int-img { width: 100%; height: 100%; object-fit: cover; object-position: center; will-change: transform; opacity: 0; transition: opacity 0.5s ease; }
     .int-img.loaded { opacity: 1; }
     .int-overlay {
@@ -438,11 +438,11 @@
       width: 280px; height: 280px; border-radius: 50%;
       background: radial-gradient(circle, rgba(201,168,117,0.28) 0%, rgba(201,168,117,0.08) 45%, transparent 70%);
       transform: translate(-50%, -50%);
-      left: 50%; top: 50%;
+      left: 44%; top: 50%;
       opacity: 0;
-      transition: opacity 0.9s ease 0.5s, left 1.4s cubic-bezier(0.25,0.46,0.45,0.94) 0.5s, top 1.4s cubic-bezier(0.25,0.46,0.45,0.94) 0.5s;
+      transition: opacity 0.9s ease 0.5s;
     }
-    .interior-section.in .int-spot { opacity: 1; left: 44%; top: 50%; }
+    .interior-section.in .int-spot { opacity: 1; }
     @keyframes gaugeKenBurns {
       0%   { transform: scale(1)    translate(0,   0);  }
       100% { transform: scale(1.45) translate(-7%, 3%); }
