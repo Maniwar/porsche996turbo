@@ -873,15 +873,16 @@
     /* ── PRICE BAND ── */
     .price-band { background:var(--bg-1); }
     .price-layout { display:grid; grid-template-columns:1fr 1fr; gap:72px; align-items:start; }
-    @keyframes pricePulse {
-      0%,100% { text-shadow: none; }
-      50% { text-shadow: 0 0 40px rgba(191,58,28,0.45); }
+    @keyframes priceSettle {
+      0%   { text-shadow: 0 0 80px rgba(191,58,28,0.8), 0 0 40px rgba(191,58,28,0.5); color: #ff9070; }
+      60%  { text-shadow: 0 0 30px rgba(191,58,28,0.3); color: var(--text); }
+      100% { text-shadow: none; color: var(--text); }
     }
     .price-tag {
       font-size:clamp(52px,7vw,80px); font-weight:900; letter-spacing:-0.035em; line-height:1; margin-bottom:8px;
-      animation: pricePulse 1.5s ease 0.8s 3;
       cursor: pointer; position: relative; display: inline-block;
     }
+    .price-tag.price-settled { animation: priceSettle 1.8s ease forwards; }
     .price-copied {
       position: absolute; top: -22px; left: 0;
       font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
@@ -1125,7 +1126,7 @@
       <div>
         <div class="eyebrow rv">Asking Price</div>
         <div class="price-tag rv" onclick="copyPrice(this)" title="Click to copy price">
-          <span class="price-copied">Copied!</span>$59,900</div>
+          <span class="price-copied">Copied!</span><span id="priceVal">$59,900</span></div>
         <p class="price-note rv">Serious offers considered &mdash; PPI welcome and encouraged</p>
         <div class="btn-row rv">
           <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20Inquiry" class="btn btn-red">
@@ -1896,6 +1897,52 @@ function copyPrice(el) {
     setTimeout(() => el.classList.remove('copied'), 2000);
   });
 }
+
+/* ══════════════════════════════════
+   PRICE SCRAMBLE ANIMATION
+══════════════════════════════════ */
+(function() {
+  const PRICE   = '$59,900';
+  const DIGITS  = '0123456789';
+  const numPos  = [...PRICE].map((c, i) => /\d/.test(c) ? i : -1).filter(i => i >= 0);
+
+  function scramble() {
+    const el  = document.getElementById('priceVal');
+    const tag = el && el.closest('.price-tag');
+    if (!el) return;
+    tag.classList.remove('price-settled');
+    const duration = 1600;
+    const start    = performance.now();
+
+    const timer = setInterval(() => {
+      const p    = Math.min((performance.now() - start) / duration, 1);
+      const lockP = Math.max(0, (p - 0.45) / 0.55);
+
+      let out = '';
+      let numIdx = 0;
+      for (let i = 0; i < PRICE.length; i++) {
+        if (!/\d/.test(PRICE[i])) { out += PRICE[i]; continue; }
+        const lockThreshold = (numIdx + 1) / numPos.length;
+        out += lockP >= lockThreshold
+          ? PRICE[i]
+          : DIGITS[Math.floor(Math.random() * 10)];
+        numIdx++;
+      }
+      el.textContent = out;
+
+      if (p >= 1) {
+        clearInterval(timer);
+        el.textContent = PRICE;
+        tag.classList.add('price-settled');
+      }
+    }, 40);
+  }
+
+  const priceTag = document.querySelector('.price-tag');
+  new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) setTimeout(scramble, 600);
+  }, { threshold: 0.6 }).observe(priceTag);
+})();
 
 /* ══════════════════════════════════
    MOUSE GLOW ON CARDS
