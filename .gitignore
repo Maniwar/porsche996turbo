@@ -1,0 +1,23 @@
+# Python generation scripts (contain FAL API key)
+generate_videos.py
+generate_videos_lyra.py
+
+# Private service invoices & documents
+*.pdf
+
+# Source video files (frames/ directory serves the hero animation)
+*.mp4
+
+# Duplicate audio file (space in name, not referenced by page)
+Zanzibar Red Nine-Nine-Six.mp3
+
+# Unused frame folders (cinematic sections removed)
+frames_roses/
+frames_dusk/
+
+# Unreferenced photos
+20250621_173915.jpg
+20260308_154909.jpg
+
+# macOS
+.DS_Store
