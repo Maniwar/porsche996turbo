@@ -51,7 +51,7 @@
       pointer-events: none;
     }
 
-    /* ── NAV ── */
+    /* ── NAV ── */1
     .nav {
       position: fixed;
       top: 2px; left: 0; right: 0;
@@ -2130,12 +2130,17 @@ function copyPrice(el) {
   }, { threshold: 0.25 }).observe(sec);
 
   if (wheel) {
+    let wheelRafId = null;
+    const panel = wheel.closest('.int-panel');
     window.addEventListener('scroll', () => {
-      const panel = wheel.closest('.int-panel');
-      const rect  = panel.getBoundingClientRect();
-      const mid   = rect.top + rect.height / 2;
-      const deg   = ((window.innerHeight / 2 - mid) / window.innerHeight) * 10;
-      wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg)`;
+      if (wheelRafId) return;
+      wheelRafId = requestAnimationFrame(() => {
+        const rect = panel.getBoundingClientRect();
+        const mid  = rect.top + rect.height / 2;
+        const deg  = ((window.innerHeight / 2 - mid) / window.innerHeight) * 10;
+        wheel.style.transform = `scale(1.06) rotate(${deg.toFixed(2)}deg)`;
+        wheelRafId = null;
+      });
     }, { passive: true });
   }
 })();
