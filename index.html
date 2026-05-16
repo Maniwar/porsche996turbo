@@ -2162,23 +2162,28 @@ function triggerMusicEntrance() {
 }
 
 function startMusic() {
-  if (!bgAudio.paused || bgAudio.dataset.manualPause) return;
-  bgAudio.muted = false;
+  if (bgAudio.dataset.manualPause) return;
+  if (!bgAudio.paused && !bgAudio.muted) return; // already audibly playing
+
   bgAudio.volume = 0.38;
-  bgAudio.play().then(() => {
+  bgAudio.muted = false;
+
+  if (!bgAudio.paused) {
+    // Was playing muted via autoplay — unmuting needs no user gesture
     triggerMusicEntrance();
     clearTimeout(pulseTimer);
-  }).catch(() => {});
+  } else {
+    // Autoplay blocked — need a real user gesture to call .play()
+    bgAudio.play().then(() => {
+      triggerMusicEntrance();
+      clearTimeout(pulseTimer);
+    }).catch(() => {
+      bgAudio.muted = true; // reset so next click can try again
+    });
+  }
 }
 
-/* Try to unmute the HTML-attribute autoplay immediately */
-bgAudio.addEventListener('play', () => {
-  bgAudio.muted = false;
-  bgAudio.volume = 0.38;
-  audioBtn.classList.add('playing');
-}, { once: true });
-
-/* Start on scroll — browsers allow audio after scroll gesture */
+/* Unmute on scroll — works because audio is already playing (just muted) */
 let scrollMusicFired = false;
 window.addEventListener('scroll', () => {
   if (!scrollMusicFired && window.scrollY > 80 && !bgAudio.dataset.manualPause) {
@@ -2187,24 +2192,22 @@ window.addEventListener('scroll', () => {
   }
 }, { passive: true });
 
-/* Also catch any early pointer/key interaction */
+/* Catch early pointer/key interaction as fallback */
 ['pointerdown', 'touchstart', 'keydown'].forEach(evt =>
   document.addEventListener(evt, startMusic, { once: true, passive: true })
 );
 
-/* Pulse the button after 3 s if still silent, to draw attention */
+/* Pulse the button after 3s if still silent */
 const pulseTimer = setTimeout(() => {
-  if (bgAudio.paused) audioBtn.classList.add('pulse-hint');
+  if (bgAudio.muted || bgAudio.paused) audioBtn.classList.add('pulse-hint');
 }, 3000);
 
 audioBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   clearTimeout(pulseTimer);
-  if (bgAudio.paused) {
-    bgAudio.muted = false;
-    bgAudio.volume = 0.38;
-    bgAudio.play().then(() => triggerMusicEntrance()).catch(() => {});
+  if (bgAudio.paused || bgAudio.muted) {
     delete bgAudio.dataset.manualPause;
+    startMusic();
   } else {
     bgAudio.pause();
     audioBtn.classList.remove('playing');
