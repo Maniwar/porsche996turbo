@@ -49,7 +49,6 @@
       width: 0%;
       background: linear-gradient(to right, var(--red), var(--gold), var(--red-b));
       z-index: 500;
-      transition: width 0.1s linear;
       pointer-events: none;
     }
 
@@ -457,6 +456,7 @@
       background: linear-gradient(to right, transparent 0%, rgba(201,168,117,0.9) 40%, rgba(255,220,130,1) 50%, rgba(201,168,117,0.9) 60%, transparent 100%);
       box-shadow: 0 0 12px rgba(201,168,117,0.6);
       opacity: 0; transform: translateX(-100%);
+      will-change: transform;
     }
     @keyframes scanFwd {
       0%   { opacity: 0;   transform: translateX(-100%); }
@@ -1979,11 +1979,20 @@ function updateNav() {
   nav.classList.toggle('lit', window.scrollY > 70);
 }
 
-/* Single scroll listener */
+/* Single scroll listener — reads first, then writes, to avoid layout thrashing */
 window.addEventListener('scroll', () => {
-  updateProgress();
-  updateHeroFrame();
-  updateNav();
+  // Reads
+  const scrollY = window.scrollY;
+  const max     = document.documentElement.scrollHeight - window.innerHeight;
+  const rect    = heroEl.getBoundingClientRect();
+
+  // Writes
+  scrollBar.style.width = (scrollY / max * 100) + '%';
+  nav.classList.toggle('lit', scrollY > 70);
+
+  const progress = Math.max(0, Math.min(1, -rect.top / (rect.height * 0.7)));
+  const idx      = Math.min(FRAME_COUNT - 1, Math.round(progress * (FRAME_COUNT - 1)));
+  if (idx !== curFrame) drawFrame(idx);
 }, { passive: true });
 
 /* ══════════════════════════════════
@@ -2270,15 +2279,26 @@ function startMusic() {
   bgAudio.play().then(() => {
     triggerMusicEntrance();
     clearTimeout(pulseTimer);
-  }).catch(() => {});
+  }).catch(() => {
+    if (bgAudio.paused) audioBtn.classList.add('pulse-hint');
+  });
 }
 
-/* Scroll trigger — fires at 20px so music starts on first scroll */
+/* Scroll trigger — fires at 20px so music starts on first scroll.
+   If play() is blocked (e.g. mouse-wheel isn't a gesture in Chrome),
+   reset the flag so a later scroll or click can retry. */
 let scrollMusicFired = false;
 window.addEventListener('scroll', () => {
   if (!scrollMusicFired && window.scrollY > 20 && !bgAudio.dataset.manualPause) {
     scrollMusicFired = true;
-    startMusic();
+    bgAudio.volume = 0.38;
+    bgAudio.play().then(() => {
+      triggerMusicEntrance();
+      clearTimeout(pulseTimer);
+    }).catch(() => {
+      scrollMusicFired = false;
+      if (bgAudio.paused) audioBtn.classList.add('pulse-hint');
+    });
   }
 }, { passive: true });
 
