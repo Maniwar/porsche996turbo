@@ -2283,10 +2283,22 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 /* Gesture fallback: touchstart fires before touchend — unlocks audio
-   on iOS on the very first touch, before the scroll event fires */
+   on iOS on the very first touch, before the scroll event fires.
+   Skip if target is the audio button — its click handler owns that. */
+function gestureStart(e) {
+  if (audioBtn.contains(e.target)) return;
+  startMusic();
+}
 ['touchstart', 'pointerdown', 'keydown'].forEach(evt =>
-  document.addEventListener(evt, startMusic, { once: true, passive: true })
+  document.addEventListener(evt, gestureStart, { once: true, passive: true })
 );
+
+/* Attempt autoplay immediately — succeeds for returning visitors or
+   browsers that permit it; falls back to gesture/scroll triggers otherwise */
+bgAudio.volume = 0.38;
+bgAudio.play().then(() => {
+  triggerMusicEntrance();
+}).catch(() => {});
 
 /* Pulse button after 3s if still silent */
 const pulseTimer = setTimeout(() => {
