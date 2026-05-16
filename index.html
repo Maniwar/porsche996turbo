@@ -403,7 +403,8 @@
 
     /* ── INTERIOR ── */
     .interior-section { overflow: hidden; }
-    .int-split { display: grid; grid-template-columns: 1fr 1fr; height: 540px; }
+    .int-split { display: grid; grid-template-columns: 1fr 1fr; height: 540px; position: relative; }
+    .int-split::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: rgba(191,58,28,0.4); transform: translateX(-50%); pointer-events: none; z-index: 2; }
     .int-panel { position: relative; overflow: hidden; }
     .int-img { width: 100%; height: 100%; object-fit: cover; object-position: center; will-change: transform; transition: transform 0.08s linear; }
     .int-overlay {
@@ -425,7 +426,7 @@
     .int-sub { font-size: 13px; color: var(--dim); font-weight: 400; display: block; margin-top: 6px; }
     .interior-section.in .int-label,
     .interior-section.in .int-title { opacity: 1; transform: none; }
-    .int-divider { width: 2px; background: rgba(191,58,28,0.4); position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); z-index: 2; pointer-events: none; }
+
     /* spotlight on gauge panel */
     .int-spot {
       position: absolute; pointer-events: none;
@@ -437,10 +438,34 @@
       transition: opacity 0.9s ease 0.5s, left 1.4s cubic-bezier(0.25,0.46,0.45,0.94) 0.5s, top 1.4s cubic-bezier(0.25,0.46,0.45,0.94) 0.5s;
     }
     .interior-section.in .int-spot { opacity: 1; left: 44%; top: 50%; }
+    @keyframes gaugeKenBurns {
+      0%   { transform: scale(1)    translate(0,   0);  }
+      100% { transform: scale(1.45) translate(-7%, 3%); }
+    }
+    #gaugeImg.kb-active {
+      animation: gaugeKenBurns 9s ease-in-out forwards;
+      transition: none;
+    }
+    .int-scan {
+      position: absolute; left: 0; right: 0; top: 50%;
+      height: 2px; pointer-events: none; z-index: 5;
+      background: linear-gradient(to right, transparent 0%, rgba(201,168,117,0.9) 40%, rgba(255,220,130,1) 50%, rgba(201,168,117,0.9) 60%, transparent 100%);
+      box-shadow: 0 0 12px rgba(201,168,117,0.6);
+      opacity: 0; transform: translateX(-100%);
+    }
+    @keyframes scanSweep {
+      0%   { opacity: 0;   transform: translateX(-100%); }
+      8%   { opacity: 1; }
+      90%  { opacity: 0.7; transform: translateX(100%); }
+      100% { opacity: 0;   transform: translateX(100%); }
+    }
+    .interior-section.in .int-scan {
+      animation: scanSweep 2.2s ease-in-out 0.8s forwards;
+    }
     @media (max-width: 768px) {
       .int-split { grid-template-columns: 1fr; height: auto; }
+      .int-split::after { display: none; }
       .int-panel { height: 300px; }
-      .int-divider { display: none; }
     }
 
     /* ── SERVICE HISTORY ── */
@@ -1328,10 +1353,10 @@
         <div class="int-title">All Factory.<br>Never Modified.</div>
       </div>
     </div>
-    <div class="int-divider"></div>
     <div class="int-panel">
-      <img src="interior-gauges.jpg" alt="Gauge cluster — 94,702 miles documented" class="int-img">
+      <img src="interior-gauges.jpg" alt="Gauge cluster — 94,702 miles documented" class="int-img" id="gaugeImg">
       <div class="int-spot"></div>
+      <div class="int-scan"></div>
       <div class="int-overlay">
         <div class="int-label">Odometer &mdash; Photographed In Situ</div>
         <div class="int-title">94,702 Miles<span class="int-sub">Matches the listing. Every number real.</span></div>
@@ -1804,7 +1829,7 @@
 </footer>
 
 <!-- ══ AUDIO PLAYER ══ -->
-<audio id="bgAudio" loop preload="auto" autoplay muted>
+<audio id="bgAudio" loop preload="auto">
   <source src="zanzibar-red-996.mp3" type="audio/mpeg">
 </audio>
 <button id="audioBtn" type="button" title="Toggle music" aria-label="Toggle background music">
@@ -2042,7 +2067,10 @@ function copyPrice(el) {
   if (!sec) return;
 
   new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) sec.classList.add('in');
+    if (entries[0].isIntersecting) {
+      sec.classList.add('in');
+      setTimeout(() => document.getElementById('gaugeImg')?.classList.add('kb-active'), 300);
+    }
   }, { threshold: 0.25 }).observe(sec);
 
   if (wheel) {
@@ -2163,27 +2191,15 @@ function triggerMusicEntrance() {
 
 function startMusic() {
   if (bgAudio.dataset.manualPause) return;
-  if (!bgAudio.paused && !bgAudio.muted) return; // already audibly playing
-
+  if (!bgAudio.paused) return; // already playing
   bgAudio.volume = 0.38;
-  bgAudio.muted = false;
-
-  if (!bgAudio.paused) {
-    // Was playing muted via autoplay — unmuting needs no user gesture
+  bgAudio.play().then(() => {
     triggerMusicEntrance();
     clearTimeout(pulseTimer);
-  } else {
-    // Autoplay blocked — need a real user gesture to call .play()
-    bgAudio.play().then(() => {
-      triggerMusicEntrance();
-      clearTimeout(pulseTimer);
-    }).catch(() => {
-      bgAudio.muted = true; // reset so next click can try again
-    });
-  }
+  }).catch(() => {});
 }
 
-/* Unmute on scroll — works because audio is already playing (just muted) */
+/* Scroll: works on Chrome/Firefox desktop */
 let scrollMusicFired = false;
 window.addEventListener('scroll', () => {
   if (!scrollMusicFired && window.scrollY > 80 && !bgAudio.dataset.manualPause) {
@@ -2192,20 +2208,20 @@ window.addEventListener('scroll', () => {
   }
 }, { passive: true });
 
-/* Catch early pointer/key interaction as fallback */
-['pointerdown', 'touchstart', 'keydown'].forEach(evt =>
+/* Gesture fallback — touchend is more reliable than touchstart on iOS */
+['pointerdown', 'touchend', 'keydown'].forEach(evt =>
   document.addEventListener(evt, startMusic, { once: true, passive: true })
 );
 
-/* Pulse the button after 3s if still silent */
+/* Pulse button after 3s if still silent */
 const pulseTimer = setTimeout(() => {
-  if (bgAudio.muted || bgAudio.paused) audioBtn.classList.add('pulse-hint');
+  if (bgAudio.paused) audioBtn.classList.add('pulse-hint');
 }, 3000);
 
 audioBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   clearTimeout(pulseTimer);
-  if (bgAudio.paused || bgAudio.muted) {
+  if (bgAudio.paused) {
     delete bgAudio.dataset.manualPause;
     startMusic();
   } else {
