@@ -81,9 +81,6 @@
     }
     .nav.lit .nav-brand { opacity: 1; transform: none; }
     .nav-cta {
-      opacity: 0;
-      transform: translateY(-4px);
-      transition: opacity 0.4s 0.05s, transform 0.4s 0.05s, background 0.2s, box-shadow 0.2s;
       display: inline-flex;
       align-items: center;
       gap: 8px;
@@ -94,8 +91,8 @@
       font-size: 13px;
       font-weight: 600;
       text-decoration: none;
+      transition: background 0.2s, box-shadow 0.2s;
     }
-    .nav.lit .nav-cta { opacity: 1; transform: none; }
     .nav-cta:hover { background: var(--red-b); box-shadow: 0 4px 20px rgba(191,58,28,0.5); }
 
     /* ── HERO ── */
