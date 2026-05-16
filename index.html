@@ -1746,6 +1746,7 @@
         <div class="sr"><span class="sr-k">Interior</span><span class="sr-v">Black Full Leather</span></div>
         <div class="sr"><span class="sr-k">Mileage</span><span class="sr-v">~94,600</span></div>
         <div class="sr"><span class="sr-k">Title</span><span class="sr-v">Clean &mdash; Texas</span></div>
+        <div class="sr"><span class="sr-k">Accident History</span><span class="sr-v">None on record</span></div>
         <div class="sr"><span class="sr-k">Location</span><span class="sr-v">McKinney, TX</span></div>
       </div>
       <div class="rv">
@@ -2132,6 +2133,20 @@ function copyPrice(el) {
   const scanEl = sec.querySelector('.int-scan');
   let sectionEntered = false;
 
+  document.addEventListener('visibilitychange', () => {
+    if (!sectionEntered) return;
+    const gaugeEl = document.getElementById('gaugeImg');
+    if (document.hidden) {
+      if (scanEl)  scanEl.style.animationPlayState  = 'paused';
+      if (gaugeEl) gaugeEl.style.animationPlayState = 'paused';
+    } else {
+      requestAnimationFrame(() => {
+        if (scanEl)  scanEl.style.animationPlayState  = '';
+        if (gaugeEl) gaugeEl.style.animationPlayState = '';
+      });
+    }
+  });
+
   new IntersectionObserver(entries => {
     const gauge = document.getElementById('gaugeImg');
     if (entries[0].isIntersecting) {
@@ -2157,13 +2172,15 @@ function copyPrice(el) {
   }, { threshold: 0.25 }).observe(sec);
 
   if (wheel) {
-    const panel   = wheel.closest('.int-panel');
+    const panel = wheel.closest('.int-panel');
     let panelTop0 = panel.getBoundingClientRect().top + window.scrollY;
     let panelH    = panel.offsetHeight;
-    window.addEventListener('resize', () => {
+    const syncPanel = () => {
       panelTop0 = panel.getBoundingClientRect().top + window.scrollY;
       panelH    = panel.offsetHeight;
-    }, { passive: true });
+    };
+    window.addEventListener('load',   syncPanel, { once: true, passive: true });
+    window.addEventListener('resize', syncPanel, { passive: true });
 
     let wheelRafId = null;
     window.addEventListener('scroll', () => {
