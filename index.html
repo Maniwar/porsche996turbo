@@ -814,20 +814,20 @@
       position: relative;
       height: 72vh;
       min-height: 380px;
-      clip-path: inset(0);
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .kb-img {
       position: absolute;
-      inset: -6%;
-      background: url('20260404_174336.jpg') center center / cover no-repeat;
+      inset: 0;
+      background: url('20260404_174336.jpg') 52% 50% / 112% no-repeat;
       animation: kenBurns 20s ease-in-out infinite alternate;
     }
     @keyframes kenBurns {
-      from { transform: scale(1) translateX(0); }
-      to   { transform: scale(1.09) translateX(-2%); }
+      from { background-size: 112%; background-position: 52% 50%; }
+      to   { background-size: 122%; background-position: 48% 50%; }
     }
     .kb-overlay {
       position: absolute;
