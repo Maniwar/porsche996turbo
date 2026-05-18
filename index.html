@@ -1198,6 +1198,29 @@
       .hero h1 { font-size:40px; }
       .lb-arrow { display:none; }
     }
+
+    /* ── CARFAX ── */
+    .cfx-badges { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:36px 0 28px; }
+    .cfx-badge { background:var(--bg-2); border:1px solid var(--border); border-left:3px solid #22c55e; border-radius:var(--radius); padding:22px 18px; display:flex; flex-direction:column; gap:8px; }
+    .cfx-badge-icon { width:32px; height:32px; border-radius:50%; background:rgba(34,197,94,0.12); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .cfx-badge-icon svg { stroke:#22c55e; }
+    .cfx-badge-title { font-size:14px; font-weight:700; color:var(--text); line-height:1.3; }
+    .cfx-badge-sub { font-size:11px; color:var(--muted); line-height:1.4; }
+    .cfx-source { font-size:11px; color:var(--muted); letter-spacing:0.4px; margin-bottom:24px; }
+    .cfx-source strong { color:var(--dim); }
+    .cfx-btn { display:inline-flex; align-items:center; gap:8px; padding:11px 24px; border-radius:100px; border:1px solid var(--border); background:var(--bg-2); color:var(--dim); font-size:13px; font-weight:600; cursor:pointer; transition:border-color 0.2s, color 0.2s; }
+    .cfx-btn:hover { border-color:#22c55e; color:#22c55e; }
+    @media (max-width:600px) { .cfx-badges { grid-template-columns:1fr; } }
+
+    /* CARFAX modal */
+    .cfx-modal { position:fixed; inset:0; z-index:1100; background:rgba(0,0,0,0.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); display:none; overflow-y:auto; }
+    .cfx-modal.open { display:block; }
+    .cfx-modal-inner { margin:56px auto 48px; width:min(92vw,460px); position:relative; }
+    .cfx-modal-inner img { width:100%; border-radius:8px; display:block; }
+    .cfx-modal-bar { position:fixed; top:0; left:0; right:0; z-index:10; display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:rgba(7,5,5,0.92); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid rgba(34,197,94,0.25); }
+    .cfx-modal-label { font-size:12px; font-weight:600; color:#22c55e; letter-spacing:0.6px; }
+    .cfx-modal-close { width:36px; height:36px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; flex-shrink:0; }
+    .cfx-modal-close:hover { background:rgba(255,255,255,0.2); }
   </style>
 </head>
 <body>
@@ -1800,6 +1823,36 @@
   </div>
 </section>
 
+<!-- ══ CARFAX ══ -->
+<section>
+  <div class="container">
+    <div class="eyebrow rv">Vehicle History</div>
+    <h2 class="sh rv">Clean Record</h2>
+    <div class="cfx-badges rv">
+      <div class="cfx-badge">
+        <div class="cfx-badge-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="cfx-badge-title">No Accidents or Damage Reported</div>
+        <div class="cfx-badge-sub">No accidents, fire, flood, hail, or structural damage reported to CARFAX</div>
+      </div>
+      <div class="cfx-badge">
+        <div class="cfx-badge-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="cfx-badge-title">No Total Loss Reported</div>
+        <div class="cfx-badge-sub">No salvage, flood, fire, or total loss designation on record</div>
+      </div>
+      <div class="cfx-badge">
+        <div class="cfx-badge-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg></div>
+        <div class="cfx-badge-title">Clean Title — Texas</div>
+        <div class="cfx-badge-sub">No salvage, rebuilt, lemon law buyback, or odometer issue on record</div>
+      </div>
+    </div>
+    <p class="cfx-source rv">Source: <strong>CARFAX Vehicle History Report</strong> &nbsp;&middot;&nbsp; VIN WP0AB29983S687118</p>
+    <button class="cfx-btn rv" onclick="openCfx()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      View Full CARFAX Report
+    </button>
+  </div>
+</section>
+
 <!-- ══ KEN BURNS MOMENT ══ -->
 <div class="kb-section">
   <div class="kb-img"></div>
@@ -1884,6 +1937,17 @@
   </div>
   <button type="button" class="lb-arrow lb-next" onclick="lbMove(1)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
   <div class="lb-info"><div class="lb-ctr" id="lbCtr"></div><div class="lb-cap" id="lbCap"></div></div>
+</div>
+
+<!-- CARFAX modal -->
+<div class="cfx-modal" id="cfxModal" onclick="cfxBgClick(event)">
+  <div class="cfx-modal-bar">
+    <span class="cfx-modal-label">CARFAX VEHICLE HISTORY REPORT</span>
+    <button type="button" class="cfx-modal-close" onclick="closeCfx()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="cfx-modal-inner">
+    <img src="Screenshot_20260518_110111_Chrome.jpg" alt="CARFAX Vehicle History Report — WP0AB29983S687118" loading="lazy">
+  </div>
 </div>
 
 <script>
@@ -2280,12 +2344,17 @@ function renderLb() {
   lbCap.textContent = p.cap;
 }
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLb(); closeCfx(); }
   if (!lbEl.classList.contains('open')) return;
-  if (e.key === 'Escape')     closeLb();
   if (e.key === 'ArrowLeft')  lbMove(-1);
   if (e.key === 'ArrowRight') lbMove(1);
 });
 lbEl.addEventListener('click', e => { if (e.target === lbEl) closeLb(); });
+
+const cfxModal = document.getElementById('cfxModal');
+function openCfx() { cfxModal.classList.add('open'); document.body.style.overflow = 'hidden'; cfxModal.scrollTop = 0; }
+function closeCfx() { cfxModal.classList.remove('open'); document.body.style.overflow = ''; }
+function cfxBgClick(e) { if (e.target === cfxModal) closeCfx(); }
 let tx = 0;
 lbEl.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
 lbEl.addEventListener('touchend',   e => { if (Math.abs(e.changedTouches[0].clientX - tx) > 50) lbMove(e.changedTouches[0].clientX < tx ? 1 : -1); });
