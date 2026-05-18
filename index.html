@@ -814,6 +814,7 @@
       position: relative;
       height: 72vh;
       min-height: 380px;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -821,7 +822,12 @@
     .kb-img {
       position: absolute;
       inset: 0;
-      background: url('20260404_174336.jpg') center center / cover no-repeat;
+      background: url('20260404_174336.jpg') 52% 50% / 112% no-repeat;
+      animation: kenBurns 20s ease-in-out infinite alternate;
+    }
+    @keyframes kenBurns {
+      from { background-size: 112%; background-position: 52% 50%; }
+      to   { background-size: 122%; background-position: 48% 50%; }
     }
     .kb-overlay {
       position: absolute;
