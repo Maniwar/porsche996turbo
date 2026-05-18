@@ -823,6 +823,8 @@
       position: absolute;
       inset: -6%;
       background: url('20260404_174336.jpg') center center / cover no-repeat;
+    }
+    .kb-img.kb-anim {
       animation: kenBurns 20s ease-in-out infinite alternate;
     }
     @keyframes kenBurns {
@@ -2146,6 +2148,24 @@ const rvRepeatObs = new IntersectionObserver((entries) => {
   });
 }, { threshold: 0.07, rootMargin: '0px 0px -28px 0px' });
 document.querySelectorAll('.rv-repeat').forEach(el => rvRepeatObs.observe(el));
+
+/* ── KEN BURNS pre-rasterisation ── */
+const kbImgEl = document.querySelector('.kb-img');
+const kbSection = document.querySelector('.kb-section');
+if (kbImgEl && kbSection) {
+  let kbInRange = false;
+  new IntersectionObserver(entries => {
+    kbInRange = entries[0].isIntersecting;
+    kbImgEl.classList.toggle('kb-anim', kbInRange);
+  }, { rootMargin: '600px 0px 600px 0px' }).observe(kbSection);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      kbImgEl.classList.remove('kb-anim');
+    } else if (kbInRange) {
+      kbImgEl.classList.add('kb-anim');
+    }
+  });
+}
 
 /* ══════════════════════════════════
    COUNTER ANIMATION
