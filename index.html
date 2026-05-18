@@ -821,14 +821,23 @@
     }
     .kb-img {
       position: absolute;
-      inset: 0;
-      background: url('20260404_174336.jpg') 52% 50% / 112% no-repeat;
+      inset: -6%;
+      background: url('20260404_174336.jpg') center center / cover no-repeat;
       animation: kenBurns 20s ease-in-out infinite alternate;
     }
     @keyframes kenBurns {
-      from { background-size: 112%; background-position: 52% 50%; }
-      to   { background-size: 122%; background-position: 48% 50%; }
+      from { transform: scale(1) translateX(0); }
+      to   { transform: scale(1.09) translateX(-2%); }
     }
+
+    /* ── TAP-TO-PLAY ── */
+    .yt-thumb { position:relative; cursor:pointer; display:block; }
+    .yt-thumb img { display:block; width:100%; aspect-ratio:9/16; object-fit:cover; }
+    .yt-play { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.28); transition:background 0.2s; }
+    .yt-thumb:hover .yt-play { background:rgba(0,0,0,0.18); }
+    .yt-play-btn { width:64px; height:64px; background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.7); border-radius:50%; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); transition:transform 0.2s; }
+    .yt-thumb:hover .yt-play-btn { transform:scale(1.08); }
+    .sound-embed-wrap iframe { display:block; width:100%; aspect-ratio:9/16; border:none; }
     .kb-overlay {
       position: absolute;
       inset: 0;
@@ -1873,11 +1882,16 @@
     <div class="eyebrow rv-repeat">Cold Start</div>
     <h2 class="sh rv-repeat">The Mezger Sound</h2>
     <p class="sp rv-repeat" style="max-width:520px;margin:0 auto 0;">420 hp, twin sequential turbos, 3.6-litre flat-six. Turn up the volume.</p>
-    <div class="sound-embed-wrap rv-repeat">
-      <iframe src="https://www.youtube.com/embed/FuedB67vqxo?rel=0&modestbranding=1"
-              title="2003 Porsche 996 Turbo — Cold Start"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowfullscreen loading="lazy"></iframe>
+    <div class="sound-embed-wrap rv-repeat" id="ytWrap">
+      <div class="yt-thumb" onclick="loadYtEmbed()" aria-label="Play cold start video">
+        <img src="https://img.youtube.com/vi/FuedB67vqxo/maxresdefault.jpg"
+             alt="2003 Porsche 996 Turbo — Cold Start" loading="lazy">
+        <div class="yt-play">
+          <div class="yt-play-btn">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -2395,6 +2409,10 @@ document.addEventListener('keydown', e => {
 lbEl.addEventListener('click', e => { if (e.target === lbEl) closeLb(); });
 
 const cfxModal = document.getElementById('cfxModal');
+function loadYtEmbed() {
+  const wrap = document.getElementById('ytWrap');
+  wrap.innerHTML = '<iframe src="https://www.youtube.com/embed/FuedB67vqxo?autoplay=1&rel=0&modestbranding=1&playsinline=1" title="2003 Porsche 996 Turbo — Cold Start" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+}
 function openCfx() { cfxModal.classList.add('open'); document.body.style.overflow = 'hidden'; cfxModal.scrollTop = 0; }
 function closeCfx() { cfxModal.classList.remove('open'); document.body.style.overflow = ''; }
 function cfxBgClick(e) { if (e.target === cfxModal) closeCfx(); }
