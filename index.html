@@ -814,14 +814,13 @@
       position: relative;
       height: 72vh;
       min-height: 380px;
-      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .kb-img {
       position: absolute;
-      inset: -6%;
+      inset: 0;
       background: url('20260404_174336.jpg') center center / cover no-repeat;
       animation: kenBurns 20s ease-in-out infinite alternate;
     }
@@ -2122,9 +2121,12 @@ document.querySelectorAll('.rv').forEach(el => rvObs.observe(el));
 const rvRepeatObs = new IntersectionObserver((entries) => {
   entries.forEach(e => {
     if (e.isIntersecting) {
+      e.target.style.transition = '';
       e.target.classList.add('in');
     } else {
+      e.target.style.transition = 'none';
       e.target.classList.remove('in');
+      requestAnimationFrame(() => { e.target.style.transition = ''; });
     }
   });
 }, { threshold: 0.07, rootMargin: '0px 0px -28px 0px' });
