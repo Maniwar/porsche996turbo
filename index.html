@@ -1234,6 +1234,18 @@
     .cfx-modal-label { font-size:11px; font-weight:700; color:var(--gold); letter-spacing:1.2px; text-transform:uppercase; }
     .cfx-modal-close { width:36px; height:36px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#fff; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; flex-shrink:0; }
     .cfx-modal-close:hover { background:rgba(255,255,255,0.18); }
+    .sticker-card { display:flex; align-items:center; gap:16px; background:var(--bg-3); border:1px solid var(--border); border-left:3px solid var(--gold); border-radius:var(--radius); padding:14px 18px; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:20px; text-align:left; width:100%; }
+    .sticker-card:hover { background:rgba(201,168,117,0.06); }
+    .sticker-thumb { width:48px; height:72px; object-fit:cover; border-radius:4px; flex-shrink:0; opacity:0.9; }
+    .sticker-info { flex:1; min-width:0; }
+    .sticker-title { font-size:13px; font-weight:700; color:var(--text); }
+    .sticker-sub { font-size:11px; color:var(--muted); margin-top:4px; line-height:1.5; }
+    .sticker-tap { font-size:11px; color:var(--gold); margin-top:6px; }
+    .sticker-modal { position:fixed; inset:0; z-index:1200; background:rgba(0,0,0,0.94); display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity 0.22s; }
+    .sticker-modal.open { opacity:1; pointer-events:auto; }
+    .sticker-modal img { max-width:min(88vw,420px); max-height:88vh; object-fit:contain; border-radius:6px; display:block; }
+    .sticker-close { position:fixed; top:18px; right:18px; width:38px; height:38px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
+    .sticker-close:hover { background:rgba(255,255,255,0.22); }
 
     /* ── SOUND ── */
     .sound-section { text-align:center; }
@@ -1871,6 +1883,14 @@
       </div>
     </div>
     <p class="cfx-source rv-repeat">Source: <strong>CARFAX Vehicle History Report</strong> &nbsp;&middot;&nbsp; VIN WP0AB29983S687118</p>
+    <button type="button" class="sticker-card rv-repeat" onclick="openSticker()">
+      <img class="sticker-thumb" src="option_sticker.jpg" alt="Factory option sticker" loading="lazy">
+      <div class="sticker-info">
+        <div class="sticker-title">Factory Build Sheet</div>
+        <div class="sticker-sub">Original door-jamb sticker &middot; Paint L1A8 (Zanzibar Red) &middot; VIN confirmed</div>
+        <div class="sticker-tap">Tap to view full sticker &rsaquo;</div>
+      </div>
+    </button>
     <button class="cfx-btn rv-repeat" onclick="openCfx()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       View Full CARFAX Report
@@ -1993,6 +2013,11 @@
   <div class="cfx-modal-inner">
     <img src="Screenshot_20260518_110111_Chrome.jpg" alt="CARFAX Vehicle History Report — WP0AB29983S687118" loading="lazy">
   </div>
+</div>
+
+<div class="sticker-modal" id="stickerModal" onclick="if(event.target===this)closeSt()">
+  <img src="option_sticker.jpg" alt="Factory build sheet — 2003 Porsche 996 Turbo WP0AB29983S687118" loading="lazy">
+  <button type="button" class="sticker-close" onclick="closeSt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 </div>
 
 <script>
@@ -2421,7 +2446,7 @@ function renderLb() {
   lbCap.textContent = p.cap;
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeLb(); closeCfx(); }
+  if (e.key === 'Escape') { closeLb(); closeCfx(); closeSt(); }
   if (!lbEl.classList.contains('open')) return;
   if (e.key === 'ArrowLeft')  lbMove(-1);
   if (e.key === 'ArrowRight') lbMove(1);
@@ -2436,6 +2461,8 @@ function loadYtEmbed() {
 function openCfx() { cfxModal.classList.add('open'); document.body.style.overflow = 'hidden'; cfxModal.scrollTop = 0; }
 function closeCfx() { cfxModal.classList.remove('open'); document.body.style.overflow = ''; }
 function cfxBgClick(e) { if (e.target === cfxModal) closeCfx(); }
+function openSticker() { document.getElementById('stickerModal').classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeSt() { document.getElementById('stickerModal').classList.remove('open'); document.body.style.overflow = ''; }
 let tx = 0;
 lbEl.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
 lbEl.addEventListener('touchend',   e => { if (Math.abs(e.changedTouches[0].clientX - tx) > 50) lbMove(e.changedTouches[0].clientX < tx ? 1 : -1); });
