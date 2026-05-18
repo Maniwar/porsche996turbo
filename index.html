@@ -1241,11 +1241,14 @@
     .sticker-title { font-size:13px; font-weight:700; color:var(--text); }
     .sticker-sub { font-size:11px; color:var(--muted); margin-top:4px; line-height:1.5; }
     .sticker-tap { font-size:11px; color:var(--gold); margin-top:6px; }
-    .sticker-modal { position:fixed; inset:0; z-index:1200; background:rgba(0,0,0,0.94); display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity 0.22s; }
-    .sticker-modal.open { opacity:1; pointer-events:auto; }
-    .sticker-modal img { max-width:min(88vw,420px); max-height:88vh; object-fit:contain; border-radius:6px; display:block; }
-    .sticker-close { position:fixed; top:18px; right:18px; width:38px; height:38px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; }
-    .sticker-close:hover { background:rgba(255,255,255,0.22); }
+    .sticker-modal { position:fixed; inset:0; z-index:1200; background:rgba(0,0,0,0.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); display:none; overflow-y:auto; }
+    .sticker-modal.open { display:block; }
+    .sticker-modal-bar { position:fixed; top:0; left:0; right:0; z-index:10; display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:rgba(7,5,5,0.94); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-bottom:1px solid rgba(201,168,117,0.3); }
+    .sticker-modal-label { font-size:11px; font-weight:700; color:var(--gold); letter-spacing:1.2px; text-transform:uppercase; }
+    .sticker-modal-close { width:36px; height:36px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#fff; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.2s; flex-shrink:0; }
+    .sticker-modal-close:hover { background:rgba(255,255,255,0.18); }
+    .sticker-modal-inner { margin:56px auto 48px; width:min(92vw,460px); position:relative; }
+    .sticker-modal-inner img { width:100%; border-radius:8px; display:block; }
 
     /* ── SOUND ── */
     .sound-section { text-align:center; }
@@ -2015,9 +2018,14 @@
   </div>
 </div>
 
-<div class="sticker-modal" id="stickerModal" onclick="if(event.target===this)closeSt()">
-  <img src="option_sticker.jpg" alt="Factory build sheet — 2003 Porsche 996 Turbo WP0AB29983S687118" loading="lazy">
-  <button type="button" class="sticker-close" onclick="closeSt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div class="sticker-modal" id="stickerModal">
+  <div class="sticker-modal-bar">
+    <span class="sticker-modal-label">Factory Build Sheet</span>
+    <button type="button" class="sticker-modal-close" onclick="closeSt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="sticker-modal-inner">
+    <img src="option_sticker.jpg" alt="Factory build sheet — 2003 Porsche 996 Turbo WP0AB29983S687118" loading="lazy">
+  </div>
 </div>
 
 <script>
@@ -2461,8 +2469,12 @@ function loadYtEmbed() {
 function openCfx() { cfxModal.classList.add('open'); document.body.style.overflow = 'hidden'; cfxModal.scrollTop = 0; }
 function closeCfx() { cfxModal.classList.remove('open'); document.body.style.overflow = ''; }
 function cfxBgClick(e) { if (e.target === cfxModal) closeCfx(); }
-function openSticker() { document.getElementById('stickerModal').classList.add('open'); document.body.style.overflow = 'hidden'; }
-function closeSt() { document.getElementById('stickerModal').classList.remove('open'); document.body.style.overflow = ''; }
+const stModal = document.getElementById('stickerModal');
+function openSticker() { stModal.classList.add('open'); stModal.scrollTop = 0; document.body.style.overflow = 'hidden'; }
+function closeSt() { stModal.classList.remove('open'); document.body.style.overflow = ''; }
+let stTy = 0;
+stModal.addEventListener('touchstart', e => { stTy = e.touches[0].clientY; }, { passive: true });
+stModal.addEventListener('touchend', e => { if (e.changedTouches[0].clientY - stTy > 72) closeSt(); }, { passive: true });
 let tx = 0;
 lbEl.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
 lbEl.addEventListener('touchend',   e => { if (Math.abs(e.changedTouches[0].clientX - tx) > 50) lbMove(e.changedTouches[0].clientX < tx ? 1 : -1); });
