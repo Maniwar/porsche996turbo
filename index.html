@@ -1001,18 +1001,27 @@
     .stb-n-sub { font-size:14px; color:var(--dim); font-weight:400; }
     .rarity-em { color:var(--gold); }
     .rarity-claim { color:var(--red-b); font-weight:600; margin-top:4px; }
-    .tip-card { --mx:50%; --my:50%; background:radial-gradient(400px circle at var(--mx) var(--my), rgba(201,168,117,0.06), transparent 60%), linear-gradient(135deg,var(--bg-2) 0%,var(--bg-3) 100%); border:1px solid var(--border); border-left:3px solid var(--gold); border-radius:var(--radius); padding:40px 44px; display:grid; grid-template-columns:1fr auto; gap:32px; align-items:center; margin-top:24px; transition:box-shadow 0.3s; }
-    .tip-card:hover { box-shadow:0 0 32px rgba(201,168,117,0.08); }
+    .tip-card { --mx:50%; --my:50%; background:radial-gradient(360px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-1); border:1px solid var(--border); border-radius:var(--radius); padding:28px; position:relative; overflow:hidden; transition:border-color 0.3s, transform 0.25s, box-shadow 0.3s; margin-top:24px; }
+    .tip-card::after { content:''; position:absolute; inset:0 0 auto; height:2px; background:linear-gradient(to right, transparent, var(--gold), transparent); opacity:0; transition:opacity 0.3s; }
+    .tip-card:hover { border-color:rgba(201,168,117,0.45); transform:translateY(-3px); box-shadow:0 16px 48px rgba(201,168,117,0.08); }
+    .tip-card:hover::after { opacity:1; }
+    .tip-icon { width:46px; height:46px; border-radius:9px; background:rgba(201,168,117,0.12); border:1px solid rgba(201,168,117,0.28); display:flex; align-items:center; justify-content:center; color:var(--gold); margin-bottom:18px; }
+    .tip-card h4 { font-size:17px; font-weight:700; margin-bottom:10px; }
+    .tip-card h4 span { color:var(--gold); }
+    .tip-card .tip-teaser { font-size:14px; color:var(--dim); line-height:1.72; }
+    .tip-body { max-height:0; overflow:hidden; transition:max-height 0.5s ease; }
+    .tip-body.open { max-height:600px; }
+    .tip-body p { font-size:14px; color:var(--dim); line-height:1.72; margin-top:12px; }
+    .tip-toggle { background:none; border:none; color:var(--gold); font-size:13px; cursor:pointer; padding:10px 0 0; display:flex; align-items:center; gap:6px; letter-spacing:0.04em; font-family:inherit; }
+    .tip-toggle svg { transition:transform 0.3s; }
+    .tip-toggle.open svg { transform:rotate(180deg); }
+    .tip-specs { display:flex; gap:10px; flex-wrap:wrap; margin-top:20px; }
+    .tip-spec { text-align:center; padding:12px 20px; background:rgba(201,168,117,0.07); border:1px solid rgba(201,168,117,0.18); border-radius:8px; flex:1; min-width:120px; }
     .tip-card.rv .tip-spec { opacity:0; transform:translateY(14px); transition:opacity 0.45s ease, transform 0.45s ease; }
     .tip-card.rv.in .tip-spec { opacity:1; transform:none; }
     .tip-card.rv.in .tip-spec:nth-child(2) { transition-delay:0.12s; }
     .tip-card.rv.in .tip-spec:nth-child(3) { transition-delay:0.24s; }
     .tip-card.rv.in .tip-spec:nth-child(4) { transition-delay:0.36s; }
-    .tip-card h3 { font-size:clamp(18px,2.5vw,22px); font-weight:700; color:var(--text); margin-bottom:10px; }
-    .tip-card h3 span { color:var(--gold); }
-    .tip-card p { font-size:14px; color:var(--dim); line-height:1.7; max-width:620px; }
-    .tip-specs { display:flex; flex-direction:column; gap:10px; flex-shrink:0; }
-    .tip-spec { text-align:center; padding:12px 20px; background:rgba(201,168,117,0.07); border:1px solid rgba(201,168,117,0.18); border-radius:8px; }
     .tip-spec-v { font-size:17px; font-weight:700; color:var(--gold); display:block; }
     .tip-spec-l { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; display:block; margin-top:2px; }
 
@@ -1181,8 +1190,7 @@
       .color-trio { grid-template-columns:1fr; }
       .color-cards { grid-template-columns:1fr; }
       .hl-grid { grid-template-columns:1fr; }
-      .tip-card { grid-template-columns:1fr; padding:28px 20px; }
-      .tip-specs { flex-direction:row; flex-wrap:wrap; justify-content:center; }
+      .tip-spec { min-width:calc(50% - 5px); }
       .specs-layout { grid-template-columns:1fr; gap:36px; }
       .specs-extra { grid-template-columns:1fr; gap:36px; }
       .svc-highlights { grid-template-columns:1fr; }
@@ -1800,10 +1808,18 @@
     </div>
 
     <div class="tip-card rv js-glow">
-      <div>
-        <h3>Not a Compromise. <span>A Different Argument.</span></h3>
-        <p>The Tiptronic S fitted here is a ZF 5HP-19 &mdash; the same unit Aston Martin, BMW M, and Audi Sport specified for their highest-torque cars of the era. It is rated well beyond the Turbo&rsquo;s 415&nbsp;lb-ft and engineered to never be the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The Tiptronic&nbsp;S was also specifically calibrated alongside the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD; the two share hydraulic architecture and were tuned as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
+      <div class="tip-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </div>
+      <h4>Not a Compromise. <span>A Different Argument.</span></h4>
+      <p class="tip-teaser">The Tiptronic&nbsp;S fitted here is a ZF&nbsp;5HP-19 &mdash; the same unit Aston Martin, BMW&nbsp;M, and Audi Sport specified for their highest-torque cars of the era.</p>
+      <div class="tip-body" id="tipBody">
+        <p>Rated well beyond the Turbo&rsquo;s 415&nbsp;lb-ft, it was engineered to never be the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The Tiptronic&nbsp;S was also specifically calibrated alongside the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD; the two share hydraulic architecture and were tuned as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
+      </div>
+      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle');b.classList.toggle('open');t.classList.toggle('open');t.querySelector('span').textContent=b.classList.contains('open')?'Show less':'Read full argument';})()">
+        <span>Read full argument</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
       <div class="tip-specs">
         <div class="tip-spec"><span class="tip-spec-v">ZF 5HP-19</span><span class="tip-spec-l">Transmission Unit</span></div>
         <div class="tip-spec"><span class="tip-spec-v"><span id="tipTorqueV">415</span> lb-ft</span><span class="tip-spec-l">Torque Capacity</span></div>
