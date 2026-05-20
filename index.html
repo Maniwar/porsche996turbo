@@ -1001,7 +1001,13 @@
     .stb-n-sub { font-size:14px; color:var(--dim); font-weight:400; }
     .rarity-em { color:var(--gold); }
     .rarity-claim { color:var(--red-b); font-weight:600; margin-top:4px; }
-    .tip-card { background:linear-gradient(135deg,var(--bg-2) 0%,var(--bg-3) 100%); border:1px solid var(--border); border-left:3px solid var(--gold); border-radius:var(--radius); padding:40px 44px; display:grid; grid-template-columns:1fr auto; gap:32px; align-items:center; margin-top:24px; }
+    .tip-card { --mx:50%; --my:50%; background:radial-gradient(400px circle at var(--mx) var(--my), rgba(201,168,117,0.06), transparent 60%), linear-gradient(135deg,var(--bg-2) 0%,var(--bg-3) 100%); border:1px solid var(--border); border-left:3px solid var(--gold); border-radius:var(--radius); padding:40px 44px; display:grid; grid-template-columns:1fr auto; gap:32px; align-items:center; margin-top:24px; transition:box-shadow 0.3s; }
+    .tip-card:hover { box-shadow:0 0 32px rgba(201,168,117,0.08); }
+    .tip-card.rv .tip-spec { opacity:0; transform:translateY(14px); transition:opacity 0.45s ease, transform 0.45s ease; }
+    .tip-card.rv.in .tip-spec { opacity:1; transform:none; }
+    .tip-card.rv.in .tip-spec:nth-child(2) { transition-delay:0.12s; }
+    .tip-card.rv.in .tip-spec:nth-child(3) { transition-delay:0.24s; }
+    .tip-card.rv.in .tip-spec:nth-child(4) { transition-delay:0.36s; }
     .tip-card h3 { font-size:clamp(18px,2.5vw,22px); font-weight:700; color:var(--text); margin-bottom:10px; }
     .tip-card h3 span { color:var(--gold); }
     .tip-card p { font-size:14px; color:var(--dim); line-height:1.7; max-width:620px; }
@@ -1793,14 +1799,14 @@
       </div>
     </div>
 
-    <div class="tip-card rv">
+    <div class="tip-card rv js-glow">
       <div>
         <h3>Not a Compromise. <span>A Different Argument.</span></h3>
         <p>The Tiptronic S fitted here is a ZF 5HP-19 &mdash; the same unit Aston Martin, BMW M, and Audi Sport specified for their highest-torque cars of the era. It is rated well beyond the Turbo&rsquo;s 415&nbsp;lb-ft and engineered to never be the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The Tiptronic&nbsp;S was also specifically calibrated alongside the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD; the two share hydraulic architecture and were tuned as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
       </div>
       <div class="tip-specs">
         <div class="tip-spec"><span class="tip-spec-v">ZF 5HP-19</span><span class="tip-spec-l">Transmission Unit</span></div>
-        <div class="tip-spec"><span class="tip-spec-v">415 lb-ft</span><span class="tip-spec-l">Torque Capacity</span></div>
+        <div class="tip-spec"><span class="tip-spec-v"><span id="tipTorqueV">415</span> lb-ft</span><span class="tip-spec-l">Torque Capacity</span></div>
         <div class="tip-spec"><span class="tip-spec-v">Lockup</span><span class="tip-spec-l">Direct Drive Above 50 mph</span></div>
         <div class="tip-spec"><span class="tip-spec-v">0 Clutch</span><span class="tip-spec-l">Wear Components</span></div>
       </div>
@@ -2420,6 +2426,17 @@ document.querySelectorAll('.js-glow').forEach(card => {
     card.style.setProperty('--my', (e.clientY - r.top)  + 'px');
   });
 });
+
+const tipTorqueEl = document.getElementById('tipTorqueV');
+if (tipTorqueEl) {
+  let tipFired = false;
+  new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && !tipFired) {
+      tipFired = true;
+      countUp(tipTorqueEl, 415, '', '', 1400);
+    }
+  }, { threshold: 0.4 }).observe(tipTorqueEl.closest('.tip-card'));
+}
 
 /* ══════════════════════════════════
    LIGHTBOX
