@@ -1010,7 +1010,7 @@
     .tip-card h4 span { color:var(--gold); }
     .tip-card .tip-teaser { font-size:14px; color:var(--dim); line-height:1.72; }
     .tip-body { max-height:0; overflow:hidden; transition:max-height 0.5s ease; }
-    .tip-body.open { max-height:600px; }
+    .tip-body.open { max-height:4000px; }
     .tip-body p { font-size:14px; color:var(--dim); line-height:1.72; margin-top:12px; }
     .tip-toggle { background:none; border:none; color:var(--gold); font-size:13px; cursor:pointer; padding:10px 0 0; display:flex; align-items:center; gap:6px; letter-spacing:0.04em; font-family:inherit; }
     .tip-toggle svg { transition:transform 0.3s; }
@@ -1812,16 +1812,16 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </div>
       <h4>Not a Compromise. <span>A Different Argument.</span></h4>
-      <p class="tip-teaser">The Tiptronic&nbsp;S fitted here is a ZF&nbsp;5HP-19 &mdash; the same unit Aston Martin, BMW&nbsp;M, and Audi Sport specified for their highest-torque cars of the era.</p>
+      <p class="tip-teaser">The Tiptronic&nbsp;S fitted here carries a Mercedes-Benz&nbsp;722.6 (W5A580) &mdash; the same transmission Mercedes-AMG trusted behind the supercharged V8s of the E55&nbsp;AMG and S55&nbsp;AMG, cars that made over 500&nbsp;lb-ft from the factory.</p>
       <div class="tip-body" id="tipBody">
-        <p>Rated well beyond the Turbo&rsquo;s 415&nbsp;lb-ft, it was engineered to never be the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The Tiptronic&nbsp;S was also specifically calibrated alongside the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD; the two share hydraulic architecture and were tuned as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
+        <p>Porsche knew the standard ZF unit used in base Carreras could not handle the twin-turbocharged Mezger&rsquo;s torque, so the Turbo received the Mercedes 722.6 instead &mdash; notoriously over-engineered, with stock units in the tuning community routinely handling 600&ndash;700&nbsp;hp without issue. It is never the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The transmission control module and the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD are tightly integrated, calibrated as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
       </div>
-      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle');b.classList.toggle('open');t.classList.toggle('open');t.querySelector('span').textContent=b.classList.contains('open')?'Show less':'Read full argument';})()">
+      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle'),isOpen=b.classList.toggle('open');b.style.maxHeight=isOpen?b.scrollHeight+'px':'0';t.classList.toggle('open');t.querySelector('span').textContent=isOpen?'Show less':'Read full argument';})()">
         <span>Read full argument</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="tip-specs">
-        <div class="tip-spec"><span class="tip-spec-v">ZF 5HP-19</span><span class="tip-spec-l">Transmission Unit</span></div>
+        <div class="tip-spec"><span class="tip-spec-v">MB 722.6</span><span class="tip-spec-l">Transmission Unit</span></div>
         <div class="tip-spec"><span class="tip-spec-v"><span id="tipTorqueV">415</span> lb-ft</span><span class="tip-spec-l">Torque Capacity</span></div>
         <div class="tip-spec"><span class="tip-spec-v">Lockup</span><span class="tip-spec-l">Direct Drive Above 50 mph</span></div>
         <div class="tip-spec"><span class="tip-spec-v">0 Clutch</span><span class="tip-spec-l">Wear Components</span></div>
