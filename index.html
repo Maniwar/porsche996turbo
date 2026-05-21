@@ -1010,7 +1010,7 @@
     .tip-card h4 span { color:var(--gold); }
     .tip-card .tip-teaser { font-size:14px; color:var(--dim); line-height:1.72; }
     .tip-body { max-height:0; overflow:hidden; transition:max-height 0.5s ease; }
-    .tip-body.open { max-height:1200px; }
+    .tip-body.open { max-height:4000px; }
     .tip-body p { font-size:14px; color:var(--dim); line-height:1.72; margin-top:12px; }
     .tip-toggle { background:none; border:none; color:var(--gold); font-size:13px; cursor:pointer; padding:10px 0 0; display:flex; align-items:center; gap:6px; letter-spacing:0.04em; font-family:inherit; }
     .tip-toggle svg { transition:transform 0.3s; }
@@ -1816,7 +1816,7 @@
       <div class="tip-body" id="tipBody">
         <p>Rated well beyond the Turbo&rsquo;s 415&nbsp;lb-ft, it was engineered to never be the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The Tiptronic&nbsp;S was also specifically calibrated alongside the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD; the two share hydraulic architecture and were tuned as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
       </div>
-      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle');b.classList.toggle('open');t.classList.toggle('open');t.querySelector('span').textContent=b.classList.contains('open')?'Show less':'Read full argument';})()">
+      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle'),isOpen=b.classList.toggle('open');b.style.maxHeight=isOpen?b.scrollHeight+'px':'0';t.classList.toggle('open');t.querySelector('span').textContent=isOpen?'Show less':'Read full argument';})()">
         <span>Read full argument</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
