@@ -409,6 +409,13 @@
       transition: color 0.2s;
     }
     .gallery-more:hover { color:var(--dim); }
+    .cond-section { background:var(--bg-1); }
+    .cond-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:32px; }
+    .cond-photo { position:relative; cursor:pointer; border-radius:8px; overflow:hidden; border:1px solid var(--border); aspect-ratio:4/3; }
+    .cond-photo img { width:100%; height:100%; object-fit:cover; transition:transform 0.4s; }
+    .cond-photo:hover img { transform:scale(1.04); }
+    .cond-photo span { position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,0.82)); font-size:11px; color:rgba(255,255,255,0.75); letter-spacing:0.04em; }
+    @media (max-width:700px) { .cond-grid { grid-template-columns:repeat(2,1fr); } }
 
     /* ── INTERIOR ── */
     .interior-section { overflow: hidden; }
@@ -1450,7 +1457,7 @@
         <div class="gi-over"><div class="gi-zoom"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></div></div>
       </div>
     </div>
-    <div class="gallery-more rv" onclick="openLb(11)">+ 10 more photos &mdash; click to browse all 21</div>
+    <div class="gallery-more rv" onclick="openLb(11)">+ 17 more photos &mdash; click to browse all 28</div>
   </div>
 </section>
 
@@ -2002,6 +2009,24 @@
   </div>
 </div>
 
+<!-- ══ COSMETIC CONDITION ══ -->
+<section class="cond-section">
+  <div class="container">
+    <div class="eyebrow rv">Full Disclosure</div>
+    <h2 class="sh rv">Interior Trim Condition</h2>
+    <p class="sp rv">The mechanicals and paint are correct. The interior soft-touch plastic is not perfect. The factory soft-coat on several panels has broken down &mdash; a known issue on every 996 after two decades &mdash; leaving white residue on the switch surrounds and dash pieces. The driver&rsquo;s door panel has significant scratch marks. None of this affects how the car drives or any system function. All of these panels are available as used OEM replacements at modest cost. This section exists because serious buyers deserve to see it before they ask.</p>
+    <div class="cond-grid rv">
+      <div class="cond-photo" onclick="openLb(21)"><img src="trim-door-panel.jpg" loading="lazy" alt="Driver door panel scratches"><span>Driver&rsquo;s door panel</span></div>
+      <div class="cond-photo" onclick="openLb(22)"><img src="trim-mirror-control.jpg" loading="lazy" alt="Mirror control trim cracking"><span>Mirror control trim</span></div>
+      <div class="cond-photo" onclick="openLb(23)"><img src="trim-switch-left.jpg" loading="lazy" alt="Switch panel soft-coat"><span>Window/seat switches</span></div>
+      <div class="cond-photo" onclick="openLb(24)"><img src="trim-switch-right.jpg" loading="lazy" alt="PSM panel soft-coat"><span>PSM/seat panel</span></div>
+      <div class="cond-photo" onclick="openLb(25)"><img src="trim-vent-dash.jpg" loading="lazy" alt="Dash vent area soft-coat"><span>Dash vent surround</span></div>
+      <div class="cond-photo" onclick="openLb(26)"><img src="trim-ignition-surround.jpg" loading="lazy" alt="Ignition surround wear"><span>Ignition surround</span></div>
+      <div class="cond-photo" onclick="openLb(27)"><img src="trim-console-overview.jpg" loading="lazy" alt="Center console overview"><span>Center console</span></div>
+    </div>
+  </div>
+</section>
+
 <!-- ══ CONTACT ══ -->
 <section class="contact-section">
   <div class="container">
@@ -2489,6 +2514,13 @@ const PHOTOS = [
   { src: '20250621_173938(1).jpg',   cap: 'Front 3/4 — parking lot, midday', rot: false },
   { src: 'interior-steering.jpg',    cap: 'Steering wheel — Porsche crest, all original', rot: false },
   { src: 'interior-gauges.jpg',      cap: 'Gauge cluster — 94,702 miles documented in situ', rot: false },
+  { src: 'trim-door-panel.jpg',      cap: 'Condition — driver\'s door panel: significant scratch marks', rot: false },
+  { src: 'trim-mirror-control.jpg',  cap: 'Condition — mirror control trim: plastic crazing/cracking', rot: false },
+  { src: 'trim-switch-left.jpg',     cap: 'Condition — window/seat switch panel: soft-coat degradation', rot: false },
+  { src: 'trim-switch-right.jpg',    cap: 'Condition — PSM/seat panel: soft-coat degradation', rot: false },
+  { src: 'trim-vent-dash.jpg',       cap: 'Condition — dash vent surround: soft-coat degradation', rot: false },
+  { src: 'trim-ignition-surround.jpg', cap: 'Condition — ignition surround: wear/scuffing', rot: false },
+  { src: 'trim-console-overview.jpg',  cap: 'Condition — center console overview (Sony XAV-9000ES installed)', rot: false },
 ];
 
 let cur = 0;
