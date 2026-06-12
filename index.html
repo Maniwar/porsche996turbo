@@ -411,11 +411,37 @@
     .gallery-more:hover { color:var(--dim); }
     .cond-section { background:var(--bg-1); }
     .cond-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:32px; }
-    .cond-photo { position:relative; cursor:pointer; border-radius:8px; overflow:hidden; border:1px solid var(--border); aspect-ratio:4/3; }
-    .cond-photo img { width:100%; height:100%; object-fit:cover; transition:transform 0.4s; }
-    .cond-photo:hover img { transform:scale(1.04); }
-    .cond-photo span { position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,0.82)); font-size:11px; color:rgba(255,255,255,0.75); letter-spacing:0.04em; }
-    @media (max-width:700px) { .cond-grid { grid-template-columns:repeat(2,1fr); } }
+    .cond-photo { position:relative; cursor:pointer; aspect-ratio:4/3; perspective:900px; background:transparent; border:none; }
+    .cond-flip { position:absolute; inset:0; transform-style:preserve-3d; transition:transform 0.65s cubic-bezier(0.4,0.1,0.2,1); }
+    .cond-photo.flipped .cond-flip { transform:rotateY(180deg); }
+    .cond-face { position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:8px; overflow:hidden; border:1px solid var(--border); }
+    .cond-face img { width:100%; height:100%; object-fit:cover; transition:transform 0.4s; }
+    .cond-photo:hover .cond-face img { transform:scale(1.04); }
+    .cond-face > span { position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,0.82)); font-size:11px; color:rgba(255,255,255,0.75); letter-spacing:0.04em; }
+    .cond-flip-hint { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.7); font-size:12px; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+    .cond-back { transform:rotateY(180deg); background:var(--bg-2); border-color:rgba(191,58,28,0.35); display:flex; flex-direction:column; justify-content:space-between; padding:14px; }
+    .cond-back h5 { font-size:12px; font-weight:700; color:var(--red-b); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:8px; }
+    .cond-back p { font-size:11.5px; line-height:1.55; color:var(--dim); }
+    .cond-back button { align-self:flex-start; background:none; border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:rgba(255,255,255,0.8); font-size:10.5px; letter-spacing:0.06em; padding:6px 12px; cursor:pointer; font-family:inherit; }
+    .cond-back button:hover { border-color:var(--red-b); color:#fff; }
+    @media (max-width:700px) { .cond-grid { grid-template-columns:repeat(2,1fr); } .cond-back p { font-size:10.5px; line-height:1.45; } }
+    @media (prefers-reduced-motion: reduce) { .cond-flip { transition:none; } }
+
+    /* ── HERO 3D PARALLAX + DRAG SCRUB ── */
+    #heroBg canvas, .hero-img-mobile canvas { transform:scale(1.07) translate3d(var(--px,0px), var(--py,0px), 0); will-change:transform; }
+    .hero-content { transform:translate3d(var(--cx,0px), var(--cy,0px), 0); }
+    .hero { touch-action:pan-y; user-select:none; -webkit-user-select:none; }
+    .drag-cue {
+      position:absolute; right:28px; bottom:28px; z-index:3;
+      font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:rgba(255,255,255,0.45);
+      border:1px solid rgba(255,255,255,0.15); border-radius:20px; padding:7px 14px;
+      backdrop-filter:blur(4px); background:rgba(7,5,5,0.3);
+      transition:opacity 0.6s; pointer-events:none;
+      animation: dragPulse 2.8s ease-in-out infinite;
+    }
+    .drag-cue.gone { opacity:0; }
+    @keyframes dragPulse { 0%,100%{opacity:0.55} 50%{opacity:1} }
+    .hero-img-mobile .drag-cue { right:12px; bottom:12px; padding:6px 12px; }
 
     /* ── INTERIOR ── */
     .interior-section { overflow: hidden; }
@@ -664,7 +690,7 @@
       --my: 50%;
       background: radial-gradient(250px circle at var(--mx) var(--my), rgba(191,58,28,0.07), transparent 60%), var(--bg-2);
     }
-    .svh:hover { border-color: rgba(191,58,28,0.4); transform: translateY(-3px); }
+    .svh:hover { border-color: rgba(191,58,28,0.4); transform: perspective(800px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-3px); }
     .svh-icon {
       width: 44px; height: 44px;
       border-radius: 8px;
@@ -744,7 +770,7 @@
       opacity: 0;
       transition: opacity 0.3s;
     }
-    .hl-card:hover { border-color:rgba(191,58,28,0.45); transform:translateY(-3px); box-shadow:0 16px 48px rgba(191,58,28,0.08); }
+    .hl-card:hover { border-color:rgba(191,58,28,0.45); transform:perspective(800px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-3px); box-shadow:0 16px 48px rgba(191,58,28,0.08); }
     .hl-card:hover::after { opacity:1; }
     .hl-icon {
       width:46px; height:46px;
@@ -1010,7 +1036,7 @@
     .rarity-claim { color:var(--red-b); font-weight:600; margin-top:4px; }
     .tip-card { --mx:50%; --my:50%; background:radial-gradient(360px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-1); border:1px solid var(--border); border-radius:var(--radius); padding:28px; position:relative; overflow:hidden; transition:border-color 0.3s, transform 0.25s, box-shadow 0.3s; margin-top:24px; }
     .tip-card::after { content:''; position:absolute; inset:0 0 auto; height:2px; background:linear-gradient(to right, transparent, var(--gold), transparent); opacity:0; transition:opacity 0.3s; }
-    .tip-card:hover { border-color:rgba(201,168,117,0.45); transform:translateY(-3px); box-shadow:0 16px 48px rgba(201,168,117,0.08); }
+    .tip-card:hover { border-color:rgba(201,168,117,0.45); transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-3px); box-shadow:0 16px 48px rgba(201,168,117,0.08); }
     .tip-card:hover::after { opacity:1; }
     .tip-icon { width:46px; height:46px; border-radius:9px; background:rgba(201,168,117,0.12); border:1px solid rgba(201,168,117,0.28); display:flex; align-items:center; justify-content:center; color:var(--gold); margin-bottom:18px; }
     .tip-card h4 { font-size:17px; font-weight:700; margin-bottom:10px; }
@@ -2016,13 +2042,48 @@
     <h2 class="sh rv">Interior Trim Condition</h2>
     <p class="sp rv">The mechanicals and paint are correct. The interior soft-touch plastic is not perfect. The factory soft-coat on several panels has broken down &mdash; a known issue on every 996 after two decades &mdash; leaving white residue on the switch surrounds and dash pieces. The driver&rsquo;s door panel has significant scratch marks. None of this affects how the car drives or any system function. All of these panels are available as used OEM replacements at modest cost. This section exists because serious buyers deserve to see it before they ask.</p>
     <div class="cond-grid rv">
-      <div class="cond-photo" onclick="openLb(21)"><img src="trim-door-panel.jpg" loading="lazy" alt="Driver door panel scratches"><span>Driver&rsquo;s door panel</span></div>
-      <div class="cond-photo" onclick="openLb(22)"><img src="trim-mirror-control.jpg" loading="lazy" alt="Mirror control trim cracking"><span>Mirror control trim</span></div>
-      <div class="cond-photo" onclick="openLb(23)"><img src="trim-switch-left.jpg" loading="lazy" alt="Switch panel soft-coat"><span>Window/seat switches</span></div>
-      <div class="cond-photo" onclick="openLb(24)"><img src="trim-switch-right.jpg" loading="lazy" alt="PSM panel soft-coat"><span>PSM/seat panel</span></div>
-      <div class="cond-photo" onclick="openLb(25)"><img src="trim-vent-dash.jpg" loading="lazy" alt="Dash vent area soft-coat"><span>Dash vent surround</span></div>
-      <div class="cond-photo" onclick="openLb(26)"><img src="trim-ignition-surround.jpg" loading="lazy" alt="Ignition surround wear"><span>Ignition surround</span></div>
-      <div class="cond-photo" onclick="openLb(27)"><img src="trim-console-overview.jpg" loading="lazy" alt="Center console overview"><span>Center console</span></div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-door-panel.jpg" loading="lazy" alt="Driver door panel scratches"><span>Driver&rsquo;s door panel</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Door Panel</h5><p>Significant scratch marks in the soft-touch surface. Used OEM panels are readily available and a straightforward swap.</p></div><button onclick="event.stopPropagation();openLb(21)">View Photo &#8599;</button></div>
+        </div>
+      </div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-mirror-control.jpg" loading="lazy" alt="Mirror control trim cracking"><span>Mirror control trim</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Mirror Control</h5><p>Soft-coat crazing on the switch surround &mdash; the classic 996 plastic issue. Cosmetic only; the switch works perfectly.</p></div><button onclick="event.stopPropagation();openLb(22)">View Photo &#8599;</button></div>
+        </div>
+      </div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-switch-left.jpg" loading="lazy" alt="Switch panel soft-coat"><span>Window/seat switches</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Switch Panel</h5><p>Factory soft-coat breaking down, leaving white residue. Every function works; replacement surrounds are inexpensive.</p></div><button onclick="event.stopPropagation();openLb(23)">View Photo &#8599;</button></div>
+        </div>
+      </div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-switch-right.jpg" loading="lazy" alt="PSM panel soft-coat"><span>PSM/seat panel</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>PSM / Seat Panel</h5><p>Same soft-coat wear as the left side. PSM and seat heat switches all function as they should.</p></div><button onclick="event.stopPropagation();openLb(24)">View Photo &#8599;</button></div>
+        </div>
+      </div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-vent-dash.jpg" loading="lazy" alt="Dash vent area soft-coat"><span>Dash vent surround</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Vent Surround</h5><p>Soft-coat wear around the dash vent. Known issue on every 996 after two decades &mdash; used OEM pieces are cheap.</p></div><button onclick="event.stopPropagation();openLb(25)">View Photo &#8599;</button></div>
+        </div>
+      </div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-ignition-surround.jpg" loading="lazy" alt="Ignition surround wear"><span>Ignition surround</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Ignition Surround</h5><p>Honest wear around the key from 23 years of starts. Purely cosmetic &mdash; replacement trim is available.</p></div><button onclick="event.stopPropagation();openLb(26)">View Photo &#8599;</button></div>
+        </div>
+      </div>
+      <div class="cond-photo" onclick="condFlip(this)">
+        <div class="cond-flip">
+          <div class="cond-face"><img src="trim-console-overview.jpg" loading="lazy" alt="Center console overview"><span>Center console</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Console Overview</h5><p>The full context shot &mdash; nothing hidden. Everything you see is documented in the photos above.</p></div><button onclick="event.stopPropagation();openLb(27)">View Photo &#8599;</button></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -2198,7 +2259,90 @@ window.addEventListener('resize', resizeCanvas, { passive: true });
 
 resizeCanvas();
 
-function updateParallax() {}
+/* ══════════════════════════════════
+   HERO 3D PARALLAX
+   Desktop: mouse moves canvas + content at opposing rates (depth window).
+   Mobile:  gyroscope tilts the canvas. iOS asks permission on first touch.
+══════════════════════════════════ */
+(function heroParallax() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const MAX_BG = 14, MAX_C = 7;
+  let pending = null;
+
+  function apply(nx, ny, bgOnly) {
+    heroEl.style.setProperty('--px', (nx * MAX_BG) + 'px');
+    heroEl.style.setProperty('--py', (ny * MAX_BG) + 'px');
+    if (!bgOnly) {
+      heroEl.style.setProperty('--cx', (-nx * MAX_C) + 'px');
+      heroEl.style.setProperty('--cy', (-ny * MAX_C) + 'px');
+    }
+  }
+  function schedule(nx, ny, bgOnly) {
+    if (pending) return;
+    pending = requestAnimationFrame(() => { pending = null; apply(nx, ny, bgOnly); });
+  }
+
+  /* Desktop mouse */
+  heroEl.addEventListener('mousemove', e => {
+    const r = heroEl.getBoundingClientRect();
+    schedule(((e.clientX - r.left) / r.width  - 0.5) * 2,
+             ((e.clientY - r.top)  / r.height - 0.5) * 2, false);
+  });
+  heroEl.addEventListener('mouseleave', () => schedule(0, 0, false));
+
+  /* Mobile gyroscope */
+  let baseBeta = null, baseGamma = null;
+  function onOrient(e) {
+    if (e.beta == null || e.gamma == null) return;
+    if (baseBeta === null) { baseBeta = e.beta; baseGamma = e.gamma; }
+    const nx = Math.max(-1, Math.min(1, (e.gamma - baseGamma) / 18));
+    const ny = Math.max(-1, Math.min(1, (e.beta  - baseBeta)  / 18));
+    schedule(nx, ny, true);
+  }
+  if ('DeviceOrientationEvent' in window) {
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      document.addEventListener('touchend', function ask() {
+        DeviceOrientationEvent.requestPermission()
+          .then(s => { if (s === 'granted') window.addEventListener('deviceorientation', onOrient); })
+          .catch(() => {});
+      }, { once: true });
+    } else {
+      window.addEventListener('deviceorientation', onOrient);
+    }
+  }
+})();
+
+/* ══════════════════════════════════
+   DRAG-TO-SCRUB HERO FRAMES
+   Horizontal drag/swipe plays the hero sequence by hand.
+   Vertical touch still scrolls (touch-action: pan-y).
+══════════════════════════════════ */
+(function dragScrub() {
+  let dragging = false, startX = 0, startFrame = 0;
+
+  const cue = document.createElement('div');
+  cue.className = 'drag-cue';
+  cue.innerHTML = '&#9664;&nbsp; Drag &nbsp;&#9654;';
+  const mobWrap = document.querySelector('.hero-img-mobile');
+  if (mobCanvas && mobWrap) mobWrap.appendChild(cue); else heroEl.appendChild(cue);
+
+  heroCanvas.style.cursor = 'grab';
+  if (mobCanvas) { mobCanvas.style.cursor = 'grab'; mobCanvas.style.touchAction = 'pan-y'; }
+
+  heroEl.addEventListener('pointerdown', e => {
+    if (e.target.closest('a, button')) return;
+    dragging = true; startX = e.clientX; startFrame = curFrame;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 4 && !cue.classList.contains('gone')) cue.classList.add('gone');
+    const idx = Math.max(0, Math.min(FRAME_COUNT - 1, Math.round(startFrame + dx / 6)));
+    if (idx !== curFrame) drawFrame(idx);
+  }, { passive: true });
+  window.addEventListener('pointerup', () => { dragging = false; });
+  window.addEventListener('pointercancel', () => { dragging = false; });
+})();
 
 /* ══════════════════════════════════
    STICKY NAV
@@ -2468,15 +2612,28 @@ function copyPrice(el) {
 })();
 
 /* ══════════════════════════════════
-   MOUSE GLOW ON CARDS
+   MOUSE GLOW + 3D TILT ON CARDS
 ══════════════════════════════════ */
+const allowMotion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.querySelectorAll('.js-glow').forEach(card => {
   card.addEventListener('mousemove', e => {
     const r = card.getBoundingClientRect();
-    card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
-    card.style.setProperty('--my', (e.clientY - r.top)  + 'px');
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    card.style.setProperty('--mx', x + 'px');
+    card.style.setProperty('--my', y + 'px');
+    if (allowMotion) {
+      card.style.setProperty('--ry', ((x / r.width)  - 0.5) *  5 + 'deg');
+      card.style.setProperty('--rx', (0.5 - (y / r.height)) * 5 + 'deg');
+    }
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.setProperty('--rx', '0deg');
+    card.style.setProperty('--ry', '0deg');
   });
 });
+
+/* Condition tile 3D flip */
+function condFlip(el) { el.classList.toggle('flipped'); }
 
 const tipTorqueEl = document.getElementById('tipTorqueV');
 if (tipTorqueEl) {
