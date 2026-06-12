@@ -409,6 +409,13 @@
       transition: color 0.2s;
     }
     .gallery-more:hover { color:var(--dim); }
+    .cond-section { background:var(--bg-1); }
+    .cond-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:32px; }
+    .cond-photo { position:relative; cursor:pointer; border-radius:8px; overflow:hidden; border:1px solid var(--border); aspect-ratio:4/3; }
+    .cond-photo img { width:100%; height:100%; object-fit:cover; transition:transform 0.4s; }
+    .cond-photo:hover img { transform:scale(1.04); }
+    .cond-photo span { position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,0.82)); font-size:11px; color:rgba(255,255,255,0.75); letter-spacing:0.04em; }
+    @media (max-width:700px) { .cond-grid { grid-template-columns:repeat(2,1fr); } }
 
     /* ── INTERIOR ── */
     .interior-section { overflow: hidden; }
@@ -1010,7 +1017,7 @@
     .tip-card h4 span { color:var(--gold); }
     .tip-card .tip-teaser { font-size:14px; color:var(--dim); line-height:1.72; }
     .tip-body { max-height:0; overflow:hidden; transition:max-height 0.5s ease; }
-    .tip-body.open { max-height:600px; }
+    .tip-body.open { max-height:4000px; }
     .tip-body p { font-size:14px; color:var(--dim); line-height:1.72; margin-top:12px; }
     .tip-toggle { background:none; border:none; color:var(--gold); font-size:13px; cursor:pointer; padding:10px 0 0; display:flex; align-items:center; gap:6px; letter-spacing:0.04em; font-family:inherit; }
     .tip-toggle svg { transition:transform 0.3s; }
@@ -1450,7 +1457,7 @@
         <div class="gi-over"><div class="gi-zoom"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></div></div>
       </div>
     </div>
-    <div class="gallery-more rv" onclick="openLb(11)">+ 10 more photos &mdash; click to browse all 21</div>
+    <div class="gallery-more rv" onclick="openLb(11)">+ 17 more photos &mdash; click to browse all 28</div>
   </div>
 </section>
 
@@ -1801,9 +1808,19 @@
         <p>Garage-kept, regularly driven, consistently maintained by someone who understood what they had. The paint, interior, and mechanicals all reflect that level of care.</p>
       </div>
       <div class="hl-card js-glow rv">
-        <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
-        <h4>Still Genuinely Fast</h4>
-        <p>420 hp, 415 lb-ft, AWD, 0&ndash;60 in ~4.0 seconds, 189 mph. The 996 Turbo was the supercar benchmark of 2003. In 2026, it still earns that description.</p>
+        <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></div>
+        <h4>XPEL PRIME XR Plus — Full Car</h4>
+        <p>XPEL&rsquo;s highest-tier ceramic tint, all glass. 98% infrared heat rejection, 99% UV block rated SPF&nbsp;1000. Non-conductive nano-ceramic film &mdash; no interference with GPS, radar, or Bluetooth. Professional installation, full vehicle coverage.</p>
+      </div>
+      <div class="hl-card js-glow rv">
+        <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></div>
+        <h4>Sony XAV-9000ES Head Unit</h4>
+        <p>Sony&rsquo;s flagship Mobile ES receiver. 6.75&Prime; 1280&times;720 touchscreen, 24-bit/192kHz DSP across 6 addressable channels, native FLAC and DSD playback, LDAC Bluetooth for lossless wireless audio. Wireless Apple CarPlay and Android Auto.</p>
+      </div>
+      <div class="hl-card js-glow rv">
+        <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="22"/><line x1="2" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="22" y2="12"/></svg></div>
+        <h4>Factory Hollow-Spoke Turbo Twists</h4>
+        <p>Option #408: 18-inch hollow-spoke Turbo Twist wheels, manufactured by BBS. Specific to the 996 Turbo, among the lightest 18-inch wheels Porsche ever offered, and among the rarest. Complete sets trade at $4,000+ when they surface at all.</p>
       </div>
     </div>
 
@@ -1812,16 +1829,16 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </div>
       <h4>Not a Compromise. <span>A Different Argument.</span></h4>
-      <p class="tip-teaser">The Tiptronic&nbsp;S fitted here is a ZF&nbsp;5HP-19 &mdash; the same unit Aston Martin, BMW&nbsp;M, and Audi Sport specified for their highest-torque cars of the era.</p>
+      <p class="tip-teaser">The Tiptronic&nbsp;S fitted here carries a Mercedes-Benz&nbsp;722.6 (W5A580) &mdash; the same transmission Mercedes-AMG trusted behind the supercharged V8s of the E55&nbsp;AMG and S55&nbsp;AMG, cars that made over 500&nbsp;lb-ft from the factory.</p>
       <div class="tip-body" id="tipBody">
-        <p>Rated well beyond the Turbo&rsquo;s 415&nbsp;lb-ft, it was engineered to never be the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The Tiptronic&nbsp;S was also specifically calibrated alongside the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD; the two share hydraulic architecture and were tuned as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
+        <p>Porsche knew the standard ZF unit used in base Carreras could not handle the twin-turbocharged Mezger&rsquo;s torque, so the Turbo received the Mercedes 722.6 instead &mdash; notoriously over-engineered, with stock units in the tuning community routinely handling 600&ndash;700&nbsp;hp without issue. It is never the limiting factor. Above 50&nbsp;mph the torque converter locks solid, giving a direct mechanical connection indistinguishable from a manual at cruise. Push hard and the Adaptive Sport Shift Program reads throttle angle and lateral load in real time, holding gears to redline and matching revs on the way back down &mdash; automatically. The steering-wheel rocker buttons (the &ldquo;S&rdquo; in Tiptronic&nbsp;S) mean you never take your hands off the wheel to change gear. And unlike the 6-speed, there is no clutch for the Mezger&rsquo;s 415&nbsp;lb-ft to destroy at 2,700&nbsp;rpm. Every component that wears in a manual &mdash; clutch disc, pressure plate, flywheel &mdash; does not exist here. The transmission control module and the 996&nbsp;Turbo&rsquo;s viscous-coupling AWD are tightly integrated, calibrated as a single system. Most 996&nbsp;Turbo buyers chose the manual. That makes this rarer.</p>
       </div>
-      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle');b.classList.toggle('open');t.classList.toggle('open');t.querySelector('span').textContent=b.classList.contains('open')?'Show less':'Read full argument';})()">
+      <button class="tip-toggle" id="tipToggle" onclick="(function(){var b=document.getElementById('tipBody'),t=document.getElementById('tipToggle'),isOpen=b.classList.toggle('open');b.style.maxHeight=isOpen?b.scrollHeight+'px':'0';t.classList.toggle('open');t.querySelector('span').textContent=isOpen?'Show less':'Read full argument';})()">
         <span>Read full argument</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="tip-specs">
-        <div class="tip-spec"><span class="tip-spec-v">ZF 5HP-19</span><span class="tip-spec-l">Transmission Unit</span></div>
+        <div class="tip-spec"><span class="tip-spec-v">MB 722.6</span><span class="tip-spec-l">Transmission Unit</span></div>
         <div class="tip-spec"><span class="tip-spec-v"><span id="tipTorqueV">415</span> lb-ft</span><span class="tip-spec-l">Torque Capacity</span></div>
         <div class="tip-spec"><span class="tip-spec-v">Lockup</span><span class="tip-spec-l">Direct Drive Above 50 mph</span></div>
         <div class="tip-spec"><span class="tip-spec-v">0 Clutch</span><span class="tip-spec-l">Wear Components</span></div>
@@ -1991,6 +2008,24 @@
     <div class="ps-cap"><span class="ps-cap-text">Interior Detail</span></div>
   </div>
 </div>
+
+<!-- ══ COSMETIC CONDITION ══ -->
+<section class="cond-section">
+  <div class="container">
+    <div class="eyebrow rv">Full Disclosure</div>
+    <h2 class="sh rv">Interior Trim Condition</h2>
+    <p class="sp rv">The mechanicals and paint are correct. The interior soft-touch plastic is not perfect. The factory soft-coat on several panels has broken down &mdash; a known issue on every 996 after two decades &mdash; leaving white residue on the switch surrounds and dash pieces. The driver&rsquo;s door panel has significant scratch marks. None of this affects how the car drives or any system function. All of these panels are available as used OEM replacements at modest cost. This section exists because serious buyers deserve to see it before they ask.</p>
+    <div class="cond-grid rv">
+      <div class="cond-photo" onclick="openLb(21)"><img src="trim-door-panel.jpg" loading="lazy" alt="Driver door panel scratches"><span>Driver&rsquo;s door panel</span></div>
+      <div class="cond-photo" onclick="openLb(22)"><img src="trim-mirror-control.jpg" loading="lazy" alt="Mirror control trim cracking"><span>Mirror control trim</span></div>
+      <div class="cond-photo" onclick="openLb(23)"><img src="trim-switch-left.jpg" loading="lazy" alt="Switch panel soft-coat"><span>Window/seat switches</span></div>
+      <div class="cond-photo" onclick="openLb(24)"><img src="trim-switch-right.jpg" loading="lazy" alt="PSM panel soft-coat"><span>PSM/seat panel</span></div>
+      <div class="cond-photo" onclick="openLb(25)"><img src="trim-vent-dash.jpg" loading="lazy" alt="Dash vent area soft-coat"><span>Dash vent surround</span></div>
+      <div class="cond-photo" onclick="openLb(26)"><img src="trim-ignition-surround.jpg" loading="lazy" alt="Ignition surround wear"><span>Ignition surround</span></div>
+      <div class="cond-photo" onclick="openLb(27)"><img src="trim-console-overview.jpg" loading="lazy" alt="Center console overview"><span>Center console</span></div>
+    </div>
+  </div>
+</section>
 
 <!-- ══ CONTACT ══ -->
 <section class="contact-section">
@@ -2479,6 +2514,13 @@ const PHOTOS = [
   { src: '20250621_173938(1).jpg',   cap: 'Front 3/4 — parking lot, midday', rot: false },
   { src: 'interior-steering.jpg',    cap: 'Steering wheel — Porsche crest, all original', rot: false },
   { src: 'interior-gauges.jpg',      cap: 'Gauge cluster — 94,702 miles documented in situ', rot: false },
+  { src: 'trim-door-panel.jpg',      cap: 'Condition — driver\'s door panel: significant scratch marks', rot: false },
+  { src: 'trim-mirror-control.jpg',  cap: 'Condition — mirror control trim: plastic crazing/cracking', rot: false },
+  { src: 'trim-switch-left.jpg',     cap: 'Condition — window/seat switch panel: soft-coat degradation', rot: false },
+  { src: 'trim-switch-right.jpg',    cap: 'Condition — PSM/seat panel: soft-coat degradation', rot: false },
+  { src: 'trim-vent-dash.jpg',       cap: 'Condition — dash vent surround: soft-coat degradation', rot: false },
+  { src: 'trim-ignition-surround.jpg', cap: 'Condition — ignition surround: wear/scuffing', rot: false },
+  { src: 'trim-console-overview.jpg',  cap: 'Condition — center console overview (Sony XAV-9000ES installed)', rot: false },
 ];
 
 let cur = 0;
