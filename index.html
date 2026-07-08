@@ -748,6 +748,33 @@
     .cc h4 { font-size:16px; font-weight:700; color:var(--gold); margin-bottom:10px; }
     .cc p { font-size:14px; color:var(--dim); line-height:1.78; }
 
+    /* ── PTS / SONDERFARBE BLOCK ── */
+    .pts-block {
+      margin-top: 18px;
+      background: linear-gradient(135deg, #14100a 0%, #0a0805 100%);
+      border: 1px solid rgba(201,168,117,0.24);
+      border-radius: 14px;
+      padding: 52px 56px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 52px;
+      align-items: center;
+    }
+    .pts-kicker { font-size:10px; text-transform:uppercase; letter-spacing:3px; color:var(--gold); display:block; margin-bottom:12px; }
+    .pts-block h3 { font-size:26px; font-weight:800; margin-bottom:14px; }
+    .pts-block h3 em { font-style:normal; color:var(--gold); }
+    .pts-block p { color:var(--dim); font-size:15px; line-height:1.8; margin-bottom:12px; }
+    .pts-claim { color:var(--gold); font-weight:600; margin-top:4px; }
+    .pts-stats { display:flex; flex-direction:column; gap:14px; min-width:230px; }
+    .pts-stat {
+      text-align:center;
+      padding:20px 26px;
+      border:1px solid rgba(201,168,117,0.28);
+      border-radius:12px;
+    }
+    .pts-stat .pn { font-size:30px; font-weight:900; line-height:1.1; color:var(--gold); display:block; }
+    .pts-stat .pl { font-size:9px; text-transform:uppercase; letter-spacing:1.8px; color:var(--muted); display:block; margin-top:7px; line-height:1.5; }
+
     /* ── HIGHLIGHTS ── */
     .hl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
     .hl-card {
@@ -1210,6 +1237,9 @@
       .hl-grid { grid-template-columns:1fr 1fr; }
       .color-trio { grid-template-columns:1fr 1fr; }
       .rarity-block { grid-template-columns:1fr; }
+      .pts-block { grid-template-columns:1fr; }
+      .pts-stats { flex-direction:row; flex-wrap:wrap; min-width:0; }
+      .pts-stat { flex:1 1 45%; padding:16px 12px; }
       .service-total-block { grid-template-columns:1fr; }
     }
     @media (max-width:768px) {
@@ -1233,6 +1263,7 @@
       .is-item:first-child { border-top:none; padding-top:0; }
       footer { flex-direction:column; gap:8px; text-align:center; padding:28px 24px; }
       .rarity-block { padding:32px 24px; }
+      .pts-block { padding:32px 24px; }
       .scroll-cue { display:none; }
 
       /* ── MOBILE HERO: text-first, image inline after subtitle ── */
@@ -1797,6 +1828,21 @@
       <div class="cc">
         <h4>The Research Behind the Claim</h4>
         <p>Searches spanning Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and Porsche enthusiast forums have found no other Zanzibar Red 996 Turbo Tiptronic in US specification. Factory documentation is on the build sheet. Paint code L1A8 is confirmed VIN-to-paint.</p>
+      </div>
+    </div>
+
+    <div class="pts-block rv">
+      <div>
+        <span class="pts-kicker">Porsche Exclusive &mdash; Sonderfarbe Program</span>
+        <h3>Paint to Sample, <em>Before It Had a Name</em></h3>
+        <p>Porsche&rsquo;s bespoke-color program is now one of the most coveted options in the catalog. Ordered through Porsche Exclusive Manufaktur, Paint to Sample adds $12,830 to a new 911 Turbo &mdash; and for a color outside the catalog, up to $25,660 plus a factory feasibility study that can run eleven months. Buyers pay it gladly, because special-color Porsches occupy a different tier of the market: they are the cars collectors search for by name, and the ones that draw the crowd at auction.</p>
+        <p>In 2003, the same program was called <em>Farbe nach Wahl</em> &mdash; &ldquo;color of choice.&rdquo; There was no waitlist and no hashtag. It was simply an expensive box almost nobody ticked, requiring a buyer who knew exactly what they wanted and a factory willing to paint one car one color. That is what option 00501 on this build sheet records: someone paid real money, two decades before it was fashionable, to make a Zanzibar Red Turbo exist.</p>
+        <p class="pts-claim">The paint isn&rsquo;t a feature of this car. It&rsquo;s the reason there is likely only one.</p>
+      </div>
+      <div class="pts-stats">
+        <div class="pts-stat"><span class="pn">$12,830</span><span class="pl">Paint to Sample upcharge<br>on a new 911 Turbo</span></div>
+        <div class="pts-stat"><span class="pn">11 Months</span><span class="pl">Factory feasibility study<br>for a non-catalog color</span></div>
+        <div class="pts-stat"><span class="pn">00501</span><span class="pl">The special-color option<br>on this build sheet</span></div>
       </div>
     </div>
   </div>
