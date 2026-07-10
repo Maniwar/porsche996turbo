@@ -2455,6 +2455,20 @@ function houseAdditionsBlock(data: ConciergeData): string {
         lines.join("\n") + "\n";
     }
   }
+  const cfgVideos = data.config?.videos;
+  if (cfgVideos && typeof cfgVideos === "object" && !Array.isArray(cfgVideos)) {
+    const lines = Object.entries(cfgVideos as Record<string, unknown>)
+      .filter(([tok, v]) => /^[a-z0-9_-]+$/i.test(tok) && v && typeof v === "object")
+      .map(([tok, v]) => {
+        const o = v as { description?: string; label?: string };
+        const desc = (o.description ?? o.label ?? "").toString().slice(0, 200);
+        return `- {{video:${tok}}}${desc ? " — " + desc : ""}`;
+      });
+    if (lines.length > 0) {
+      s += "\nADDITIONAL VIDEOS (admin-added; each on its own line, at most one per answer, only when the shopper asks to see one):\n" +
+        lines.join("\n") + "\n";
+    }
+  }
   const notes = data.config?.voice_notes;
   if (typeof notes === "string" && notes.trim().length > 0) {
     s += "\nADMIN TUNING NOTES (follow these):\n" + notes;
@@ -2660,11 +2674,12 @@ function stripPlumbing(t: string): string {
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, "")
     .replace(/<function_calls>[\s\S]*$/i, "")
     .replace(/<\/?(function_calls|invoke|parameter)(\s[^>]*)?>/gi, "")
-    // strip ONLY plumbing tokens — keep the legit img/reply/form/commission/
-    // signin vocabulary the client turns into images, pills, buttons, forms
+    // strip ONLY plumbing tokens — keep the legit img/video/reply/form/commission/
+    // signin vocabulary the client turns into images, videos, pills, buttons, forms
     .replace(/\{\{[a-z_]+(?::[^}]*)?\}\}/gi, (m) => {
       const low = m.toLowerCase();
-      return (low.startsWith("{{img:") || low.startsWith("{{reply:") ||
+      return (low.startsWith("{{img:") || low.startsWith("{{video:") ||
+          low.startsWith("{{reply:") ||
           low.startsWith("{{form:") || low === "{{action:commission}}" ||
           low === "{{action:signin}}" || low === "{{action:snooze}}")
         ? m
@@ -2789,12 +2804,14 @@ async function handleConfigGet(req: Request): Promise<Response> {
   const { forms } = await loadConciergeData();
   const outreach = config?.outreach;
   const images = config?.images;
+  const videos = config?.videos;
   return jsonResponse(req, 200, {
     enabled: config?.enabled === false ? false : true,
     greeting: typeof config?.greeting === "string" ? config.greeting : null,
     starters: starters && typeof starters === "object" && !Array.isArray(starters) ? starters : null,
     outreach: outreach && typeof outreach === "object" && !Array.isArray(outreach) ? outreach : null,
     images: images && typeof images === "object" && !Array.isArray(images) ? images : null,
+    videos: videos && typeof videos === "object" && !Array.isArray(videos) ? videos : null,
     assertiveness: assertivenessLevel({ config } as ConciergeData),
     auth: true,
     forms: forms.map((f) => ({ slug: f.slug, title: f.title, fields: f.fields })),
@@ -2876,7 +2893,7 @@ const PROMPT_DOCTOR_SYSTEM =
   "that pull opposite ways; (2) REDUNDANCY — the same rule stated in more than one place; " +
   "(3) AMBIGUITY — an instruction the model could reasonably read two ways; (4) GAP — an " +
   "obvious rule the goal needs that is missing. Ignore tone and house style. Tokens like " +
-  "{{action:commission}}, {{reply:...}}, {{img:...}}, {{form:...}}, {{KB}}, {{OBJECTIVE}} are " +
+  "{{action:commission}}, {{reply:...}}, {{img:...}}, {{video:...}}, {{form:...}}, {{KB}}, {{OBJECTIVE}} are " +
   "legitimate UI/template markers — never flag them as syntax errors. In particular, " +
   "{{form:<slug>:<serial>}} is a real, authorized register token for signed-in owners (it opens a " +
   "labeled form, e.g. to collect an address) — never flag it as unauthorized or invented. Be " +
@@ -3467,6 +3484,129 @@ async function handleStartersGet(req: Request): Promise<Response> {
   if (delivered) add(`How should I care for my ${clothOf(delivered.variant)}?`);
   add("Show me all my orders");
   return jsonResponse(req, 200, { starters: out.slice(0, 4) });
+}
+
+// ── POST ?genstarters=1 — draft conversation starters from the KB (admin only) ─
+// The studio's "Conversation starters" panel has one input trio per page section.
+// Writing good, on-brand, factually-grounded starters by hand for a dozen sections
+// is tedious — and a freshly-adopted site ships with generic placeholders. This
+// endpoint reads the LIVE knowledge base and the house voice and drafts a few
+// tappable opening questions PER SECTION, grounded ONLY in what the KB actually
+// says (no invented specs, prices, or features). Nothing is saved: the studio drops
+// the drafts into the input fields for the admin to edit and Save, so the human
+// stays in the loop. Fail-soft: an error names itself and returns no starters.
+const STARTER_WRITER_SYSTEM =
+  "You write CONVERSATION STARTERS for a sales concierge's chat widget — the short, tappable " +
+  "questions a prospective buyer sees and can tap to open a conversation. You are given the " +
+  "house's KNOWLEDGE BASE (the only facts the concierge may state) and a list of PAGE SECTIONS, " +
+  "each with a short hint from its heading. For each section, write a few starters a real shopper " +
+  "standing at THAT part of the page would plausibly tap. Hard rules: (1) GROUND EVERY STARTER IN " +
+  "THE KNOWLEDGE BASE — never reference a spec, price, feature, or claim the KB does not contain; " +
+  "if a section's topic isn't covered by the KB, write general starters the KB CAN answer instead " +
+  "of inventing detail. (2) Write them in the SHOPPER'S voice, as a question or short ask (\"What's " +
+  "the service history?\", \"Can I come see it?\"), first person, under ~10 words, no trailing " +
+  "period required. (3) Make them SECTION-APPROPRIATE using the hint, and VARY them — don't repeat " +
+  "the same question across sections. (4) Match the house's register (from the voice/greeting) " +
+  "without being flowery. (5) Phrase each so the concierge can actually answer it from the " +
+  "knowledge base. Return exactly the requested number per section, via a single tool call.";
+async function handleGenStartersPost(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return jsonError(req, 500, "Server is not configured (missing API key).");
+  let body: { sections?: unknown; count?: unknown };
+  try { body = await req.json(); } catch { return jsonError(req, 400, "Bad JSON."); }
+  // The studio sends the section keys it shows a trio for (STARTER_KEYS). Keep only
+  // clean slug-shaped keys, de-duplicate, and cap the fan-out so one click can't spend
+  // an unbounded generation. 'default' is a real bucket (the fallback trio) — allowed.
+  const rawKeys = Array.isArray(body.sections) ? body.sections : [];
+  const keys: string[] = [];
+  for (const k of rawKeys) {
+    if (typeof k === "string" && /^[a-z0-9_-]{1,64}$/.test(k) && keys.indexOf(k) === -1) keys.push(k);
+    if (keys.length >= 40) break;
+  }
+  if (keys.length === 0) return jsonError(req, 400, "No valid section keys supplied.");
+  const count = Math.max(1, Math.min(3, Number(body.count) || 3));
+  const data = await loadConciergeData();
+  const kb = (data.kbText ?? KB_MARKDOWN).slice(0, 24000);
+  const cfg = data.config || {};
+  const greeting = (typeof cfg.greeting === "string" && cfg.greeting.trim()) ? cfg.greeting.trim() : GREETING_DEFAULT;
+  const voice = (typeof cfg.voice_notes === "string" && cfg.voice_notes.trim()) ? cfg.voice_notes.trim().slice(0, 1500) : "";
+  const model = resolveModel(data);
+  // Turn each slug into a human hint from the heading it was derived from
+  // ("the-mezger-sound" -> "the mezger sound") so the writer knows the topic.
+  const deslug = (k: string) => k === "default" ? "the fallback shown when no section is active" : k.replace(/[-_]+/g, " ").trim();
+  const sectionsBlock = keys.map((k) => `- key "${k}" — section about: ${deslug(k)}`).join("\n");
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model, max_tokens: 2200,
+        system: STARTER_WRITER_SYSTEM,
+        tool_choice: { type: "tool", name: "starters" },
+        tools: [{
+          name: "starters",
+          description: "The drafted conversation starters, grouped by section key.",
+          input_schema: {
+            type: "object",
+            properties: {
+              sections: {
+                type: "array",
+                description: "one entry per requested section key, each with its starters",
+                items: {
+                  type: "object",
+                  properties: {
+                    key: { type: "string", description: "the exact section key from PAGE SECTIONS" },
+                    starters: {
+                      type: "array",
+                      description: `${count} short tappable shopper questions grounded in the knowledge base`,
+                      items: { type: "string" },
+                    },
+                  },
+                  required: ["key", "starters"],
+                },
+              },
+            },
+            required: ["sections"],
+          },
+        }],
+        messages: [{
+          role: "user",
+          content: "Write " + count + " conversation starter(s) for each PAGE SECTION below, grounded " +
+            "only in the KNOWLEDGE BASE. Match this house voice.\n\n===== HOUSE GREETING (voice sample) =====\n" +
+            greeting + (voice ? "\n\n===== VOICE NOTES =====\n" + voice : "") +
+            "\n\n===== KNOWLEDGE BASE (the only facts you may reference) =====\n" + kb +
+            "\n\n===== PAGE SECTIONS =====\n" + sectionsBlock,
+        }],
+      }),
+    });
+    if (!res.ok) {
+      return jsonError(req, 502, `Starter-writer model error ${res.status}: ${(await res.text().catch(() => "")).slice(0, 160)}`);
+    }
+    // deno-lint-ignore no-explicit-any
+    const j = await res.json() as any;
+    // deno-lint-ignore no-explicit-any
+    const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "starters");
+    if (!tool || typeof tool.input !== "object") return jsonError(req, 502, "Writer returned nothing.");
+    const allowed = new Set(keys);
+    const out: Record<string, string[]> = {};
+    // deno-lint-ignore no-explicit-any
+    for (const s of (Array.isArray(tool.input.sections) ? tool.input.sections : [])) {
+      const key = s && typeof s.key === "string" ? s.key : "";
+      if (!allowed.has(key) || out[key]) continue; // only requested keys, first wins
+      const trio: string[] = [];
+      // deno-lint-ignore no-explicit-any
+      for (const v of (Array.isArray(s.starters) ? s.starters : [])) {
+        const t = typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, 120) : "";
+        if (t && trio.indexOf(t) === -1) trio.push(t);
+        if (trio.length >= count) break;
+      }
+      if (trio.length) out[key] = trio;
+    }
+    return jsonResponse(req, 200, { starters: out, model, count });
+  } catch (e) {
+    return jsonError(req, 502, "Starter-writer error: " + (e instanceof Error ? e.message : String(e)));
+  }
 }
 
 // ── GET ?selftest=1 — "what does the concierge actually know about me?" ───────
@@ -5093,6 +5233,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "POST" && new URL(req.url).searchParams.get("promptreview")) {
     return await handlePromptReviewPost(req);
+  }
+  if (req.method === "POST" && new URL(req.url).searchParams.get("genstarters")) {
+    return await handleGenStartersPost(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("starters")) {
     return await handleStartersGet(req);

@@ -56,6 +56,21 @@
     }
     return merged;
   }
+  function kbVideos() {
+    var i = kb().videos;
+    var base = (i && typeof i === 'object') ? i : {};
+    if (!remoteVideos || typeof remoteVideos !== 'object') { return base; }
+    /* admin-added videos extend (and can override) the built-in map */
+    var merged = {}, k;
+    for (k in base) { if (Object.prototype.hasOwnProperty.call(base, k)) { merged[k] = base[k]; } }
+    for (k in remoteVideos) {
+      if (Object.prototype.hasOwnProperty.call(remoteVideos, k)) {
+        var v = remoteVideos[k];
+        if (v && typeof v === 'object' && typeof v.src === 'string') { merged[k] = v; }
+      }
+    }
+    return merged;
+  }
   /* remote starters (from ?config=1) REPLACE the KB map when present */
   function suggestedMap() {
     if (remoteStarters) { return remoteStarters; }
@@ -213,6 +228,7 @@
   var remoteForms = {};        /* slug -> {title, fields[], submit_tool} */
   var remoteOutreach = null;   /* admin-set engagement timings (from ?config=1) */
   var remoteImages = null;     /* admin-added {{img:token}} sources (from ?config=1) */
+  var remoteVideos = null;     /* admin-added {{video:token}} sources (from ?config=1) */
   var remoteAssert = null;     /* admin assertiveness 1..5 (from ?config=1) */
 
   /* Assertiveness 1 (restrained) .. 5 (closer); default 3. Scales how often and
@@ -249,7 +265,8 @@
       if (!fields.length) { continue; }
       def = {
         title: typeof f.title === 'string' ? f.title.slice(0, 80) : f.slug,
-        fields: fields
+        fields: fields,
+        submit_tool: typeof f.submit_tool === 'string' ? f.submit_tool : ''
       };
       out[f.slug] = def;
     }
@@ -302,6 +319,7 @@
           if (j.auth != null) { remoteAuth = j.auth; }
           if (j.outreach && typeof j.outreach === 'object') { remoteOutreach = j.outreach; }
           if (j.images && typeof j.images === 'object') { remoteImages = j.images; }
+          if (j.videos && typeof j.videos === 'object') { remoteVideos = j.videos; }
           if (typeof j.assertiveness === 'number') { remoteAssert = j.assertiveness; }
           remoteForms = sanitizeForms(j.forms);
         }
@@ -485,6 +503,7 @@
       /* figures */
       '.cx-fig{margin:.2em 0 .95em;}',
       '.cx-fig img{display:block;max-width:100%;height:auto;border:1px solid var(--cx-hair-soft);}',
+      '.cx-fig video{display:block;max-width:100%;height:auto;border:1px solid var(--cx-hair-soft);background:#000;}',
       '.cx-actionrow{margin:.3em 0 .9em;}',
       '.cx-action{min-height:44px;display:inline-flex;align-items:center;gap:.5rem;cursor:pointer;',
       'font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;',
@@ -764,7 +783,10 @@
   var LINK_RE = /^\[([^\]]*)\]\(([^)\s]+)\)$/;
 
   function safeUrl(url) {
-    return /^https:\/\//i.test(url) || /^mailto:/i.test(url);
+    if (/^https:\/\//i.test(url) || /^mailto:/i.test(url)) { return true; }
+    if (/^\/\//.test(url)) { return false; }                 /* protocol-relative → reject */
+    if (/^[a-z][a-z0-9+.\-]*:/i.test(url)) { return false; } /* any other scheme (javascript:, data:, http:) → reject */
+    return true;                                             /* scheme-less relative path / #anchor → allow */
   }
 
   function renderInline(text, target) {
@@ -828,9 +850,16 @@
      function's ?form=1 endpoint — the same verified, audited write path the
      concierge's own tools use. Definitions come from the Studio via config. */
   function buildChatForm(slug, serial, def) {
+    /* Two shapes share this card. An INQUIRY form (make-an-offer,
+       book-a-viewing -> submit_inquiry) is anonymous and serial-free: the
+       model emits it as {{form:slug}} with no serial, anyone may submit, and
+       the post authenticates with the publishable anon key. A REGISTER-EDIT
+       form (address-change, etc.) carries a serial, is gated on a signed-in
+       user token, and titles itself "N\u00ba <serial>". */
+    var isInquiry = (serial == null) || def.submit_tool === 'submit_inquiry';
     var card = el('div', 'cx-form cx-fade-in');
     card.appendChild(el('div', 'cx-form-title',
-      def.title + ' — N\u00ba ' + serial.toLocaleString('en-US')));
+      isInquiry ? def.title : (def.title + ' — N\u00ba ' + serial.toLocaleString('en-US'))));
 
     var controls = {};
     def.fields.forEach(function (f) {
@@ -864,7 +893,7 @@
 
     var err = el('div', 'cx-form-err');
     err.style.display = 'none';
-    var submit = el('button', 'cx-action', '\u2733 Enter it in the register');
+    var submit = el('button', 'cx-action', isInquiry ? '\u2733 Send to the owner' : '\u2733 Enter it in the register');
     submit.type = 'button';
     card.appendChild(submit);
     card.appendChild(err);
@@ -883,6 +912,43 @@
       say('');
       submit.disabled = true;
       ensureSupabase();
+      if (isInquiry) {
+        /* Anonymous inquiry post: no sign-in, no serial. Authenticate with the
+           publishable anon key (same as the widget's other anonymous calls) so
+           anyone can hand the owner an offer / viewing / question. The server's
+           handleFormPost routes it through submit_inquiry with serial:null. */
+        fetch(endpoint() + '?form=1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': supaKey(), 'Authorization': 'Bearer ' + supaKey() },
+          body: JSON.stringify({ form: slug, serial: null, values: values, session_key: sessionKey(), section: currentSection(), turns: history.length })
+        }).then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
+          .then(function (r) {
+            if (r.ok && r.j && r.j.ok) {
+              var msg = typeof r.j.message === 'string' ? r.j.message : 'Sent to the owner.';
+              while (card.firstChild) { card.removeChild(card.firstChild); }
+              card.appendChild(el('div', 'cx-form-done', '\u2733 ' + msg));
+              /* Durable: rewrite the transcript so a re-render shows the form as
+                 SENT rather than resurrecting a blank card. Inquiry forms carry
+                 no serial, so the token to erase is the serial-less one. */
+              var tok = '{{form:' + slug + '}}';
+              for (var hi = 0; hi < history.length; hi++) {
+                if (history[hi].role === 'assistant' && history[hi].content.indexOf(tok) !== -1) {
+                  history[hi].content = history[hi].content
+                    .split(tok).join('\u2733 ' + def.title + ' \u2014 sent to the owner.');
+                }
+              }
+              history.push({ role: 'assistant', content: '(An inquiry form was submitted: ' + msg + ')' });
+              saveHistory();
+            } else {
+              submit.disabled = false;
+              say((r.j && r.j.error) ? String(r.j.error) : 'The owner\u2019s desk is briefly unavailable \u2014 try again.');
+            }
+          })['catch'](function () {
+            submit.disabled = false;
+            say('The owner\u2019s desk is briefly unavailable \u2014 try again.');
+          });
+        return;
+      }
       getAccessToken().then(function (token) {
         if (!token) {
           submit.disabled = false;
@@ -958,7 +1024,8 @@
   function isLegitToken(m) {
     var low = m.toLowerCase();
     /* the real vocabulary the block renderer turns into UI — keep these */
-    return low.indexOf('{{img:') === 0 || low.indexOf('{{reply:') === 0 ||
+    return low.indexOf('{{img:') === 0 || low.indexOf('{{video:') === 0 ||
+      low.indexOf('{{reply:') === 0 ||
       low.indexOf('{{form:') === 0 || low === '{{action:commission}}' ||
       low === '{{action:signin}}';
   }
@@ -987,6 +1054,7 @@
     var i = 0, n = lines.length;
     var para = [];
     var images = kbImages();
+    var videos = kbVideos();
 
     function flushPara() {
       if (!para.length) { return; }
@@ -1022,6 +1090,33 @@
           img.setAttribute('alt', (typeof meta.alt === 'string') ? meta.alt : '');
           fig.appendChild(img);
           frag.appendChild(fig);
+        }
+        i++; continue;
+      }
+
+      /* {{video:token}} line */
+      var vidm = /^\{\{video:([A-Za-z0-9_-]+)\}\}$/.exec(trimmed);
+      if (vidm) {
+        flushPara();
+        var vmeta = videos[vidm[1]];
+        if (vmeta && typeof vmeta === 'object' && typeof vmeta.src === 'string') {
+          var vfig = document.createElement('figure');
+          vfig.className = 'cx-fig cx-fade-in';
+          var vid = document.createElement('video');
+          vid.setAttribute('controls', '');
+          vid.setAttribute('preload', 'metadata');
+          vid.setAttribute('playsinline', '');
+          if (typeof vmeta.poster === 'string' && vmeta.poster) { vid.setAttribute('poster', vmeta.poster); }
+          var vlabel = (typeof vmeta.label === 'string') ? vmeta.label
+            : ((typeof vmeta.alt === 'string') ? vmeta.alt : '');
+          if (vlabel) { vid.setAttribute('aria-label', vlabel); }
+          var vsrc = document.createElement('source');
+          vsrc.setAttribute('src', vmeta.src);
+          vsrc.setAttribute('type', 'video/mp4');
+          vid.appendChild(vsrc);
+          if (vlabel) { vid.appendChild(document.createTextNode(vlabel)); }
+          vfig.appendChild(vid);
+          frag.appendChild(vfig);
         }
         i++; continue;
       }
@@ -1119,12 +1214,15 @@
         continue;
       }
 
-      /* {{form:slug:serial}} line — structured input defined in the Studio */
-      var fm = /^\{\{form:([a-z0-9-]{2,40}):(\d{1,6})\}\}$/.exec(trimmed);
+      /* {{form:slug:serial}} or serial-less {{form:slug}} line — structured
+         input defined in the Studio. The serial is present for signed-in
+         register-edit forms (address-change, etc.) and ABSENT for anonymous
+         inquiry forms (make-an-offer, book-a-viewing → submit_inquiry). */
+      var fm = /^\{\{form:([a-z0-9-]{2,40})(?::(\d{1,6}))?\}\}$/.exec(trimmed);
       if (fm) {
         flushPara();
         var fdef = remoteForms[fm[1]];
-        if (fdef) { frag.appendChild(buildChatForm(fm[1], parseInt(fm[2], 10), fdef)); }
+        if (fdef) { frag.appendChild(buildChatForm(fm[1], fm[2] ? parseInt(fm[2], 10) : null, fdef)); }
         else {
           /* Unknown or disabled form slug: never drop the line silently — a
              reply that is ONLY this token would land as a blank bubble

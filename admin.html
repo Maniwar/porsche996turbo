@@ -338,6 +338,14 @@
   .imgrow .imgsrc{ flex:2 1 200px; min-width:0; }
   .imgrow .imgalt{ flex:1 1 130px; min-width:0; }
   .imgrow .imgdesc{ flex:2 1 180px; min-width:0; }
+  .vidrow{ display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--hairline-dim); flex-wrap:wrap; }
+  .vidrow .vidprev{ width:44px; height:44px; object-fit:cover; border:1px solid var(--hairline-dim); border-radius:6px; background:rgba(38,51,43,.4); flex:0 0 auto; }
+  .vidrow input{ font-size:12px; background:rgba(38,51,43,.4); border:1px solid var(--hairline-dim); color:var(--text); border-radius:7px; padding:5px 8px; }
+  .vidrow .vidtok{ flex:0 0 110px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .vidrow .vidsrc{ flex:2 1 200px; min-width:0; }
+  .vidrow .vidposter{ flex:1 1 150px; min-width:0; }
+  .vidrow .vidlabel{ flex:1 1 130px; min-width:0; }
+  .vidrow .viddesc{ flex:2 1 180px; min-width:0; }
 
   /* customers — order register (compact table + detail drawer) */
   .ord-chips{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
@@ -1140,8 +1148,10 @@
         </div>
         <p class="note">You can drop <code>{{reply:…}}</code> pills straight into the greeting. The rest, the concierge emits itself as its procedures call for — shape <em>when</em> via the SOPs (Procedures) and the tuning notes above.</p>
         <table class="tok-ref">
-          <tr><td><code>{{img:pack-wide}}</code><br><code>{{img:pack-seal}}</code><br><code>{{img:hero}}</code><br>+ your own</td>
+          <tr><td><code>{{img:hero}}</code><br>+ your own</td>
             <td>A photograph, on its own line. These three are built in; add your own in the <strong>Bot images</strong> card below and the concierge can share them too.</td></tr>
+          <tr><td><code>{{video:token}}</code></td>
+            <td>A playable video, on its own line. Register one in the <strong>Bot videos</strong> card below; the concierge shares it when a shopper asks to see something in motion.</td></tr>
           <tr><td><code>{{action:commission}}</code></td><td>A “Begin the commission” button.</td></tr>
           <tr><td><code>{{action:signin}}</code></td><td>A “Sign in” button.</td></tr>
           <tr><td><code>{{reply:Some text}}</code></td><td>A tappable pill that sends “Some text” as the shopper’s next message. One per line; consecutive lines group; up to 6.</td></tr>
@@ -1154,11 +1164,24 @@
           <h3>Bot images</h3>
           <span class="micro">what {{img:token}} can show</span>
         </div>
-        <p class="note">Add images the concierge can share in chat. <strong>Token</strong> is the handle (letters, numbers, <code>-</code> <code>_</code>); <strong>Source</strong> is an image URL or a <code>data:image</code> URI; <strong>Description</strong> tells the bot when to use it. The three built-in images (<code>pack-wide</code>, <code>pack-seal</code>, <code>hero</code>) are always available.</p>
+        <p class="note">Add images the concierge can share in chat. <strong>Token</strong> is the handle (letters, numbers, <code>-</code> <code>_</code>); <strong>Source</strong> is an image URL or a <code>data:image</code> URI; <strong>Description</strong> tells the bot when to use it. The built-in <code>{{img:hero}}</code> token shows your page's hero image; add your own below.</p>
         <div id="img-list"></div>
         <div class="card-foot">
           <button id="img-add" class="btn ghost" type="button">Add image</button>
           <button id="save-images" class="btn primary" type="button">Save images</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>Bot videos</h3>
+          <span class="micro">what {{video:token}} can play</span>
+        </div>
+        <p class="note">Register videos the concierge can play in chat. <strong>Token</strong> is the handle (letters, numbers, <code>-</code> <code>_</code>); <strong>Source</strong> is an MP4 URL or a <code>data:video</code> URI; <strong>Poster</strong> (optional) is a still-image URL / <code>data:image</code> URI shown before play; <strong>Label</strong> is the accessible caption; <strong>Description</strong> tells the bot when to use it. No videos are built in — a clip only plays once you register it here.</p>
+        <div id="vid-list"></div>
+        <div class="card-foot">
+          <button id="vid-add" class="btn ghost" type="button">Add video</button>
+          <button id="save-videos" class="btn primary" type="button">Save videos</button>
         </div>
       </section>
 
@@ -1170,6 +1193,8 @@
         <div id="starters" class="starters"></div>
         <div class="card-foot">
           <button id="save-starters" class="btn primary">Save starters</button>
+          <button id="btn-gen-starters" class="btn ghost">Draft with AI ✳</button>
+          <span class="micro" style="opacity:.6;">Reads the knowledge base and drafts starters for every section — review and Save.</span>
         </div>
       </section>
       </div>
@@ -2215,6 +2240,7 @@ const state = {
   inquiries: [],
   emailsBySerial: {},
   images: [],
+  videos: [],
   forms: [],
   goalDefs: [],
   convos: [],
@@ -2492,6 +2518,7 @@ function wireStatic() {
   $('save-starters').addEventListener('click', function () {
     withBusy($('save-starters'), saveStarters);
   });
+  if ($('btn-gen-starters')) $('btn-gen-starters').addEventListener('click', function () { withBusy($('btn-gen-starters'), genStarters); });
   $('save-engagement').addEventListener('click', function () {
     withBusy($('save-engagement'), saveEngagement);
   });
@@ -2514,6 +2541,10 @@ function wireStatic() {
   $('img-add').addEventListener('click', addImageRow);
   $('save-images').addEventListener('click', function () {
     withBusy($('save-images'), saveImages);
+  });
+  $('vid-add').addEventListener('click', addVideoRow);
+  $('save-videos').addEventListener('click', function () {
+    withBusy($('save-videos'), saveVideos);
   });
   $('save-edition').addEventListener('click', function () {
     withBusy($('save-edition'), saveEdition);
@@ -2873,12 +2904,12 @@ async function adminGet(query) {
   }
   return res.json();
 }
-async function adminPost(query) {
+async function adminPost(query, bodyObj) {
   const token = state.session && state.session.access_token;
   const res = await fetch(SUPABASE_URL + '/functions/v1/concierge' + query, {
     method: 'POST',
     headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + (token || SUPABASE_ANON_KEY), 'Content-Type': 'application/json' },
-    body: '{}'
+    body: JSON.stringify(bodyObj || {})
   });
   if (!res.ok) {
     let msg = 'HTTP ' + res.status;
@@ -3416,6 +3447,9 @@ async function loadConfig() {
 
   state.images = imgObjToRows(cfg.images);
   renderImageRows();
+
+  state.videos = vidObjToRows(cfg.videos);
+  renderVideoRows();
 
   setPill(cfg.enabled === true);
   // Size the textareas in the visible Tuning sub-panel now that values are loaded.
@@ -4228,7 +4262,7 @@ async function saveTools() {
 }
 
 /* ---- Bot images (config key 'images') ---- */
-const BUILTIN_IMG = ['pack-wide', 'pack-seal', 'hero'];
+const BUILTIN_IMG = ['hero'];
 function imgObjToRows(o) {
   if (!o || typeof o !== 'object') return [];
   const rows = [];
@@ -4244,7 +4278,7 @@ function renderImageRows() {
   const list = $('img-list');
   list.textContent = '';
   if (!state.images.length) {
-    list.appendChild(el('div', 'empty micro', 'No custom images yet — the three built-ins are always available.'));
+    list.appendChild(el('div', 'empty micro', 'No custom images yet — the built-in hero image is always available.'));
   }
   state.images.forEach(function (r, idx) {
     const wrap = el('div', 'imgrow');
@@ -4293,6 +4327,79 @@ async function saveImages() {
     .upsert([{ key: 'images', value: out, updated_at: nowIso() }], { onConflict: 'key' });
   if (res.error) { fail('Save images', res.error); return; }
   toast('Images saved');
+}
+
+/* ---- Bot videos (config key 'videos') ---- */
+const BUILTIN_VID = [];
+function vidObjToRows(o) {
+  if (!o || typeof o !== 'object') return [];
+  const rows = [];
+  Object.keys(o).forEach(function (t) {
+    const v = o[t];
+    if (v && typeof v === 'object') {
+      rows.push({ token: t, src: v.src || '', poster: v.poster || '', label: v.label || v.alt || '', description: v.description || '' });
+    }
+  });
+  return rows;
+}
+function renderVideoRows() {
+  const list = $('vid-list');
+  list.textContent = '';
+  if (!state.videos.length) {
+    list.appendChild(el('div', 'empty micro', 'No videos yet — register one and the concierge can play it in chat.'));
+  }
+  state.videos.forEach(function (r, idx) {
+    const wrap = el('div', 'vidrow');
+    const prev = document.createElement('img');
+    prev.className = 'vidprev';
+    prev.alt = '';
+    if (r.poster) prev.setAttribute('src', r.poster);
+    const mk = function (ph, key, cls) {
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.placeholder = ph; inp.value = r[key] || ''; inp.className = cls;
+      inp.addEventListener('input', function () {
+        r[key] = inp.value;
+        if (key === 'poster') { if (inp.value) prev.setAttribute('src', inp.value); else prev.removeAttribute('src'); }
+      });
+      return inp;
+    };
+    wrap.appendChild(prev);
+    wrap.appendChild(mk('token', 'token', 'vidtok'));
+    wrap.appendChild(mk('video URL or data:video URI', 'src', 'vidsrc'));
+    wrap.appendChild(mk('poster URL (optional)', 'poster', 'vidposter'));
+    wrap.appendChild(mk('label / caption', 'label', 'vidlabel'));
+    wrap.appendChild(mk('when the bot should use it', 'description', 'viddesc'));
+    const rm = el('button', 'btn ghost', 'Remove');
+    rm.type = 'button';
+    rm.addEventListener('click', function () { state.videos.splice(idx, 1); renderVideoRows(); });
+    wrap.appendChild(rm);
+    list.appendChild(wrap);
+  });
+}
+function addVideoRow() { state.videos.push({ token: '', src: '', poster: '', label: '', description: '' }); renderVideoRows(); }
+async function saveVideos() {
+  const out = {};
+  for (let i = 0; i < state.videos.length; i++) {
+    const r = state.videos[i];
+    const t = (r.token || '').trim();
+    if (!t) continue;
+    if (!/^[A-Za-z0-9_-]+$/.test(t)) { toast('Token "' + t + '" — letters, numbers, - _ only', true); return; }
+    if (BUILTIN_VID.indexOf(t) >= 0) { toast('"' + t + '" is a built-in token — pick another', true); return; }
+    const s = (r.src || '').trim();
+    if (!s) { toast('Video "' + t + '" needs a source', true); return; }
+    if (!/^https?:\/\//i.test(s) && !/^data:video\//i.test(s)) {
+      toast('Source for "' + t + '" must be an http(s) URL or a data:video URI', true); return;
+    }
+    const p = (r.poster || '').trim();
+    if (p && !/^https?:\/\//i.test(p) && !/^data:image\//i.test(p)) {
+      toast('Poster for "' + t + '" must be an http(s) URL or a data:image URI', true); return;
+    }
+    out[t] = { src: s, poster: p, label: (r.label || '').trim(), description: (r.description || '').trim() };
+  }
+  const res = await sb.from('concierge_config')
+    .upsert([{ key: 'videos', value: out, updated_at: nowIso() }], { onConflict: 'key' });
+  if (res.error) { fail('Save videos', res.error); return; }
+  toast('Videos saved');
 }
 
 function renderStarters(starters) {
@@ -4366,6 +4473,30 @@ async function saveClientbook() {
   if (res.error) { fail('Save client book', res.error); return; }
   toast('Client book settings saved');
   lintPromptTexts([['clientbook_base', $('cfg-clientbook-base').value.trim()], ['clientbook_policy', $('cfg-clientbook').value.trim()]]);
+}
+
+/* Draft starters from the KB (server ?genstarters=1). Fills only EMPTY input
+   slots so any starter the admin already typed is preserved; the admin reviews
+   and presses Save. This is the fix for a freshly-adopted site whose per-section
+   starters ship blank — one click grounds a full set in the live knowledge base. */
+async function genStarters() {
+  let d;
+  try { d = await adminPost('?genstarters=1', { sections: STARTER_KEYS }); }
+  catch (e) { fail('Draft starters', e); return; }
+  const map = (d && d.starters && typeof d.starters === 'object') ? d.starters : {};
+  let filled = 0;
+  STARTER_KEYS.forEach(function (key) {
+    const vals = Array.isArray(map[key]) ? map[key] : [];
+    for (let i = 0; i < 3; i++) {
+      const inp = $('st-' + key + '-' + i);
+      if (inp && !inp.value.trim() && typeof vals[i] === 'string' && vals[i].trim()) {
+        inp.value = vals[i].trim();
+        filled++;
+      }
+    }
+  });
+  if (!filled) { toast('No new starters drafted — every slot is already filled, or the knowledge base is empty', true); return; }
+  toast('Drafted ' + filled + ' starter' + (filled === 1 ? '' : 's') + ' (' + (d.model || 'model') + ') — review and Save');
 }
 
 async function saveStarters() {
