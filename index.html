@@ -2895,5 +2895,82 @@ function copyEmail() {
   });
 }
 </script>
+<!-- BEGIN concierge-kit embed (managed by `adopt stamp`; edits between markers are overwritten) -->
+<!-- ============================================================
+     2003 Porsche 911 Turbo — concierge embed snippet (emitted by concierge-kit)
+
+     Paste this whole block just before </body> on the product page.
+     It provides everything the widget expects from its host page:
+       1. window.PORSCHE_CONCIERGE_CONFIG — endpoint + Supabase connection
+       2. window.__porscheState — the page state bridge
+          (section / device / scroll depth / minutes on page)
+       3. the two widget scripts (inquiry mode: NO checkout.js)
+     ============================================================ -->
+
+<!-- ************************************************************
+     *** SUPABASE VALUES — READ ME                              ***
+     *** If the three values below are empty strings, the      ***
+     *** backend has not been provisioned yet: run             ***
+     *** `adopt provision` (or fill them by hand from your     ***
+     *** Supabase project) and re-stamp. With an empty         ***
+     *** endpoint the widget boots in DEMO mode — it answers   ***
+     *** from the local knowledge base only.                   ***
+     ************************************************************ -->
+<script>
+window.PORSCHE_CONCIERGE_CONFIG = {
+  endpoint: 'https://amexzypgvntohhntahuj.supabase.co/functions/v1/concierge',
+  supabaseUrl: 'https://amexzypgvntohhntahuj.supabase.co',
+  supabaseAnonKey: 'sb_publishable_zt3jU2wLqqoWBaUgajs1tw_a-Sxi1sk'
+};
+</script>
+
+<!-- State bridge: publishes where the reader is on the page so the concierge
+     can meet them there. Inquiry mode: the commerce fields the widget knows
+     how to read (claimed/run/remaining/slot/holdClock/loomClock/checkout)
+     are published as null — the widget treats null as "absent". -->
+<script>
+(function () {
+  var SECTIONS = ['hero', 'section-3', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+  var pageT0 = Date.now();
+  var maxDepth = 0;
+  function publishState() {
+    var doc = document.documentElement;
+    var span = Math.max(1, doc.scrollHeight - window.innerHeight);
+    maxDepth = Math.max(maxDepth, Math.min(1, (window.scrollY || 0) / span));
+    var half = window.innerHeight * 0.5;
+    var cur = SECTIONS[0];
+    for (var i = 0; i < SECTIONS.length; i++) {
+      var el = document.getElementById(SECTIONS[i]);
+      if (el && el.getBoundingClientRect().top <= half) { cur = SECTIONS[i]; }
+    }
+    window.__porscheState = {
+      section: cur,
+      device: (window.innerWidth <= 760 || ('ontouchstart' in window && window.innerWidth <= 1024)) ? 'mobile' : 'desktop',
+      depth: Math.round(maxDepth * 100) + '%',
+      minutes: Math.max(0, Math.round((Date.now() - pageT0) / 60000)),
+      claimed: null,
+      run: null,
+      remaining: null,
+      slot: null,
+      holdClock: null,
+      loomClock: null,
+      checkout: null
+    };
+  }
+  publishState();
+  setInterval(publishState, 1000);
+  var pubTick = false;
+  window.addEventListener('scroll', function () {
+    if (pubTick) { return; }
+    pubTick = true;
+    requestAnimationFrame(function () { pubTick = false; publishState(); });
+  }, { passive: true });
+})();
+</script>
+
+<script defer src="assets/concierge-kb.js"></script>
+<script defer src="assets/concierge.js"></script>
+<!-- ================== end concierge embed snippet ================== -->
+<!-- END concierge-kit embed -->
 </body>
 </html>

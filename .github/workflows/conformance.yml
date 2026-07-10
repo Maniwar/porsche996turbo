@@ -1,0 +1,71 @@
+# Emitted by concierge-kit for 2003 Porsche 911 Turbo.
+# Requires the evals harness (evals/conformance.mjs) — the workflow skips
+# itself politely when the harness is not present in the repository.
+name: Config Conformance
+
+# Proves the knobs are CONNECTED: reads the live admin configuration
+# (?config=1), boots the real widget headless against production, and checks
+# parameter by parameter that the widget's effective values and observed
+# timings match what was configured. The report lands in the job summary and
+# as an artifact.
+#
+# Run it from Actions → Config Conformance → Run workflow, any time you change
+# Engagement settings and want proof they took effect. It uses a qa- session
+# key, so nothing it does counts in your metrics.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC — a weekly drift check
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for the evals harness
+        id: harness
+        run: |
+          if [ -f evals/conformance.mjs ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::evals/conformance.mjs not present in this repository — nothing to run."
+          fi
+
+      - name: Install Playwright Chromium
+        if: steps.harness.outputs.present == 'true'
+        run: |
+          npm install --no-save playwright@1
+          npx playwright install --with-deps chromium
+
+      - name: Run conformance against production
+        if: steps.harness.outputs.present == 'true'
+        env:
+          SITE_URL: https://maniwar.github.io/porsche996turbo/
+        run: node evals/conformance.mjs || echo "CONFORMANCE_FAILED=1" >> "$GITHUB_ENV"
+
+      - name: Publish report
+        if: always() && steps.harness.outputs.present == 'true'
+        run: |
+          if [ -f conformance-report.md ]; then
+            cat conformance-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Config conformance — the run crashed before producing a report" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload report artifact
+        if: always() && steps.harness.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report
+          path: conformance-report.md
+          if-no-files-found: ignore
+
+      - name: Fail the run if parameters do not conform
+        if: env.CONFORMANCE_FAILED == '1'
+        run: |
+          echo "::error::One or more configured parameters do not match the live widget — see the summary."
+          exit 1

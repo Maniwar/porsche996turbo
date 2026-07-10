@@ -1,0 +1,43 @@
+# Emitted by concierge-kit for 2003 Porsche 911 Turbo.
+# Requires the evals harness (evals/persona.mjs) — the workflow skips itself
+# politely when the harness is not present in the repository.
+name: Persona Evals
+
+# ADVISORY multi-turn evals: a cheap model plays shopper personas against the
+# DEPLOYED concierge, then the whole conversation is graded — mechanical
+# checks plus a binary conversation-level judge per criterion. Red rows are
+# leads to read (the failing transcript prints inline), never a gate.
+#
+# Runs on demand (Actions → Persona Evals) and weekly. Kept OUT of the deploy
+# gauntlet on purpose: its chat turns would eat the anonymous rate budget the
+# live smoke already shares. qa- session keys keep it out of the engagement
+# metrics.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "43 6 * * 1"   # Mondays 06:43 UTC — after the conformance drift check
+
+jobs:
+  personas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run persona conversations against production
+        env:
+          EVAL_ENDPOINT: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/concierge
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ ! -f evals/persona.mjs ]; then
+            echo "::notice::evals/persona.mjs not present in this repository — nothing to run."
+            exit 0
+          fi
+          node evals/persona.mjs 2>&1 | tee persona-results.txt
+          {
+            echo "## Persona evals (advisory — red rows are leads, not failures)"
+            echo '```'
+            cat persona-results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
