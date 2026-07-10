@@ -1,0 +1,165 @@
+# Emitted by concierge-kit for 2003 Porsche 911 Turbo (inquiry mode: the
+# commission function is not part of this deployment — there is no checkout).
+# Driven entirely by repository secrets; no branch names are assumed.
+name: Deploy Concierge
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Type-check the edge function BEFORE anything else. `supabase functions
+      # deploy` bundles but does not fully validate, so a boot-breaking error
+      # (e.g. a redeclared variable) could otherwise ship green and 503 at
+      # runtime. `deno check` catches syntax/redeclaration/reference errors.
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Unit tests FIRST: the Action Table's ordering, the escalating proposal
+      # cool-off, and the pending-question/subject detectors are pure functions
+      # (beats.ts) — provable, and proved on every deploy.
+      - name: Unit-test the beat brain
+        run: deno test supabase/functions/concierge/beats_test.ts
+      - name: Type-check edge function
+        run: deno check supabase/functions/concierge/index.ts
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      # Best-effort only. This project manages schema through the idempotent
+      # supabase/setup.sql, not incremental db push, so a push mismatch must
+      # NEVER block the function deploy below.
+      - name: Apply database migrations
+        if: env.SUPABASE_DB_PASSWORD != ''
+        continue-on-error: true
+        run: |
+          supabase db push -p "$SUPABASE_DB_PASSWORD" \
+            || echo "::warning::db push skipped — schema is managed via supabase/setup.sql; run it in the SQL editor for schema changes."
+
+      # Canonical schema: apply the idempotent supabase/setup.sql on every deploy.
+      # Requires a SUPABASE_DB_URL secret — the Session pooler connection string
+      # (IPv4, so it works from GitHub runners; the direct db.<ref> host is
+      # IPv6-only). Non-blocking so a bad URL never halts the function deploy;
+      # ON_ERROR_STOP surfaces any real SQL error in the log.
+      - name: Apply setup.sql (canonical schema)
+        if: env.SUPABASE_DB_URL != ''
+        continue-on-error: true
+        run: |
+          command -v psql >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/setup.sql
+
+      - name: Set allowed origins
+        run: supabase secrets set ALLOWED_ORIGINS="https://maniwar.github.io"
+
+      - name: Set Anthropic key (only when the GitHub secret exists)
+        if: env.ANTHROPIC_API_KEY != ''
+        run: supabase secrets set ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+
+      - name: Warn when the Anthropic key secret is absent
+        if: env.ANTHROPIC_API_KEY == ''
+        run: |
+          echo "::warning::ANTHROPIC_API_KEY repo secret is not set. Leaving the function's existing secret untouched — manage it in the Supabase dashboard (Edge Functions → Secrets) or add the GitHub secret."
+
+      - name: Set transactional email secrets (only when present)
+        if: env.RESEND_API_KEY != ''
+        run: |
+          supabase secrets set RESEND_API_KEY="$RESEND_API_KEY"
+          if [ -n "$EMAIL_FROM" ]; then supabase secrets set EMAIL_FROM="$EMAIL_FROM"; fi
+
+      - name: Deploy concierge function
+        run: supabase functions deploy concierge --no-verify-jwt
+
+      # QA gate: hit the REAL production endpoints right after deploying. Local
+      # checks (deno check) prove the code parses and types — they cannot prove
+      # the function boots, reaches the model, or that the schema matches. This
+      # step can, because GitHub runners reach supabase.co. session_key is
+      # prefixed "qa-" so smoke traffic is excluded from engagement metrics.
+      - name: Live smoke (production endpoints)
+        run: |
+          BASE="https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1"
+          ORIGIN="https://maniwar.github.io/porsche996turbo/"
+          fail=0
+
+          check () { # label expected_codes actual_code
+            echo "$1 -> HTTP $3 (want: $2)"
+            case ",$2," in
+              *,"$3",*) ;;
+              *) echo "::error::Live smoke failed: $1 returned $3, expected one of [$2]"; fail=1 ;;
+            esac
+          }
+
+          code=$(curl -sS -o /tmp/cfg.json -w '%{http_code}' --max-time 30 \
+            -H "Origin: $ORIGIN" "$BASE/concierge?config=1" || echo 000)
+          check "GET concierge?config=1" "200" "$code"
+
+          code=$(curl -sS -o /tmp/chat.txt -w '%{http_code}' --max-time 120 \
+            -H "Origin: $ORIGIN" -H "Content-Type: application/json" \
+            -d '{"messages":[{"role":"user","content":"smoke ping — reply with one word"}],"session_key":"qa-smoke-ci","context":{}}' \
+            "$BASE/concierge" || echo 000)
+          check "POST concierge (anon chat)" "200,429,503" "$code"
+          if [ "$code" = "200" ] && [ ! -s /tmp/chat.txt ]; then
+            echo "::error::Live smoke failed: chat returned 200 but an empty body — the model call likely broke"
+            fail=1
+          fi
+          if [ "$code" = "503" ]; then
+            echo "::notice::concierge answered 503 — the master switch (concierge_config.enabled) is still off. Drafts-first: review in the Studio, then enable."
+          fi
+
+          code=$(curl -sS -o /tmp/re.json -w '%{http_code}' --max-time 120 \
+            -H "Origin: $ORIGIN" -H "Content-Type: application/json" \
+            -d '{"session_key":"qa-smoke-ci","context":{}}' \
+            "$BASE/concierge?reengage=1" || echo 000)
+          check "POST concierge?reengage=1" "200,429,503" "$code"
+
+          if [ "$fail" = "1" ]; then
+            echo "::error::One or more live smoke checks failed — the deployed function is NOT healthy."
+            exit 1
+          fi
+          echo "All live smoke checks passed — the production endpoint is answering correctly."
+
+      # Behavior deck against PRODUCTION — advisory (a judge misfire at 1 rep
+      # must not block a deploy). Skips itself when the evals harness has not
+      # been adopted into this repository yet. qa- session keys keep these out
+      # of the engagement metrics.
+      - name: Behavior evals (advisory — full results in the job summary)
+        continue-on-error: true
+        env:
+          EVAL_ENDPOINT: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/concierge
+          EVAL_REPS: "1"
+        run: |
+          if [ ! -f evals/run.mjs ]; then
+            echo "::notice::evals/run.mjs not present in this repository — skipping the advisory behavior deck."
+            exit 0
+          fi
+          node evals/run.mjs 2>&1 | tee eval-results.txt
+          {
+            echo "## Behavior evals (1 rep, advisory)"
+            echo '```'
+            cat eval-results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Print endpoint
+        run: |
+          echo "Endpoint: https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1/concierge"
+          echo "Wire it into the page as PORSCHE_CONCIERGE_CONFIG.endpoint (see embed-snippet.html)."
