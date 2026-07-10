@@ -1085,14 +1085,13 @@
     .tip-spec-v { font-size:17px; font-weight:700; color:var(--gold); display:block; }
     .tip-spec-l { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; display:block; margin-top:2px; }
 
-    /* ── AUDIO PLAYER ── */
+    /* ── AUDIO PLAYER (lives in the top nav, as a pill beside Inquire) ── */
     #audioBtn {
-      position: fixed;
-      bottom: 28px;
-      right: 28px;
+      position: relative;
+      flex-shrink: 0;
       z-index: 450;
-      width: 48px;
-      height: 48px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       background: rgba(14,8,8,0.82);
       border: 1px solid var(--border);
@@ -1105,6 +1104,7 @@
       -webkit-backdrop-filter: blur(14px);
       backdrop-filter: blur(14px);
     }
+    @media (max-width: 600px) { #audioBtn { width: 36px; height: 36px; } }
     #audioBtn:hover { background: rgba(30,16,16,0.95); color: var(--text); transform: scale(1.07); }
     #audioBtn.playing {
       color: var(--gold);
@@ -1155,8 +1155,8 @@
     }
     #audioBtn.music-start { animation: audioBoom 0.65s cubic-bezier(0.36,0.07,0.19,0.97) forwards; }
     .ap-now-playing {
-      position: absolute; right: 58px; top: 50%;
-      transform: translateY(-50%) translateX(10px);
+      position: absolute; right: 0; top: calc(100% + 8px);
+      transform: translateY(-6px);
       white-space: nowrap; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
       color: var(--gold); background: rgba(7,5,5,0.94);
       border: 1px solid rgba(201,168,117,0.35); border-radius: 4px; padding: 5px 11px;
@@ -1164,14 +1164,14 @@
       transition: opacity 0.35s, transform 0.35s;
     }
     #audioBtn.music-start .ap-now-playing {
-      opacity: 1; transform: translateY(-50%) translateX(0);
+      opacity: 1; transform: translateY(0);
     }
 
     #audioBtn .ap-tooltip {
       position: absolute;
-      right: 56px;
-      top: 50%;
-      transform: translateY(-50%);
+      right: 0;
+      top: calc(100% + 8px);
+      transform: none;
       white-space: nowrap;
       font-size: 11px;
       font-weight: 500;
@@ -1359,6 +1359,22 @@
 <!-- ══ NAV ══ -->
 <nav class="nav" id="nav">
   <div class="nav-brand"><span class="nb-model">996 Turbo</span><span class="nb-color"> &middot; Zanzibar Red</span></div>
+  <button id="audioBtn" type="button" title="Toggle music" aria-label="Toggle background music">
+    <span class="ap-tooltip">Zanzibar Red 996</span>
+    <span class="ap-now-playing">Now Playing &#9835;</span>
+    <span class="ap-icon">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 18V5l12-2v13"/>
+        <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+      </svg>
+    </span>
+    <span class="ap-bars" aria-hidden="true">
+      <span class="ap-bar"></span>
+      <span class="ap-bar"></span>
+      <span class="ap-bar"></span>
+      <span class="ap-bar"></span>
+    </span>
+  </button>
   <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20(WP0AB29983S687118)" class="nav-cta">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
     Inquire
@@ -2161,26 +2177,10 @@
   <div>Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; $20,407 Documented Service</div>
 </footer>
 
-<!-- ══ AUDIO PLAYER ══ -->
+<!-- ══ AUDIO PLAYER (the #audioBtn control lives in the top nav; see the <nav>) ══ -->
 <audio id="bgAudio" loop preload="auto">
   <source src="zanzibar-red-996.mp3" type="audio/mpeg">
 </audio>
-<button id="audioBtn" type="button" title="Toggle music" aria-label="Toggle background music">
-  <span class="ap-tooltip">Zanzibar Red 996</span>
-  <span class="ap-now-playing">Now Playing &#9835;</span>
-  <span class="ap-icon">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M9 18V5l12-2v13"/>
-      <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-    </svg>
-  </span>
-  <span class="ap-bars" aria-hidden="true">
-    <span class="ap-bar"></span>
-    <span class="ap-bar"></span>
-    <span class="ap-bar"></span>
-    <span class="ap-bar"></span>
-  </span>
-</button>
 <div class="copy-toast" id="copyToast">Email copied!</div>
 
 <!-- ══ LIGHTBOX ══ -->
