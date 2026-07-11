@@ -110,7 +110,7 @@
       height: 100vh;
       min-height: 640px;
       display: flex;
-      align-items: flex-end;
+      align-items: stretch;         /* hero-content fills height so title sits top, meta drops to bottom */
       overflow: hidden;
     }
     #heroBg {
@@ -130,14 +130,24 @@
       position: absolute;
       inset: 0;
       background:
-        linear-gradient(to right, rgba(7,5,5,0.75) 0%, rgba(7,5,5,0.1) 55%),
-        linear-gradient(to top, rgba(7,5,5,1) 0%, rgba(7,5,5,0.55) 30%, rgba(7,5,5,0) 60%);
+        linear-gradient(to right, rgba(7,5,5,0.7) 0%, rgba(7,5,5,0.08) 60%),
+        linear-gradient(to bottom, rgba(7,5,5,0.9) 0%, rgba(7,5,5,0) 32%),
+        linear-gradient(to top, rgba(7,5,5,0.92) 0%, rgba(7,5,5,0) 34%);
     }
     .hero-content {
       position: relative;
       z-index: 2;
-      padding: 0 64px 92px;
+      display: flex;
+      flex-direction: column;
+      padding: 92px 64px 52px;
       max-width: 860px;
+    }
+    /* Desktop/landscape split: title up top over the sky; pill + bronze line + specs drop to the bottom, clear of the car */
+    @media (min-width: 769px) {
+      .hero-content h1         { order: 0; }
+      .hero-content .hero-pill { order: 1; margin: auto 0 14px; }
+      .hero-content .hero-sub  { order: 2; margin: 0 0 14px; }
+      .hero-content .hero-stats{ order: 3; }
     }
     .hero-pill {
       display: inline-flex;
@@ -2327,15 +2337,27 @@ function updateHeroFrame() {
 }
 
 /* Preload — show frame 0 as soon as it's ready.
-   Desktop pulls the high-resolution set (frames-hd, 1920x1080); phones keep the
-   lighter 960x540 set (frames/) so mobile data stays small. */
-const HERO_DIR = window.innerWidth > 768 ? 'frames-hd' : 'frames';   // matches the mobile-canvas breakpoint below
-for (let i = 0; i < FRAME_COUNT; i++) {
-  const img = new Image();
-  img.src = `${HERO_DIR}/frame_${String(i + 1).padStart(3, '0')}.jpg`;
-  img.onload = () => { if (i === 0) resizeCanvas(); };
-  frames[i] = img;
+   Desktop AND any landscape view pull the high-resolution set (frames-hd, 1920x1080);
+   portrait phones keep the lighter 960x540 set so mobile data stays small. Rotating a
+   phone into landscape upgrades the hero to the crisp set in place. */
+function wantHiRes() {
+  return window.innerWidth > 768 ||
+         (window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
 }
+let heroDir = null;
+function loadHeroFrames(dir) {
+  if (dir === heroDir) return;
+  heroDir = dir;
+  for (let i = 0; i < FRAME_COUNT; i++) {
+    const img = frames[i] || (frames[i] = new Image());
+    img.onload = () => { if (i === curFrame) drawFrame(curFrame); if (i === 0) resizeCanvas(); };
+    img.src = `${dir}/frame_${String(i + 1).padStart(3, '0')}.jpg`;
+  }
+}
+loadHeroFrames(wantHiRes() ? 'frames-hd' : 'frames');
+['orientationchange', 'resize'].forEach(ev => window.addEventListener(ev, () => {
+  if (heroDir === 'frames' && wantHiRes()) loadHeroFrames('frames-hd');
+}, { passive: true }));
 
 window.addEventListener('resize', resizeCanvas, { passive: true });
 
