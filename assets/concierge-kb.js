@@ -133,6 +133,14 @@
     }
   },
 
+    videos: {
+    "cold-start": {
+      "src": "https://www.youtube.com/shorts/FuedB67vqxo",
+      "label": "Cold start",
+      "description": "A short clip of the car's cold start — share when a shopper asks to see or hear it start up."
+    }
+  },
+
     suggested: {
     "every-angle-every-light": [
       "What makes this car different?",
