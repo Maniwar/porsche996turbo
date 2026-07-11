@@ -1,0 +1,108 @@
+name: Hero Turntable (fal)
+
+# Generates a high-res turntable of the car by calling fal-ai's
+# flux-2-lora-gallery/multiple-angles once per angle (image-to-image, same object
+# from a new camera azimuth). Runs on a GitHub runner, which — unlike the dev
+# sandbox — can reach fal.ai. Pushes the frames to a branch for review.
+on:
+  workflow_dispatch:
+    inputs:
+      image:    { description: 'Source photo in repo', default: '20250706_210134.jpg' }
+      frames:   { description: 'Number of frames', default: '81' }
+      start:    { description: 'Start azimuth (deg): 0 front, 90 right, 180 rear, 270 left', default: '250' }
+      arc:      { description: 'Arc to sweep (deg): 360 = full turntable', default: '360' }
+      vertical: { description: 'Elevation (deg, 0=eye level)', default: '3' }
+      zoom:     { description: 'Zoom 0 wide .. 10 close', default: '5' }
+      width:    { description: 'Frame width px', default: '1920' }
+      height:   { description: 'Frame height px', default: '1080' }
+      seed:     { description: 'Seed (fixed = consistent frames)', default: '77' }
+      lora:     { description: 'Effect strength 0..2', default: '1' }
+      out_branch: { description: 'Branch to push frames to', default: 'hero/turntable-out' }
+
+permissions:
+  contents: write
+
+jobs:
+  turntable:
+    runs-on: ubuntu-latest
+    env:
+      FAL_KEY: ${{ secrets.FAL_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate frames from fal
+        env:
+          IMAGE:  ${{ inputs.image }}
+          FRAMES: ${{ inputs.frames }}
+          START:  ${{ inputs.start }}
+          ARC:    ${{ inputs.arc }}
+          VERT:   ${{ inputs.vertical }}
+          ZOOM:   ${{ inputs.zoom }}
+          WIDTH:  ${{ inputs.width }}
+          HEIGHT: ${{ inputs.height }}
+          SEED:   ${{ inputs.seed }}
+          LORA:   ${{ inputs.lora }}
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request, concurrent.futures as cf, time, sys
+          KEY=os.environ["FAL_KEY"]
+          if not KEY: sys.exit("FAL_API_KEY secret is empty")
+          REPO=os.environ["GITHUB_REPOSITORY"]; SHA=os.environ["GITHUB_SHA"]
+          IMG=f"https://raw.githubusercontent.com/{REPO}/{SHA}/{os.environ['IMAGE']}"
+          N=int(os.environ["FRAMES"]); START=float(os.environ["START"]); ARC=float(os.environ["ARC"])
+          W=int(os.environ["WIDTH"]); H=int(os.environ["HEIGHT"]); Z=float(os.environ["ZOOM"])
+          V=float(os.environ["VERT"]); SEED=int(os.environ["SEED"]); LS=float(os.environ["LORA"])
+          MODEL="fal-ai/flux-2-lora-gallery/multiple-angles"; URL=f"https://fal.run/{MODEL}"
+          os.makedirs("frames_new",exist_ok=True)
+          print("source:", IMG)
+          def gen(i):
+              ang=round((START+ARC*i/N)%360, 2)
+              body={"image_urls":[IMG],"horizontal_angle":ang,"vertical_angle":V,"zoom":Z,
+                    "image_size":{"width":W,"height":H},"seed":SEED,"num_images":1,
+                    "output_format":"jpeg","lora_scale":LS,"enable_safety_checker":False,
+                    "num_inference_steps":40,"guidance_scale":2.5}
+              data=json.dumps(body).encode()
+              last=""
+              for attempt in range(3):
+                  try:
+                      req=urllib.request.Request(URL,data=data,
+                          headers={"Authorization":f"Key {KEY}","Content-Type":"application/json"})
+                      with urllib.request.urlopen(req,timeout=200) as r: out=json.load(r)
+                      u=out["images"][0]["url"]
+                      with urllib.request.urlopen(u,timeout=120) as im: blob=im.read()
+                      open(f"frames_new/frame_{i+1:03d}.jpg","wb").write(blob)
+                      print(f"[{i+1}/{N}] {ang}deg ok ({len(blob)//1024}KB)",flush=True)
+                      return True
+                  except Exception as e:
+                      last=str(e)[:200]
+                      if attempt==0: print(f"[{i+1}/{N}] {ang}deg retry: {last}",flush=True)
+                      time.sleep(5)
+              print(f"[{i+1}/{N}] FAILED: {last}",flush=True); return False
+              return False
+          with cf.ThreadPoolExecutor(max_workers=6) as ex:
+              res=list(ex.map(gen,range(N)))
+          ok=sum(1 for r in res if r); print(f"== generated {ok}/{N} ==")
+          if ok<N: sys.exit(f"only {ok}/{N} frames generated")
+          PY
+
+      - name: Optimise + contact sheet
+        run: |
+          sudo apt-get -qq update && sudo apt-get -qq install -y jpegoptim imagemagick
+          jpegoptim -q -m82 --strip-all frames_new/*.jpg
+          du -sh frames_new; ls frames_new | wc -l
+          # contact sheet of every ~10th frame for quick review
+          montage $(ls frames_new/frame_0*.jpg | awk 'NR%10==1') -tile 3x -geometry 480x270+4+4 -background '#120a0a' contact_sheet.jpg || true
+
+      - name: Push frames to review branch
+        env:
+          OUT: ${{ inputs.out_branch }}
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "actions@github.com"
+          git checkout -B "$OUT"
+          rm -rf frames && mv frames_new frames
+          cp contact_sheet.jpg frames/_contact_sheet.jpg || true
+          git add frames
+          git commit -m "Hero turntable frames from fal multiple-angles (${{ inputs.width }}x${{ inputs.height }}, ${{ inputs.frames }} frames, ${{ inputs.arc }}deg)"
+          git push -f origin "$OUT"
+          echo "Pushed $(ls frames/frame_*.jpg | wc -l) frames to branch $OUT"
