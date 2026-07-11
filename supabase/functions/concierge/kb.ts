@@ -124,7 +124,9 @@ export const KB_MARKDOWN: string = `
 
 ## Serious Buyers Get Serious Answers
 - All seven service invoices are available to qualified buyers. Pre-purchase inspections are welcome and encouraged. Cars in this exact configuration don’t come up — when they do, they don’t last.
-- VIN, paint code, and all service documentation are verifiable. Located in McKinney, TX. Happy to work with transport brokers for out-of-state buyers. PPI at a local Porsche specialist can be arranged.
+- VIN, paint code, and all service documentation are verifiable. Located in McKinney, TX. Happy to work with transport brokers for out-of-state buyers.
+- Service records: the owner holds all seven itemized RAC Performance invoices (OEM part numbers, labor lines, mileage stamps) and will email the full set to a serious buyer on request at mberenji@gmail.com. They are not posted as a downloadable file on the page — they come by email.
+- Pre-purchase inspection (PPI): welcome and encouraged. The buyer arranges it at a local Porsche specialist, AT THE BUYER'S EXPENSE, coordinated by emailing the owner (mberenji@gmail.com) or via the book-a-viewing form. The owner does not pay for or arrange the inspection itself.
 
 ## Photos & documents the concierge may show
 Show at most ONE image per reply, as a bare {{img:token}} line, and only when it genuinely serves the question ("may I see the interior" → an interior token; "proof of the options" → the option sticker). Never invent tokens beyond this list.
@@ -156,7 +158,7 @@ Show at most ONE image per reply, as a bare {{img:token}} line, and only when it
 - {{img:trim-ignition-surround}} — Ignition surround wear
 - {{img:trim-console-overview}} — Center console overview
 - {{img:document-screenshot}} — CARFAX vehicle history report (excerpt, VIN WP0AB29983S687118) — a partial screenshot of the report, not the full document
-No file for the service receipts / invoices ships with this page: say it is available on request via mberenji@gmail.com — NEVER claim to have it or offer to show it.
+The service receipts / invoices are not posted as a file on this page, but the owner HAS the complete set and will email it to a serious buyer on request via mberenji@gmail.com. Offer that — never claim to show the invoices inline or that a downloadable file ships here.
 The {{img:document-screenshot}} image is a genuine CARFAX excerpt for this car (VIN WP0AB29983S687118). You MAY show it when a shopper asks about the CARFAX or vehicle history, and you may offer to show it — but present it honestly as a PARTIAL screenshot, not the complete report. The full CARFAX report does not ship as a file here: for the complete report, say it is available on request via mberenji@gmail.com. NEVER claim to hold a downloadable CARFAX PDF, and never imply the excerpt is the whole report.
 `;
 
