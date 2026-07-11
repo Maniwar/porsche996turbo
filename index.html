@@ -143,11 +143,23 @@
       max-width: 860px;
     }
     /* Desktop/landscape split: title up top over the sky; pill + bronze line + specs drop to the bottom, clear of the car */
+    /* Desktop/landscape composition: title+subtitle top-left, rarity pill top-right,
+       full-width spec bar across the bottom — balanced across the frame, clear of the car. */
     @media (min-width: 769px) {
-      .hero-content h1         { order: 0; }
-      .hero-content .hero-pill { order: 1; margin: auto 0 14px; }
-      .hero-content .hero-sub  { order: 2; margin: 0 0 14px; }
-      .hero-content .hero-stats{ order: 3; }
+      .hero-content { max-width: none; width: 100%; padding: 92px 64px 0; }
+      .hero-content .hero-pill {
+        position: absolute; top: 92px; right: 64px; margin: 0;
+      }
+      .hero-content h1        { margin: 0 0 14px; max-width: 15ch; }
+      .hero-content .hero-sub { white-space: nowrap; margin: 0; }
+      .hero-content .hero-stats {
+        position: absolute; left: 0; right: 0; bottom: 0;
+        padding: 20px 64px 26px;
+        display: flex; gap: 0;
+        background: linear-gradient(to top, rgba(7,5,5,0.92) 30%, rgba(7,5,5,0));
+      }
+      .hero-content .hero-stats .hs { flex: 1; margin-right: 0; }
+      .hero-content .hero-stats .hs:last-child { border-right: none; }
     }
     .hero-pill {
       display: inline-flex;
