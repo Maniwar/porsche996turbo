@@ -894,6 +894,13 @@
 
     var controls = {};
     def.fields.forEach(function (f) {
+      if (f.type === 'hidden') {
+        /* A hidden field carries a preset value the shopper never sees or fills
+           (e.g. kind=offer, which tags the inquiry). Seed its value so submit
+           picks it up, and render no DOM — showing it as a blank box is a bug. */
+        controls[f.name] = { value: (f.value != null ? String(f.value) : '') };
+        return;
+      }
       var wrap = el('label', 'cx-form-field');
       wrap.appendChild(el('span', 'cx-form-label', f.label));
       var input;
