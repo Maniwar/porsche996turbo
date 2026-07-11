@@ -1,0 +1,116 @@
+name: Hero Upscale (fal)
+
+# Upscales the EXISTING, already-correct 81-frame car orbit to a crisp desktop
+# resolution. The live frames (frames/frame_001..081.jpg) are a faithful orbit of
+# the real 996 Turbo — correct identity, smooth motion — but only 960x540. This
+# runs each frame through a super-resolution model (identity-preserving, no new
+# geometry invented) to 1920x1080. Runs on a GitHub runner, which can reach fal.
+on:
+  workflow_dispatch:
+    inputs:
+      factor:      { description: 'Upscale factor', default: '2' }
+      creativity:  { description: 'Detail synthesis 0..1 (low = faithful)', default: '0.2' }
+      resemblance: { description: 'Stick to source 0..1 (high = faithful)', default: '0.85' }
+      steps:       { description: 'Inference steps', default: '18' }
+      seed:        { description: 'Seed (fixed = consistent across frames)', default: '77' }
+      count:       { description: 'How many frames (test small first)', default: '81' }
+      out_branch:  { description: 'Branch to push upscaled frames to', default: 'hero/upscaled-out' }
+
+permissions:
+  contents: write
+
+jobs:
+  upscale:
+    runs-on: ubuntu-latest
+    env:
+      FAL_KEY: ${{ secrets.FAL_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up python deps
+        run: pip install --quiet pillow
+
+      - name: Upscale frames via fal clarity-upscaler
+        env:
+          FACTOR:  ${{ inputs.factor }}
+          CREAT:   ${{ inputs.creativity }}
+          RESEM:   ${{ inputs.resemblance }}
+          STEPS:   ${{ inputs.steps }}
+          SEED:    ${{ inputs.seed }}
+          COUNT:   ${{ inputs.count }}
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request, concurrent.futures as cf, time, sys, glob
+          from PIL import Image
+          KEY=os.environ["FAL_KEY"]
+          if not KEY: sys.exit("FAL_API_KEY secret is empty")
+          REPO=os.environ["GITHUB_REPOSITORY"]; SHA=os.environ["GITHUB_SHA"]
+          FACTOR=float(os.environ["FACTOR"]); CREAT=float(os.environ["CREAT"])
+          RESEM=float(os.environ["RESEM"]); STEPS=int(os.environ["STEPS"]); SEED=int(os.environ["SEED"])
+          COUNT=int(os.environ["COUNT"])
+          MODEL="fal-ai/clarity-upscaler"; URL=f"https://fal.run/{MODEL}"
+          src=sorted(glob.glob("frames/frame_*.jpg"))[:COUNT]
+          if not src: sys.exit("no source frames found")
+          # target size = source size * factor, from the first frame
+          sw,sh=Image.open(src[0]).size
+          TW,TH=int(round(sw*FACTOR)), int(round(sh*FACTOR))
+          print(f"source {sw}x{sh} -> target {TW}x{TH}, {len(src)} frames")
+          os.makedirs("frames_hi",exist_ok=True)
+          PROMPT="sharp high-detail automotive photograph, crisp reflections, realistic paint and wheels, 4k"
+          NEG="blurry, distorted, deformed, extra parts, warped body panels, text artifacts, oversharpened halos"
+          def up(path):
+              i=os.path.basename(path)
+              img_url=f"https://raw.githubusercontent.com/{REPO}/{SHA}/{path}"
+              body={"image_url":img_url,"prompt":PROMPT,"negative_prompt":NEG,
+                    "upscale_factor":FACTOR,"creativity":CREAT,"resemblance":RESEM,
+                    "guidance_scale":4,"num_inference_steps":STEPS,"seed":SEED,
+                    "enable_safety_checker":False}
+              data=json.dumps(body).encode(); last=""
+              for attempt in range(3):
+                  try:
+                      req=urllib.request.Request(URL,data=data,
+                          headers={"Authorization":f"Key {KEY}","Content-Type":"application/json"})
+                      with urllib.request.urlopen(req,timeout=300) as r: out=json.load(r)
+                      u=out["image"]["url"]
+                      with urllib.request.urlopen(u,timeout=180) as im: blob=im.read()
+                      dst=f"frames_hi/{i}"; open(dst,"wb").write(blob)
+                      # normalise to exact target size (model may return slightly off)
+                      im2=Image.open(dst)
+                      if im2.size!=(TW,TH):
+                          im2.convert("RGB").resize((TW,TH), Image.LANCZOS).save(dst,quality=92)
+                      print(f"[{i}] ok {im2.size} ({len(blob)//1024}KB)",flush=True); return True
+                  except Exception as e:
+                      last=str(e)[:200]
+                      if attempt==0: print(f"[{i}] retry: {last}",flush=True)
+                      time.sleep(5)
+              print(f"[{i}] FAILED: {last}",flush=True); return False
+          with cf.ThreadPoolExecutor(max_workers=4) as ex:
+              res=list(ex.map(up,src))
+          ok=sum(1 for r in res if r); print(f"== upscaled {ok}/{len(src)} ==")
+          if ok<len(src): sys.exit(f"only {ok}/{len(src)} frames upscaled")
+          PY
+
+      - name: Optimise + before/after sheet
+        run: |
+          sudo apt-get -qq update && sudo apt-get -qq install -y jpegoptim imagemagick
+          jpegoptim -q -m88 --strip-all frames_hi/*.jpg
+          du -sh frames_hi; ls frames_hi | wc -l
+          # side-by-side crop of frame 41: old (upscaled by viewer) vs new hi-res
+          convert frames/frame_041.jpg -resize 1920x1080 /tmp/old.png
+          convert frames_hi/frame_041.jpg /tmp/new.png
+          montage /tmp/old.png /tmp/new.png -tile 2x1 -geometry 900x506+6+6 -background '#120a0a' \
+            -title 'left: current (960 upscaled)   right: new hi-res' compare_41.jpg || true
+
+      - name: Push upscaled frames to review branch
+        env:
+          OUT: ${{ inputs.out_branch }}
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "actions@github.com"
+          git checkout -B "$OUT"
+          rm -rf frames_upscaled && mv frames_hi frames_upscaled
+          cp compare_41.jpg frames_upscaled/_compare_41.jpg || true
+          git add frames_upscaled
+          git commit -m "Hi-res upscaled hero frames (${{ inputs.factor }}x, ${{ inputs.count }} frames)"
+          git push -f origin "$OUT"
+          echo "Pushed $(ls frames_upscaled/frame_*.jpg | wc -l) frames to $OUT"
