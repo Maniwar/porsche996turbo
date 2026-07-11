@@ -279,7 +279,11 @@
         fields.push({
           name: fd.name,
           label: typeof fd.label === 'string' ? fd.label.slice(0, 60) : fd.name,
-          type: (fd.type === 'state' || fd.type === 'zip') ? fd.type : 'text',
+          type: (fd.type === 'state' || fd.type === 'zip' || fd.type === 'hidden') ? fd.type : 'text',
+          /* Hidden fields carry a preset value (e.g. kind=offer) the shopper never
+             sees; keep both so the renderer can seed it and omit the DOM. Without
+             this passthrough a hidden field collapses to an empty text box. */
+          value: (fd.type === 'hidden' && fd.value != null) ? String(fd.value).slice(0, 120) : undefined,
           required: fd.required === true,
           maxlength: (typeof fd.maxlength === 'number' && fd.maxlength > 0) ? fd.maxlength : 120,
           autocomplete: typeof fd.autocomplete === 'string' ? fd.autocomplete.slice(0, 40) : ''
