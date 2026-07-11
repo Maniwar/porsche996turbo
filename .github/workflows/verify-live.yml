@@ -1,0 +1,29 @@
+name: Verify Live Hero
+on: { workflow_dispatch: {} }
+permissions: { contents: read }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch live page + hi-res frames
+        run: |
+          B=https://maniwar.github.io/porsche996turbo
+          echo "== index.html =="
+          curl -s "$B/index.html?cb=$RANDOM" -o idx.html -w "http=%{http_code} bytes=%{size_download}\n"
+          grep -q "frames-hd" idx.html && echo "PASS: index references frames-hd" || echo "FAIL: no frames-hd"
+          grep -q 'href="privacy.html"' idx.html && echo "PASS: footer privacy link present" || echo "FAIL: no privacy link"
+          grep -q "frames-hd/frame_001.jpg" idx.html && echo "PASS: #heroBg poster is hi-res" || echo "note: poster ref not found"
+          echo "== hi-res frames actually served =="
+          for f in 001 041 081; do
+            curl -s "$B/frames-hd/frame_$f.jpg?cb=$RANDOM" -o fr.jpg -w "frame_$f http=%{http_code} type=%{content_type} bytes=%{size_download} " 
+            python3 - <<PY
+from PIL import Image
+try:
+    print("dims", Image.open("fr.jpg").size)
+except Exception as e:
+    print("(*.jpg not an image:", e, ")")
+PY
+          done
+          echo "== privacy page =="
+          curl -s "$B/privacy.html?cb=$RANDOM" -o p.html -w "http=%{http_code} bytes=%{size_download}\n"
+          grep -q "Data-flow diagram" p.html && echo "PASS: privacy data-flow diagram live" || echo "FAIL: diagram missing"
