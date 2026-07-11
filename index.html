@@ -1279,15 +1279,18 @@
       .hero-content {
         position: relative;
         background: var(--bg);
-        padding: 80px 24px 48px;
+        padding: 74px 24px 26px;
+        min-height: 90svh;                 /* fill the screen; a peek of the next section invites scroll */
+        display: flex;
+        flex-direction: column;
       }
       .hero-sub { margin-bottom: 0; }
       .hero-img-mobile {
         display: block;
         position: relative;
         width: calc(100% + 48px);
-        margin: 7vh -24px 10px;            /* seat the car low, near the fold */
-        aspect-ratio: 960 / 540;           /* whole side profile stays visible */
+        margin: auto -24px 16px;            /* auto-top seats the car low; specs sit right under it */
+        aspect-ratio: 960 / 540;            /* whole side profile — no void, no crop */
         background: #070505 url('frames/frame_001.jpg') center / cover no-repeat;
         overflow: hidden;
         border-top: 1px solid var(--border);
@@ -1295,10 +1298,31 @@
       }
       .hero-img-mobile::after {            /* ground the car into the page */
         content: '';
-        position: absolute; left: 0; right: 0; bottom: 0; height: 24%;
-        background: linear-gradient(180deg, transparent, rgba(7,5,5,.7));
-        pointer-events: none;
+        position: absolute; left: 0; right: 0; bottom: 0; height: 22%;
+        background: linear-gradient(180deg, transparent, rgba(7,5,5,.65));
+        pointer-events: none; z-index: 2;
       }
+      .hero-pill { margin-bottom: 14px; }
+      .hero h1 { margin: 0 0 12px; }
+      /* Spec block: price as a full-width header, four specs in a tidy 2×2 */
+      .hero-stats {
+        margin-top: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 20px; row-gap: 0;
+      }
+      .hero-stats .hs {
+        padding: 13px 0; margin: 0;
+        border: none; border-top: 1px solid rgba(255,255,255,.09);
+      }
+      .hero-stats .hs:first-child {          /* Asking price — spans, emphasized */
+        grid-column: 1 / -1;
+        border-top: none;
+        display: flex; align-items: baseline; gap: 12px;
+        padding-bottom: 6px;
+      }
+      .hero-stats .hs:first-child .hs-l { margin: 0; }
+      .hero-stats .hs:first-child .hs-v { font-size: 30px; color: var(--red-b); }
     }
     @media (max-width:480px) {
       .hero h1 { font-size:40px; }
