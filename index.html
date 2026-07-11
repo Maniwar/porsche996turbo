@@ -116,7 +116,7 @@
     #heroBg {
       position: absolute;
       inset: 0;
-      background: #070505 url('frames/frame_001.jpg') center center / cover no-repeat;
+      background: #070505 url('frames-hd/frame_001.jpg') center center / cover no-repeat;
     }
 
     #heroBg canvas {
@@ -2301,10 +2301,13 @@ function updateHeroFrame() {
   if (idx !== curFrame) drawFrame(idx);
 }
 
-/* Preload — show frame 0 as soon as it's ready */
+/* Preload — show frame 0 as soon as it's ready.
+   Desktop pulls the high-resolution set (frames-hd, 1920x1080); phones keep the
+   lighter 960x540 set (frames/) so mobile data stays small. */
+const HERO_DIR = window.innerWidth > 768 ? 'frames-hd' : 'frames';   // matches the mobile-canvas breakpoint below
 for (let i = 0; i < FRAME_COUNT; i++) {
   const img = new Image();
-  img.src = `frames/frame_${String(i + 1).padStart(3, '0')}.jpg`;
+  img.src = `${HERO_DIR}/frame_${String(i + 1).padStart(3, '0')}.jpg`;
   img.onload = () => { if (i === 0) resizeCanvas(); };
   frames[i] = img;
 }
