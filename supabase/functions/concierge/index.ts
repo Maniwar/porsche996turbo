@@ -919,9 +919,11 @@ const REGISTER_TOOLS: any[] = [
       "raises a QUESTION only the owner can answer, or asks for a CALLBACK. Works for anyone, " +
       "signed in or not — no account is needed. Take their name and at least one way to reach " +
       "them (an email OR a phone number), the offer figure if they named one, and a short line " +
-      "of context. Prefer handing them the make-an-offer / book-a-viewing form when one is " +
-      "available; call this directly only when you're taking the details in chat. Never use it " +
-      "to negotiate the price — you are opening a conversation with the owner, who follows up.",
+      "of context. When a make-an-offer or book-a-viewing form is available, PRESENT THAT FORM " +
+      "instead — do NOT call this tool and do NOT collect their details in chat; the form carries " +
+      "those fields and notifies the owner itself. Call this directly ONLY when no such form exists. " +
+      "Never tell a shopper their inquiry was sent unless this tool actually returned success. Never " +
+      "use it to negotiate the price — you are opening a conversation with the owner, who follows up.",
     input_schema: {
       type: "object",
       properties: {
@@ -2273,12 +2275,20 @@ function sellingBlock(data: ConciergeData): string {
   const inquiryForms = data.forms.filter((f) => f.submit_tool === "submit_inquiry");
   if (inquiryForms.length > 0) {
     const list = inquiryForms.map((f) => `{{form:${f.slug}}} for ${f.title.toLowerCase()}`).join("; ");
+    const firstTok = `{{form:${inquiryForms[0].slug}}}`;
     s += "\nINQUIRY FORMS (the shopper's path to the owner — the form IS how they reach the house):\n" +
       "- When someone makes or signals a genuine offer, asks to negotiate, wants to see it in person, or " +
       "asks how to make an offer / arrange a viewing, PRESENT THE MATCHING FORM: put its token on its OWN " +
       "line so they fill it in themselves and the owner is notified — " + list + ". Do this yourself, in " +
       "chat; do NOT tell them to email instead, and do NOT merely describe the form. It needs no account and " +
-      "works for anyone. Emit the token verbatim on its own line, with no serial number.\n";
+      "works for anyone. Emit the token verbatim on its own line, with no serial number.\n" +
+      "- The FORM is the ONLY way the owner is notified. Do NOT collect their name, phone, or email in chat, " +
+      "and do NOT call a tool to submit on their behalf when a form is offered — the form carries those fields. " +
+      "If they type contact details in chat, still hand them the form (" + firstTok + ") and let them submit it.\n" +
+      "- NEVER say an inquiry, offer, request, or message has been sent, submitted, logged, or that the owner " +
+      "'has it', 'will call', or 'will be in touch' UNLESS the shopper actually submitted the form — the chat " +
+      "shows its own confirmation the moment they do. Until then nothing has reached the owner: do not invent a " +
+      "confirmation, a callback, or a phone number the owner never received. Present the form and let them send it.\n";
   }
   return s;
 }
