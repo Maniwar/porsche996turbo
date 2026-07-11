@@ -1457,7 +1457,7 @@
 </header>
 
 <!-- ══ PRICE BAND ══ -->
-<section class="price-band" id="section-3">
+<section class="price-band" id="asking-price">
   <div class="container">
     <div class="price-layout">
       <div>
@@ -1590,7 +1590,7 @@
 </section>
 
 <!-- ══ INTERIOR ══ -->
-<section class="interior-section" id="intSection">
+<section class="interior-section" id="the-cockpit">
   <div class="int-split">
     <div class="int-panel">
       <img src="interior-steering.jpg" alt="996 Turbo cockpit — Porsche crest steering wheel" class="int-img" id="intWheel">
@@ -2650,7 +2650,7 @@ function copyPrice(el) {
    INTERIOR SECTION
 ══════════════════════════════════ */
 (function() {
-  const sec   = document.getElementById('intSection');
+  const sec   = document.getElementById('the-cockpit');
   const wheel = document.getElementById('intWheel');
   if (!sec) return;
 
@@ -3012,7 +3012,7 @@ window.PORSCHE_CONCIERGE_CONFIG = {
      are published as null — the widget treats null as "absent". -->
 <script>
 (function () {
-  var SECTIONS = ['hero', 'section-3', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
   var pageT0 = Date.now();
   var maxDepth = 0;
   function publishState() {

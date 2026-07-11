@@ -913,7 +913,7 @@ insert into public.concierge_kb (slug, title, content_md, enabled, sort_order) v
 
 ('hero', '2003 Porsche 911 Turbo', $kb$- Zanzibar Red (L1A8) · Factory Special Color 00501 · Tiptronic S · McKinney, TX$kb$, false, 10),
 
-('section-3', 'section-3', $kb$- Serious offers considered — PPI welcome and encouraged
+('asking-price', 'Asking Price', $kb$- Serious offers considered — PPI welcome and encouraged
 - Copied!: $59,900$kb$, false, 20),
 
 ('every-angle-every-light', 'Every Angle, Every Light', $kb$- 21 photos — click any image to open the full viewer. The shot at the top captures the color perfectly at golden sunset. Swipe or use arrow keys to navigate.

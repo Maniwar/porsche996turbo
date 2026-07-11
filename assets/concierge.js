@@ -189,8 +189,8 @@
     }
   } catch (e0) { /* ignore */ }
 
-  var SECTIONS = ['hero', 'section-3', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
-  var INLINE_SECTIONS = ['section-3', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition'];
+  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+  var INLINE_SECTIONS = ['asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition'];
   var HISTORY_KEY = 'cx-history';
   var OWNER_KEY = 'cx-owner';   /* whose identity the stored conversation belongs to */
   var SKEY_KEY = 'cx-skey';
