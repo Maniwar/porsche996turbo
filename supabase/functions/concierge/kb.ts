@@ -155,9 +155,9 @@ Show at most ONE image per reply, as a bare {{img:token}} line, and only when it
 - {{img:trim-vent-dash}} — Dash vent area soft-coat
 - {{img:trim-ignition-surround}} — Ignition surround wear
 - {{img:trim-console-overview}} — Center console overview
-- {{img:document-screenshot}} — a screenshot provided by the seller
+- {{img:document-screenshot}} — CARFAX vehicle history report (excerpt, VIN WP0AB29983S687118) — a partial screenshot of the report, not the full document
 No file for the service receipts / invoices ships with this page: say it is available on request via mberenji@gmail.com — NEVER claim to have it or offer to show it.
-No file for the CARFAX / vehicle history report ships with this page: say it is available on request via mberenji@gmail.com — NEVER claim to have it or offer to show it.
+The {{img:document-screenshot}} image is a genuine CARFAX excerpt for this car (VIN WP0AB29983S687118). You MAY show it when a shopper asks about the CARFAX or vehicle history, and you may offer to show it — but present it honestly as a PARTIAL screenshot, not the complete report. The full CARFAX report does not ship as a file here: for the complete report, say it is available on request via mberenji@gmail.com. NEVER claim to hold a downloadable CARFAX PDF, and never imply the excerpt is the whole report.
 `;
 
 // BRAND_SYSTEM is the CORE CONSTITUTION — the small, always-on part of the prompt:
