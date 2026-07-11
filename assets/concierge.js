@@ -3189,6 +3189,14 @@
     var ctx = freshState();
     if (pendingNudge) { ctx.nudge = pendingNudge; pendingNudge = null; }
     if (pendingOpener) { ctx.opener = pendingOpener; pendingOpener = null; }
+    /* The opening greeting is a client-rendered bubble (see renderHistory) that
+       the visitor sees but that never entered `history` — so the server never
+       logged it and the admin transcript began a line late. On the FIRST turn of
+       a conversation, hand the server the exact greeting text we showed; it logs
+       it as the conversation's first assistant message when the row is created
+       (idempotent: ignored once the conversation exists). Gate to the opening
+       exchange so it isn't re-sent every turn. */
+    if (history.length <= 1) { try { ctx.greeting = kbGreeting(); } catch (eG) { /* greeting is best-effort */ } }
     var body = JSON.stringify({
       messages: messages,
       context: ctx,

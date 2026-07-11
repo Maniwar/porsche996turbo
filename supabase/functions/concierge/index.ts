@@ -2662,6 +2662,7 @@ async function logUserTurn(body: ValidatedBody, customer: Customer | null, skipU
         }
       }
     }
+    let createdNew = false;
     if (!cid) {
       const row = await pgInsert<{ id: string }>("concierge_conversations", {
         session_key: body.sessionKey,
@@ -2673,8 +2674,23 @@ async function logUserTurn(body: ValidatedBody, customer: Customer | null, skipU
           : null,
       });
       cid = row?.id ?? null;
+      createdNew = cid !== null;
     }
     if (!cid) return null;
+    // Log the opening greeting the client rendered (see concierge.js) as the
+    // conversation's FIRST assistant line — but ONLY when we just created the
+    // row, so it's written exactly once and only for a conversation that began
+    // in the panel (the closed-panel bubble path opens its own row elsewhere and
+    // never shows a greeting). Best-effort; must never block the turn.
+    if (createdNew) {
+      const greet = typeof body.context.greeting === "string"
+        ? body.context.greeting.trim().slice(0, 2000) : "";
+      if (greet) {
+        await pgInsert("concierge_messages", {
+          conversation_id: cid, role: "assistant", content: greet,
+        });
+      }
+    }
     if (!skipUser) {
       const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
       if (lastUser) {
@@ -5178,11 +5194,17 @@ async function handleReengage(req: Request): Promise<Response> {
     // opener). Best-effort: logging must never break the outreach line itself.
     try {
       const deliversHouseNote = !!houseClause && !!customer;
-      if (!cid && deliversHouseNote && customer) {
+      // A bubble line the visitor SEES must land in the transcript — even for a
+      // purely anonymous visitor whose first contact is this closed-panel bubble
+      // (no opener/message has opened a conversation yet). Previously we only
+      // opened a row for a signed-in patron carrying a house note, so anonymous
+      // outreach lines were shown but never logged. Open one now, keyed by
+      // session_key so later bubbles in the same session reuse it.
+      if (!cid) {
         const row = await pgInsert<{ id: string }>("concierge_conversations", {
           session_key: sessionKey || null,
-          user_id: customer.id,
-          user_email: customer.email,
+          user_id: customer?.id ?? null,
+          user_email: customer?.email ?? null,
           section: section ? section.slice(0, 64) : null,
         });
         cid = row?.id ?? null;

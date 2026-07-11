@@ -1907,6 +1907,9 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <label class="ct-check" title="Only chats whose session produced a commission (chat-assisted or ✳ concierge-initiated — see ATTRIBUTION.md)">
             <input type="checkbox" id="convo-comm"> 🛒 commissioned chats
           </label>
+          <label class="ct-check" title="Show the automated QA / eval harness runs (session keys beginning &quot;qa-&quot;). Hidden by default — these are test conversations, not real visitors.">
+            <input type="checkbox" id="convo-qa"> 🧪 show QA/eval runs
+          </label>
           <button id="convo-apply" class="btn">Apply</button>
           <button id="convo-clear" class="btn ghost">Clear</button>
         </div>
@@ -2682,6 +2685,7 @@ function wireStatic() {
   // House-note-chats filter needs a server round-trip (it constrains by id set).
   $('convo-house').addEventListener('change', function () { loadConversations(); });
   $('convo-comm').addEventListener('change', function () { loadConversations(); });
+  if ($('convo-qa')) $('convo-qa').addEventListener('change', function () { loadConversations(); });
   $('convo-to-conversion').addEventListener('click', function (ev) {
     ev.preventDefault(); activateTab('conversion');
   });
@@ -2693,7 +2697,7 @@ function wireStatic() {
   $('convo-apply').addEventListener('click', function () { state.convoIdentity = null; }, true);
   // Clear also unchecks the house filter and drops the identity scope — capture
   // phase, so both are off before wireFilter reloads.
-  $('convo-clear').addEventListener('click', function () { $('convo-house').checked = false; $('convo-comm').checked = false; state.convoIdentity = null; }, true);
+  $('convo-clear').addEventListener('click', function () { $('convo-house').checked = false; $('convo-comm').checked = false; if ($('convo-qa')) $('convo-qa').checked = false; state.convoIdentity = null; }, true);
   $('wl-refresh').addEventListener('click', function () { withBusy($('wl-refresh'), loadWaitlist); });
   $('wl-export').addEventListener('click', exportWaitlistCsv);
   // Kind/status selects apply live (server round-trip), like the customer selects.
@@ -8089,12 +8093,21 @@ async function loadConversations(more) {
     commKeys = [...seen];
   }
 
+  // QA / eval harness runs seed session keys beginning "qa-" (qa-eval-,
+  // qa-conform-, qa-persona-) — test traffic, not real visitors, and already
+  // excluded from engagement metrics (see evals/run.mjs). Hide them from the
+  // conversation panel by DEFAULT so the log reads as real customers; the
+  // "show QA/eval runs" toggle brings them back. A direct id/session lookup is
+  // exempt — if you paste a qa- key you clearly want that exact conversation.
+  const showQa = $('convo-qa') && $('convo-qa').checked;
+
   const from = pageState.convo * PAGE;
   let q = sb.from('concierge_conversations').select('*')
     .order('created_at', { ascending: false })
     .range(from, from + PAGE - 1);
   if (df) q = q.gte('created_at', df);
   if (dt) q = q.lte('created_at', dt);
+  if (!showQa && !isUuid) q = q.not('session_key', 'ilike', 'qa-*');
   if (houseOnly) q = q.in('id', houseIds.length ? houseIds : ['00000000-0000-0000-0000-000000000000']);
   if (commOnly) q = q.in('session_key', (commKeys && commKeys.length) ? commKeys : ['-none-']);
   if (isUuid) {
@@ -9963,9 +9976,18 @@ function renderTranscript(msgs, fbMap) {
   }
 
   if (!msgs.length) {
-    body.appendChild(el('div', 'empty micro', 'Empty conversation.'));
     state.jumpTo = null;
-    return;
+    // A conversation with no stored messages may STILL have held/vetoed beats —
+    // the concierge decided, but the visitor saw nothing. Returning here used to
+    // hide that entire decision history behind "Empty conversation". Only bail if
+    // there is genuinely nothing to show; otherwise fall through so the beats
+    // below render (with a note explaining why there are no message bubbles).
+    if (!(state.activeBeats && state.activeBeats.length)) {
+      body.appendChild(el('div', 'empty micro', 'Empty conversation.'));
+      return;
+    }
+    body.appendChild(el('div', 'empty micro',
+      'The visitor saw no messages in this conversation — every proactive line was held or blocked. Those decisions are shown below.'));
   }
 
   // Which reply did a given action land on? The LAST assistant message at or
