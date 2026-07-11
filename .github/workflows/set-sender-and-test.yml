@@ -1,0 +1,53 @@
+name: Set Sender and Test (diagnostic)
+
+# One-shot: sets the concierge function's EMAIL_FROM to Resend's public test
+# sender (onboarding@resend.dev — NOT a secret), then submits a real inquiry and
+# reads email_log so we can confirm the notification actually sends now.
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Set EMAIL_FROM to the Resend test sender
+        run: |
+          supabase secrets set EMAIL_FROM="Porsche Concierge <onboarding@resend.dev>" \
+            --project-ref "$SUPABASE_PROJECT_REF"
+          echo "EMAIL_FROM set."
+
+      - name: Let the function pick up the new env
+        run: sleep 25
+
+      - name: Submit a real make-an-offer inquiry
+        run: |
+          BASE=$(grep -oE 'https://[a-z0-9]+\.supabase\.co/functions/v1/concierge' index.html | head -1)
+          KEY=$(grep -oiE "anonKey:[[:space:]]*'[^']+'" index.html | head -1 | sed -E "s/.*'([^']+)'.*/\1/")
+          echo "::add-mask::$KEY"
+          SK="ci-sender-$(date +%s)"
+          cat > payload.json <<JSON
+          {"form":"make-an-offer","serial":null,"values":{"kind":"offer","name":"CI Sender Test","email":"ci-sender@example.com","phone":"","amount":"12345","message":"sender diagnostic — ignore"},"session_key":"$SK","section":"hero","turns":2}
+          JSON
+          code=$(curl -sS -o resp.json -w '%{http_code}' --max-time 60 \
+            -X POST "$BASE?form=1" \
+            -H "Origin: https://maniwar.github.io/porsche996turbo/" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            --data @payload.json || echo 000)
+          echo "HTTP $code"
+          cat resp.json; echo
+
+      - name: Read email_log (did it send now?)
+        run: |
+          sleep 6
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+            "select created_at, to_email, ok, coalesce(error,'(none)') as error, coalesce(provider_id,'(none)') as provider_id from public.email_log order by created_at desc limit 3;"
