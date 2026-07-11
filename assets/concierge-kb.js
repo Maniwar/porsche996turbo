@@ -129,7 +129,7 @@
     },
     "document-screenshot": {
       "src": "Screenshot_20260518_110111_Chrome.jpg",
-      "alt": "a screenshot provided by the seller"
+      "alt": "CARFAX vehicle history report — excerpt"
     }
   },
 
