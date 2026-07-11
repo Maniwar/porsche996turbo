@@ -2512,7 +2512,7 @@ function houseAdditionsBlock(data: ConciergeData): string {
         return `- {{video:${tok}}}${desc ? " — " + desc : ""}`;
       });
     if (lines.length > 0) {
-      s += "\nADDITIONAL VIDEOS (admin-added; each on its own line, at most one per answer, only when the shopper asks to see one):\n" +
+      s += "\nADDITIONAL VIDEOS (admin-added). When a shopper asks about — or asks to SEE or HEAR — something one of these videos shows, or asks whether such a video exists, SHOW IT: put its token on its OWN line so it plays inline right here in the chat. Do NOT merely say a video 'is on the page' or tell them to find or watch it themselves, and do NOT just describe it — deliver it in the reply. At most one per answer. Available:\n" +
         lines.join("\n") + "\n";
     }
   }
