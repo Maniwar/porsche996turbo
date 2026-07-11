@@ -5,6 +5,11 @@ name: Set Sender and Test (diagnostic)
 # reads email_log so we can confirm the notification actually sends now.
 on:
   workflow_dispatch:
+    inputs:
+      sender:
+        description: 'EMAIL_FROM value (e.g. "Name <user@your-verified-domain>")'
+        required: false
+        default: 'Porsche Concierge <onboarding@resend.dev>'
 
 jobs:
   run:
@@ -13,17 +18,18 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SENDER: ${{ inputs.sender }}
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
           version: latest
 
-      - name: Set EMAIL_FROM to the Resend test sender
+      - name: Set EMAIL_FROM to the chosen sender
         run: |
-          supabase secrets set EMAIL_FROM="Porsche Concierge <onboarding@resend.dev>" \
+          supabase secrets set EMAIL_FROM="$SENDER" \
             --project-ref "$SUPABASE_PROJECT_REF"
-          echo "EMAIL_FROM set."
+          echo "EMAIL_FROM set to: $SENDER"
 
       - name: Let the function pick up the new env
         run: sleep 25
