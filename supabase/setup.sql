@@ -1433,3 +1433,36 @@ begin
   insert into public.concierge_config (key, value, updated_at)
     values ('_pilot_config_v1', 'true'::jsonb, now());
 end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- One-time pilot enablement (owner-requested): turn ON the inquiry-mode
+-- lead-capture forms and their SOPs. The engine ships them drafts-first
+-- (enabled=false); while disabled, a form is absent from ?config=1, so the model
+-- has nothing to present and the widget has no definition to render — that is the
+-- "the form/button won't show" symptom. Marker-guarded: runs once, idempotent,
+-- and never clobbers later Studio edits. The forms/SOPs edit fires the cache-flush
+-- trigger, so the answer cache refreshes automatically.
+do $$
+begin
+  if exists (select 1 from public.concierge_config where key = '_pilot_forms_enabled_v1') then
+    return;
+  end if;
+
+  -- Read-before-write: dump the CURRENT enabled state to the deploy log.
+  raise notice 'PILOT forms before = %', (
+    select coalesce(jsonb_object_agg(slug, enabled), '{}'::jsonb)
+    from public.concierge_forms where slug in ('make-an-offer','book-a-viewing'));
+  raise notice 'PILOT inquiry SOPs before = %', (
+    select coalesce(jsonb_object_agg(slug, enabled), '{}'::jsonb)
+    from public.concierge_sops
+    where slug in ('price-question','serious-offers','viewing-logistics','unknown-fact'));
+
+  update public.concierge_forms set enabled = true
+   where slug in ('make-an-offer','book-a-viewing');
+
+  update public.concierge_sops set enabled = true
+   where slug in ('price-question','serious-offers','viewing-logistics','unknown-fact');
+
+  insert into public.concierge_config (key, value, updated_at)
+    values ('_pilot_forms_enabled_v1', 'true'::jsonb, now());
+end $$;
