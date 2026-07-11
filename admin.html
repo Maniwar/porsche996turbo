@@ -1177,7 +1177,7 @@
           <h3>Bot videos</h3>
           <span class="micro">what {{video:token}} can play</span>
         </div>
-        <p class="note">Register videos the concierge can play in chat. <strong>Token</strong> is the handle (letters, numbers, <code>-</code> <code>_</code>); <strong>Source</strong> is an MP4 URL or a <code>data:video</code> URI; <strong>Poster</strong> (optional) is a still-image URL / <code>data:image</code> URI shown before play; <strong>Label</strong> is the accessible caption; <strong>Description</strong> tells the bot when to use it. No videos are built in — a clip only plays once you register it here.</p>
+        <p class="note">Register videos the concierge can play in chat. <strong>Token</strong> is the handle (letters, numbers, <code>-</code> <code>_</code>); <strong>Source</strong> is a direct video URL (<code>.mp4</code>), a <code>data:video</code> URI, or a <strong>YouTube / Vimeo link</strong> (paste the page URL — a YouTube Shorts link works too, and plays in a portrait player); <strong>Poster</strong> (optional) is a still-image URL / <code>data:image</code> URI shown before play; <strong>Label</strong> is the accessible caption; <strong>Description</strong> tells the bot when to use it. No videos are built in — a clip only plays once you register it here.</p>
         <div id="vid-list"></div>
         <div class="card-foot">
           <button id="vid-add" class="btn ghost" type="button">Add video</button>
@@ -1446,6 +1446,17 @@
             <input type="checkbox" id="cfg-beat-judge" checked>
             <span class="micro"><strong>Review every reach-out before it sends (recommended)</strong> <span class="info-badge" title="A second, stricter reading of each unprompted line — follow-up, opener, and page bubble alike — before the visitor sees it. It kills lines that leak internal wording, keep score of the visitor's silence, invent discounts, or pressure; each kill is logged under Actions with the line and the reason (Reach-outs strip: vetoed). If the reviewer is ever unreachable, lines pass through unreviewed rather than going silent. Costs a moment's delay and a small model charge per reach-out.">i</span></span>
           </label>
+          <label class="ck-check" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+            <input type="checkbox" id="cfg-beat-audit">
+            <span class="micro"><strong>Log held &amp; vetoed beats (diagnostic)</strong> <span class="info-badge" title="Records a row under Actions every time a proactive beat stays quiet ('held') or the reviewer kills a line ('vetoed'), so you can diagnose why the concierge is silent. These are the highest-volume rows in the log and nothing operational needs them — leave OFF at scale, turn ON only while troubleshooting. The functional 'spoke' rows (which enforce offer-once) are always kept regardless.">i</span></span>
+          </label>
+          <div style="margin-top:12px;">
+            <label class="micro" for="cfg-proactive-style">When it engages first, the concierge should… <span class="info-badge" title="How the proactive 'presence' beat opens when no specific sale action fits. GIVE EXPERTISE hands over a piece of house knowledge — right for a repeat-purchase clientele who own things and have a history. OFFER TO SHOW invites the shopper to see or arrange one concrete thing (a photo, a video, the documents, a viewing, an offer) — right for a single-item INQUIRY page, where reciting facts at a first-time shopper reads as 'inventorying' and gets vetoed. Stamped inquiry sites default to Offer.">i</span></label>
+            <select id="cfg-proactive-style" class="mono-field">
+              <option value="expertise">Give a piece of expertise (repeat-purchase clientele)</option>
+              <option value="offer">Offer to show or arrange something (inquiry page)</option>
+            </select>
+          </div>
         </details>
 
         <details class="stage" id="stage-rules">
@@ -1503,7 +1514,7 @@
         <div class="field" style="margin-bottom:16px;">
           <label class="micro" for="cfg-hooks">Selling angles<span class="info-badge" title="One per line — true, house-approved lines the concierge can weave in to build desire. Blank = none of these; selling still runs on the base voice's salescraft. To change the default selling behavior, edit the Base voice or the SOPs.">i</span></label>
           <textarea id="cfg-hooks" rows="4" placeholder="Made in small numbered batches — never more than the year allows.
-Built to be kept and repaired, not replaced."></textarea>
+Ask me anything about it — I’m happy to help."></textarea>
           <div class="field-actions">
             <button class="cfg-linkbtn cfg-history" type="button" data-entity="config" data-ref="hooks">History ⟲</button>
           </div>
@@ -1689,6 +1700,14 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <input type="date" id="act-from" title="From date">
           <input type="date" id="act-to" title="To date">
           <input type="text" id="act-q" placeholder="email, action, Nº, IP, or keyword…" style="max-width:240px;">
+          <select id="act-type" title="Filter by action type">
+            <option value="">All actions</option>
+            <option value="__beats">Reach-outs (all beats)</option>
+            <option value="beat_action">· spoke</option>
+            <option value="beat_hold">· held</option>
+            <option value="beat_veto">· vetoed</option>
+            <option value="__nonbeat">Everything except beats</option>
+          </select>
           <button id="act-apply" class="btn">Search</button>
           <button id="act-clear" class="btn ghost">Clear</button>
         </div>
@@ -2633,7 +2652,8 @@ function wireStatic() {
   });
 
   // ---- Audit filters: Search / Clear / Load more + Enter-to-search ----
-  wireFilter('act', loadActions, ['act-q'], $('act-apply'), $('act-clear'), $('actions-more'));
+  wireFilter('act', loadActions, ['act-q', 'act-type'], $('act-apply'), $('act-clear'), $('actions-more'));
+  if ($('act-type')) $('act-type').addEventListener('change', function () { withBusy($('act-apply'), loadActions); });
   wireFilter('cust', loadCustomers, ['cust-search', 'cust-serial', 'cust-status', 'cust-variant', 'cust-gift'], $('cust-apply'), $('cust-clear'), $('cust-more'));
   $('cust-export').addEventListener('click', exportCustomersCsv);
   wireFilter('convo', loadConversations, ['convo-q', 'convo-goal'], $('convo-apply'), $('convo-clear'), $('convo-more'));
@@ -3402,6 +3422,8 @@ async function loadConfig() {
   $('cfg-idlereach').checked = o.idleReach !== false; // default: reach out
   $('cfg-substance-gate').checked = o.substanceGate !== false; // default: gated
   if ($('cfg-beat-judge')) $('cfg-beat-judge').checked = o.beatJudge !== false; // default: reviewed
+  if ($('cfg-beat-audit')) $('cfg-beat-audit').checked = o.beat_audit_log !== false; // default: log (demo); stamped sites seed false
+  if ($('cfg-proactive-style')) $('cfg-proactive-style').value = (o.proactive_style === 'offer') ? 'offer' : 'expertise';
   $('cfg-anon-nudges').checked = o.anonNudges === true; // default: off
   $('cfg-goalrate').value = (typeof cfg.goal_sample_rate === 'number') ? cfg.goal_sample_rate : '';
   $('cfg-nudgecap').value = (typeof o.nudgeCap === 'number') ? o.nudgeCap : '';
@@ -3813,6 +3835,8 @@ async function saveEngagement() {
   o.idleReach = $('cfg-idlereach').checked;
   o.substanceGate = $('cfg-substance-gate').checked;
   if ($('cfg-beat-judge')) o.beatJudge = $('cfg-beat-judge').checked;
+  if ($('cfg-beat-audit')) o.beat_audit_log = $('cfg-beat-audit').checked;
+  if ($('cfg-proactive-style')) o.proactive_style = ($('cfg-proactive-style').value === 'offer') ? 'offer' : 'expertise';
   o.anonNudges = $('cfg-anon-nudges').checked;
   const cap = Number($('cfg-nudgecap').value);
   if ($('cfg-nudgecap').value !== '' && Number.isFinite(cap) && cap >= 0) o.nudgeCap = Math.round(cap);
@@ -4365,7 +4389,7 @@ function renderVideoRows() {
     };
     wrap.appendChild(prev);
     wrap.appendChild(mk('token', 'token', 'vidtok'));
-    wrap.appendChild(mk('video URL or data:video URI', 'src', 'vidsrc'));
+    wrap.appendChild(mk('MP4 / YouTube / Vimeo URL or data:video URI', 'src', 'vidsrc'));
     wrap.appendChild(mk('poster URL (optional)', 'poster', 'vidposter'));
     wrap.appendChild(mk('label / caption', 'label', 'vidlabel'));
     wrap.appendChild(mk('when the bot should use it', 'description', 'viddesc'));
@@ -4381,14 +4405,22 @@ async function saveVideos() {
   const out = {};
   for (let i = 0; i < state.videos.length; i++) {
     const r = state.videos[i];
-    const t = (r.token || '').trim();
+    const s0 = (r.src || '').trim();
+    // Token is a handle the bot refers to. If left blank, derive one from the
+    // label (or a generic 'clip-N') so a source alone is enough — no guessing.
+    let t = (r.token || '').trim();
+    if (!t && s0) {
+      const base = (r.label || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      t = base || ('clip-' + (i + 1));
+      r.token = t; // reflect it back so the row shows the generated token
+    }
     if (!t) continue;
     if (!/^[A-Za-z0-9_-]+$/.test(t)) { toast('Token "' + t + '" — letters, numbers, - _ only', true); return; }
     if (BUILTIN_VID.indexOf(t) >= 0) { toast('"' + t + '" is a built-in token — pick another', true); return; }
-    const s = (r.src || '').trim();
+    const s = s0;
     if (!s) { toast('Video "' + t + '" needs a source', true); return; }
     if (!/^https?:\/\//i.test(s) && !/^data:video\//i.test(s)) {
-      toast('Source for "' + t + '" must be an http(s) URL or a data:video URI', true); return;
+      toast('Source for "' + t + '" must be a video URL (MP4 / YouTube / Vimeo) or a data:video URI', true); return;
     }
     const p = (r.poster || '').trim();
     if (p && !/^https?:\/\//i.test(p) && !/^data:image\//i.test(p)) {
@@ -5730,6 +5762,12 @@ async function loadActions(more) {
     .range(from, from + PAGE - 1);
   if (df) q = q.gte('created_at', df);
   if (dt) q = q.lte('created_at', dt);
+  // Action-type filter: a single beat kind, all three beats, or everything but beats.
+  const BEATS = ['beat_action', 'beat_hold', 'beat_veto'];
+  const at = ($('act-type') && $('act-type').value) || '';
+  if (at === '__beats') q = q.in('action', BEATS);
+  else if (at === '__nonbeat') q = q.not('action', 'in', '(' + BEATS.join(',') + ')');
+  else if (at) q = q.eq('action', at);
   if (isIp) {
     // No action from that IP → an impossible id, so the result is empty.
     q = q.in('conversation_id', ipConvIds.length ? ipConvIds : ['00000000-0000-0000-0000-000000000000']);

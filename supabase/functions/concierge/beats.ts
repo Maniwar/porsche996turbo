@@ -133,6 +133,14 @@ export function extractSubjects(lines: string[]): string[] {
 export interface ChooseOpts {
   restHours?: number[];
   nowMs?: number;
+  /** How the give-first/presence beat engages when no sale action qualifies:
+   *  'expertise' (default) hands over a piece of house knowledge — right for a
+   *  repeat-purchase clientele; 'offer' invites the shopper to SEE or ARRANGE
+   *  one concrete thing the page offers (a photo, a video, the documents, a
+   *  viewing, an offer) — right for a single-item INQUIRY page, where reciting
+   *  facts reads as "inventorying the shopper" and gets vetoed. Set per site via
+   *  config.outreach.proactive_style. */
+  proactiveStyle?: "expertise" | "offer";
 }
 
 /** The Action Table: ordered rules over the ledger. Admin can disable rules
@@ -151,6 +159,7 @@ export function chooseBeatAction(
 ): BeatDecision {
   const now = opts?.nowMs ?? Date.now();
   const restHours = opts?.restHours ?? DEFAULT_PROPOSAL_REST_HOURS;
+  const offerFirst = opts?.proactiveStyle === "offer";
   const trace: string[] = [];
   const enabled = (k: string) => !(overrides && overrides[k] && overrides[k].enabled === false);
   const spent = (k: string) => l.spentActions.includes(k);
@@ -240,14 +249,19 @@ export function chooseBeatAction(
   const warmKey = "KEEP_WARM:" + (l.section || "page");
   if (!enabled("KEEP_WARM")) fail("KEEP_WARM", "disabled by admin");
   else if (spent(warmKey)) {
-    fail("KEEP_WARM", `already gave the '${l.section || "page"}' expertise line in the last 24h`);
+    fail("KEEP_WARM", `already gave the '${l.section || "page"}' ${offerFirst ? "offer-to-show line" : "expertise line"} in the last 24h`);
   } else {
-    return pick(
-      warmKey,
-      `every sales door is spent or resting — GIVE FIRST instead of going quiet: one small, unasked piece of true house expertise keyed to the '${
+    // Two presence styles. 'offer' (inquiry pages) invites the shopper to SEE or
+    // ARRANGE something concrete — never recites facts AT them, which is exactly
+    // the "inventorying the shopper" pattern the reach-out judge vetoes.
+    const warmDetail = offerFirst
+      ? `keep this shopper engaged OFFER-FIRST, not by reciting anything: invite them to SEE or ARRANGE one concrete thing — a specific photo or detail to look at, a video ONLY if one is registered, an in-person viewing, or making an offer — keyed to the '${
         l.section || "page"
-      }' section (a care fact, the provenance, the box, the mending promise), warm and brief, no ask, no selling`,
-    );
+      }' section. Name ONE and offer to show or arrange it. ONLY offer what the house has actually made shareable here: NEVER promise a document, image, record, or file (a CARFAX, service invoices, a PDF) is "ready to share" unless it is genuinely available to send in this chat — offering something that isn't set up is a false promise. NEVER recite specs, history, or the shopper's own data back at them, and never tally what is on file; offer to reveal it instead. Warm, brief, one light invitation, no pressure.`
+      : `every sales door is spent or resting — GIVE FIRST instead of going quiet: one small, unasked piece of true house expertise keyed to the '${
+        l.section || "page"
+      }' section (a care fact, the provenance, the box, the mending promise), warm and brief, no ask, no selling`;
+    return pick(warmKey, warmDetail);
   }
 
   trace.push("HOLD: no rule qualified — nothing new and true to say");
