@@ -270,6 +270,26 @@ function beatAuditOn(config: Record<string, unknown> | null | undefined): boolea
   return oc?.beat_audit_log !== false;
 }
 
+// The page 'section' is an INTERNAL routing id (e.g. "section-3", "hero",
+// "the-wool"). It helps the model pick content relevant to where the visitor is
+// reading — but it must NEVER reach the visitor's screen. A closed-panel bubble
+// that said "Section three shows the suspension rebuild…" (seen live on the 996
+// page) leaked the scaffolding. Turn a generic/numbered id into a neutral phrase,
+// humanize a meaningful slug, and never present it as a quotable name.
+function sectionDescriptor(section: string): string {
+  const s = (section || "").trim().toLowerCase();
+  if (!s ||
+      /^(section|sec|sect|block|part|region|div|int[-_]?section)[-_]?\d*$/.test(s) ||
+      /^\d+$/.test(s)) {
+    return "the part of the page they're reading";
+  }
+  return "the " + s.replace(/[-_]+/g, " ").trim() + " part of the page";
+}
+// Appended to any outreach prompt that references where the visitor is reading.
+const SECTION_PRIVACY =
+  " The page section is an INTERNAL label — NEVER name, quote, or number it (no " +
+  "\"section three\", no \"the X section\"): refer only to what is actually shown there, in plain words.";
+
 // How the proactive give-first/presence beat engages when no sale action fits.
 // 'expertise' (default) hands over house knowledge — right for a repeat clientele.
 // 'offer' invites the shopper to SEE or ARRANGE something — right for a single-item
@@ -2608,7 +2628,7 @@ function buildLiveTail(data: ConciergeData, opts: AssembleOpts): string {
         }).join("\n") + "\n");
       const hereGoals = open.filter((g) => !!here && goalSections(g).includes(here));
       if (hereGoals.length > 0) {
-        goalsAgenda.push(`The shopper is reading the '${here}' section right now — lead with the goal(s) marked "fits where they are" (` +
+        goalsAgenda.push(`The shopper is reading ${sectionDescriptor(here)} right now (internal label — never name or number it) — lead with the goal(s) marked "fits where they are" (` +
           hereGoals.map((g) => g.label).join("; ") + "), tying your move to what's in front of them, before the others.\n");
       }
     }
@@ -5082,13 +5102,13 @@ async function handleReengage(req: Request): Promise<Response> {
       // one as a gift with the register card in another name).
       sys =
         "You are The Porsche Concierge for 2003 Porsche 911 Turbo. This shopper JUST commissioned a car and is " +
-        "browsing again on the '" + (section || "page") + "' section. Write ONE short line (max 30 " +
+        "browsing again, reading " + sectionDescriptor(section) + ". Write ONE short line (max 30 " +
         "words) that does NOT treat them as undecided — a light nod to their new entry is fine, then " +
         "warmly invite a SECOND car: a companion piece for another room, or one as a gift with the " +
         "register card in another name, " + askOrStatement +
         (signed ? "They are a signed-in patron." : "They are an anonymous visitor.") +
         " Plain text only: no markdown, no quotation marks, no {{tokens}}. Just the line." +
-        bubbleVoice + houseClause + repeatGuard + bubbleBrief + beatNotesClause(data.config);
+        SECTION_PRIVACY + bubbleVoice + houseClause + repeatGuard + bubbleBrief + beatNotesClause(data.config);
     } else {
       const open = goalStatus
         ? data.goals.filter((g) => (goalStatus![g.slug]?.status ?? "unmet") !== "met")
@@ -5103,12 +5123,12 @@ async function handleReengage(req: Request): Promise<Response> {
         : (goal!.label + " — " + goal!.description);
       sys =
         "You are The Porsche Concierge for 2003 Porsche 911 Turbo — cars made in numbered batches. Write ONE short " +
-        "outreach line (max 30 words) to a shopper who is reading the '" + (section || "page") +
-        "' section and has paused with the chat closed. Your task, tied to what's in front of " +
+        "outreach line (max 30 words) to a shopper who is reading " + sectionDescriptor(section) +
+        " and has paused with the chat closed. Your task, tied to what's in front of " +
         "them: " + advanceLine + ". Warm, specific, " + askOrStatement +
         (signed ? "They are a signed-in patron; a small nod to that is welcome." :
         "They are an anonymous visitor.") + " Plain text only: no markdown, no quotation marks, no " +
-        "{{tokens}}, no greeting boilerplate. Just the line." + bubbleVoice + houseClause +
+        "{{tokens}}, no greeting boilerplate. Just the line." + SECTION_PRIVACY + bubbleVoice + houseClause +
         repeatGuard + bubbleBrief + beatNotesClause(data.config);
     }
     const started = Date.now();
@@ -5164,6 +5184,20 @@ async function handleReengage(req: Request): Promise<Response> {
       return jsonResponse(req, 200, { text: null, hold: true });
     }
     if (text.length < 4) return fallback();
+
+    // Belt-and-suspenders for the section-label leak (the prompt already forbids
+    // it): if the line still names the internal section by number/ordinal —
+    // "Section three shows…", seen live on the 996 page — NEVER show it. Hold,
+    // and log it as a veto so the blocked line is visible in the audit trail.
+    if (/\bsection\s+(?:no\.?\s*)?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i.test(text)) {
+      if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
+        conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
+        action: "beat_veto", serial: null,
+        payload: { kind: "bubble", line: text, reason: "leaked internal section label", decision: bubbleAudit ?? undefined },
+        result: "vetoed — leaked internal section label",
+      }).catch(() => { /* audit is best-effort */ });
+      return jsonResponse(req, 200, { text: null, hold: true });
+    }
 
     // The reach-out judge — same gate as the panel beats (default ON, fail-
     // open). A vetoed bubble stays silent (hold, not the canned fallback) and
