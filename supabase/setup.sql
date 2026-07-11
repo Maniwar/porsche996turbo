@@ -1388,3 +1388,48 @@ insert into public.concierge_tools (name, enabled, sort_order) values
   ('cancel_order', false, 211),
   ('resend_confirmation', false, 212)
 on conflict (name) do nothing;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- One-time pilot config push (owner-requested, applied via the deploy's psql).
+-- Guarded by a marker key: it runs ONCE and future deploys / Studio edits are
+-- never clobbered. Sets the offer-first engagement + scale-friendly logging the
+-- owner asked for, and registers the cold-start clip so the concierge can offer it.
+do $$
+begin
+  if exists (select 1 from public.concierge_config where key = '_pilot_config_v1') then
+    return;
+  end if;
+
+  -- Read-before-write: dump the CURRENT config to the deploy log so the merge is
+  -- auditable and provably non-destructive.
+  raise notice 'PILOT current outreach = %', (select value from public.concierge_config where key = 'outreach');
+  raise notice 'PILOT current videos   = %', (select value from public.concierge_config where key = 'videos');
+  raise notice 'PILOT current starters = %', (select value from public.concierge_config where key = 'starters');
+
+  -- Offer-first proactive engagement + diagnostic beat logging OFF, merged into
+  -- the existing outreach blob without disturbing any other pacing setting.
+  if exists (select 1 from public.concierge_config where key = 'outreach') then
+    update public.concierge_config
+       set value = coalesce(value, '{}'::jsonb) || '{"proactive_style":"offer","beat_audit_log":false}'::jsonb,
+           updated_at = now()
+     where key = 'outreach';
+  else
+    insert into public.concierge_config (key, value, updated_at)
+      values ('outreach', '{"proactive_style":"offer","beat_audit_log":false}'::jsonb, now());
+  end if;
+
+  -- Register the cold-start clip (the widget already renders {{video:cold-start}};
+  -- this row is what tells the model the token exists, so it can offer it).
+  insert into public.concierge_config (key, value, updated_at)
+    values ('videos',
+      jsonb_build_object('cold-start', jsonb_build_object(
+        'src','https://www.youtube.com/shorts/FuedB67vqxo',
+        'label','Cold start',
+        'description','A short clip of the car''s cold start — share when a shopper asks to see or hear it start up.')),
+      now())
+    on conflict (key) do update
+      set value = public.concierge_config.value || excluded.value, updated_at = now();
+
+  insert into public.concierge_config (key, value, updated_at)
+    values ('_pilot_config_v1', 'true'::jsonb, now());
+end $$;
