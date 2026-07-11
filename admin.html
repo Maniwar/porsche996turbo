@@ -1092,6 +1092,10 @@
           <input type="text" id="cfg-privacy-url" class="mono-field" placeholder="https://…/privacy  (blank = no link)" autocomplete="off" spellcheck="false">
         </div>
         <div class="field">
+          <label class="micro" for="cfg-inquiry-notify">Send inquiry notifications to<span class="info-badge" title="The email address that receives a note when a shopper hands the concierge an offer, a viewing request, a question, or a callback (the make-an-offer / book-a-viewing forms and the submit_inquiry tool). Every inquiry is also saved under the Inquiries view regardless. Blank = falls back to the sender address (EMAIL_FROM). Note: delivery depends on a working sender — the site's EMAIL_FROM must be a Resend-verified address; a plain gmail.com sender is rejected by the mail provider.">i</span></label>
+          <input type="text" id="cfg-inquiry-notify" class="mono-field" placeholder="you@example.com  (blank = use the sender address)" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
           <label class="micro" for="cfg-voice-base">Base voice — the brand &amp; personality prompt<span class="info-badge" title="The default voice/brand system prompt the concierge runs on. Load the built-in to tweak it. High-impact — every reply changes; use History to roll back. Keep the {{OBJECTIVE}} marker (your primary objective is injected there) and the {{KB}} marker (the knowledge base); if either is missing it's added automatically. This base is the CORE constitution only — the Selling / Recognition / Register / Engagement sections are appended after it, so don't paste those back in here or they'll appear twice. Blank = the built-in brand voice.">i</span></label>
           <textarea id="cfg-voice-base" rows="8" placeholder="Blank = the built-in brand voice. Press “Load built-in to edit”, tweak, and Save."></textarea>
           <div class="field-actions">
@@ -3385,6 +3389,7 @@ async function loadConfig() {
   $('cfg-max-tokens').value = (typeof cfg.max_tokens === 'number') ? cfg.max_tokens : '';
   $('cfg-greeting').value = (typeof cfg.greeting === 'string') ? cfg.greeting : '';
   if ($('cfg-privacy-url')) $('cfg-privacy-url').value = (typeof cfg.privacy_url === 'string') ? cfg.privacy_url : '';
+  if ($('cfg-inquiry-notify')) $('cfg-inquiry-notify').value = (typeof cfg.inquiry_notify_email === 'string') ? cfg.inquiry_notify_email : '';
   if ($('cfg-voice-base')) $('cfg-voice-base').value = (typeof cfg.voice_base === 'string') ? cfg.voice_base : '';
   $('cfg-voice').value = (typeof cfg.voice_notes === 'string') ? cfg.voice_notes : '';
   if ($('cfg-clientbook')) {
@@ -4491,6 +4496,7 @@ async function saveVoice() {
   const rows = [
     { key: 'greeting',    value: $('cfg-greeting').value,           updated_at: nowIso() },
     { key: 'privacy_url', value: ($('cfg-privacy-url') ? $('cfg-privacy-url').value.trim() : ''), updated_at: nowIso() },
+    { key: 'inquiry_notify_email', value: ($('cfg-inquiry-notify') ? $('cfg-inquiry-notify').value.trim() : ''), updated_at: nowIso() },
     { key: 'voice_base',  value: base,                              updated_at: nowIso() },
     { key: 'voice_notes', value: $('cfg-voice').value,              updated_at: nowIso() }
   ];
