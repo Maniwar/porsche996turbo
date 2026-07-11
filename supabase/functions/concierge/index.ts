@@ -2842,6 +2842,7 @@ async function handleConfigGet(req: Request): Promise<Response> {
   const outreach = config?.outreach;
   const images = config?.images;
   const videos = config?.videos;
+  const privacyUrl = typeof config?.privacy_url === "string" && config.privacy_url.trim() ? config.privacy_url.trim() : null;
   return jsonResponse(req, 200, {
     enabled: config?.enabled === false ? false : true,
     greeting: typeof config?.greeting === "string" ? config.greeting : null,
@@ -2849,6 +2850,7 @@ async function handleConfigGet(req: Request): Promise<Response> {
     outreach: outreach && typeof outreach === "object" && !Array.isArray(outreach) ? outreach : null,
     images: images && typeof images === "object" && !Array.isArray(images) ? images : null,
     videos: videos && typeof videos === "object" && !Array.isArray(videos) ? videos : null,
+    privacy_url: privacyUrl,
     assertiveness: assertivenessLevel({ config } as ConciergeData),
     auth: true,
     forms: forms.map((f) => ({ slug: f.slug, title: f.title, fields: f.fields })),

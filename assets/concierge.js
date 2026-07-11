@@ -251,6 +251,7 @@
   var remoteOutreach = null;   /* admin-set engagement timings (from ?config=1) */
   var remoteImages = null;     /* admin-added {{img:token}} sources (from ?config=1) */
   var remoteVideos = null;     /* admin-added {{video:token}} sources (from ?config=1) */
+  var remotePrivacyUrl = null; /* privacy-notice URL for the footer link (from ?config=1) */
   var remoteAssert = null;     /* admin assertiveness 1..5 (from ?config=1) */
 
   /* Assertiveness 1 (restrained) .. 5 (closer); default 3. Scales how often and
@@ -342,6 +343,7 @@
           if (j.outreach && typeof j.outreach === 'object') { remoteOutreach = j.outreach; }
           if (j.images && typeof j.images === 'object') { remoteImages = j.images; }
           if (j.videos && typeof j.videos === 'object') { remoteVideos = j.videos; }
+          if (typeof j.privacy_url === 'string' && j.privacy_url) { remotePrivacyUrl = j.privacy_url; }
           if (typeof j.assertiveness === 'number') { remoteAssert = j.assertiveness; }
           remoteForms = sanitizeForms(j.forms);
         }
@@ -672,6 +674,8 @@
       '.cx-foot{flex:0 0 auto;padding:.35rem 1.4rem calc(.8rem + env(safe-area-inset-bottom,0px));',
       'font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.58rem;letter-spacing:.14em;',
       'text-transform:uppercase;color:var(--cx-ink);opacity:.45;line-height:1.7;}',
+      '.cx-foot-privacy{color:inherit;text-decoration:underline;}',
+      '.cx-foot-privacy:hover{opacity:1;}',
 
       /* ---------- brand stamp (avatar) ---------- */
       '.cx-stamp{flex:0 0 auto;width:28px;height:28px;border-radius:50%;object-fit:cover;',
@@ -1565,9 +1569,19 @@
     compose.appendChild(row);
     panel.appendChild(compose);
 
-    /* footer */
-    panel.appendChild(el('div', 'cx-foot',
-      'An automated AI concierge — answers by Anthropic\'s Claude · advice, not warranty · mberenji@gmail.com'));
+    /* footer — with an optional admin-set Privacy link (inquiry forms collect a
+       name + contact, so a privacy notice is a real obligation, not decoration) */
+    var foot = el('div', 'cx-foot',
+      'An automated AI concierge — answers by Anthropic\'s Claude · advice, not warranty · mberenji@gmail.com');
+    if (remotePrivacyUrl && safeUrl(remotePrivacyUrl)) {
+      foot.appendChild(document.createTextNode(' · '));
+      var priv = el('a', 'cx-foot-privacy', 'Privacy');
+      priv.setAttribute('href', remotePrivacyUrl);
+      priv.setAttribute('target', '_blank');
+      priv.setAttribute('rel', 'noopener noreferrer');
+      foot.appendChild(priv);
+    }
+    panel.appendChild(foot);
 
     document.body.appendChild(launcher);
     document.body.appendChild(scrim);

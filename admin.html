@@ -1088,6 +1088,10 @@
           <div class="cfg-state" id="cfg-greeting-state"></div>
         </div>
         <div class="field">
+          <label class="micro" for="cfg-privacy-url">Privacy notice URL<span class="info-badge" title="A link to your privacy notice. When set, a small “Privacy” link appears in the concierge footer. Inquiry forms collect a name and contact detail, so a privacy notice is a real obligation. Paste a full https:// URL, or a path like /privacy.html on your site. Blank = no link shown.">i</span></label>
+          <input type="text" id="cfg-privacy-url" class="mono-field" placeholder="https://…/privacy  (blank = no link)" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
           <label class="micro" for="cfg-voice-base">Base voice — the brand &amp; personality prompt<span class="info-badge" title="The default voice/brand system prompt the concierge runs on. Load the built-in to tweak it. High-impact — every reply changes; use History to roll back. Keep the {{OBJECTIVE}} marker (your primary objective is injected there) and the {{KB}} marker (the knowledge base); if either is missing it's added automatically. This base is the CORE constitution only — the Selling / Recognition / Register / Engagement sections are appended after it, so don't paste those back in here or they'll appear twice. Blank = the built-in brand voice.">i</span></label>
           <textarea id="cfg-voice-base" rows="8" placeholder="Blank = the built-in brand voice. Press “Load built-in to edit”, tweak, and Save."></textarea>
           <div class="field-actions">
@@ -3380,6 +3384,7 @@ async function loadConfig() {
   if ($('cfg-promptreview-model')) $('cfg-promptreview-model').value = (typeof cfg.promptreview_model === 'string') ? cfg.promptreview_model : '';
   $('cfg-max-tokens').value = (typeof cfg.max_tokens === 'number') ? cfg.max_tokens : '';
   $('cfg-greeting').value = (typeof cfg.greeting === 'string') ? cfg.greeting : '';
+  if ($('cfg-privacy-url')) $('cfg-privacy-url').value = (typeof cfg.privacy_url === 'string') ? cfg.privacy_url : '';
   if ($('cfg-voice-base')) $('cfg-voice-base').value = (typeof cfg.voice_base === 'string') ? cfg.voice_base : '';
   $('cfg-voice').value = (typeof cfg.voice_notes === 'string') ? cfg.voice_notes : '';
   if ($('cfg-clientbook')) {
@@ -4485,6 +4490,7 @@ async function saveVoice() {
   }
   const rows = [
     { key: 'greeting',    value: $('cfg-greeting').value,           updated_at: nowIso() },
+    { key: 'privacy_url', value: ($('cfg-privacy-url') ? $('cfg-privacy-url').value.trim() : ''), updated_at: nowIso() },
     { key: 'voice_base',  value: base,                              updated_at: nowIso() },
     { key: 'voice_notes', value: $('cfg-voice').value,              updated_at: nowIso() }
   ];
@@ -5848,7 +5854,13 @@ function renderActions() {
   state.actions.forEach(function (a) {
     const row = el('div', 'action-row');
     row.appendChild(el('span', 'micro', fmtWhen(a.created_at)));
-    row.appendChild(el('span', 'act', a.action || ''));
+    // Plain-language outcome for the beat rows, so "what the visitor saw vs what was
+    // blocked/held" is legible at a glance (the raw action name stays in the tooltip).
+    const ACT_LABEL = { beat_veto: '🚫 Blocked (not shown)', beat_hold: '— Stayed quiet (not shown)', beat_action: '✓ Spoke' };
+    const alabel = ACT_LABEL[a.action] || a.action || '';
+    const actSpan = el('span', 'act', alabel);
+    if (ACT_LABEL[a.action]) actSpan.title = a.action;
+    row.appendChild(actSpan);
 
     // Nº — click to open that order's detail drawer.
     if (a.serial != null) {
@@ -9714,6 +9726,20 @@ async function openConvo(c) {
     }
   } catch (e) { /* non-fatal: the transcript still renders without house markers */ }
 
+  // Held & vetoed beats for THIS conversation — the proactive lines the visitor
+  // never saw (the concierge stayed quiet, or the reach-out judge killed the line).
+  // Surfaced inline in the transcript so "what the customer saw vs what was blocked"
+  // is one timeline, not a hunt across the Actions tab.
+  state.activeBeats = [];
+  try {
+    const beatRes = await sb.from('concierge_actions')
+      .select('action,payload,result,created_at')
+      .eq('conversation_id', c.id)
+      .in('action', ['beat_hold', 'beat_veto'])
+      .order('created_at', { ascending: true });
+    if (!beatRes.error && beatRes.data) state.activeBeats = beatRes.data;
+  } catch (e) { /* non-fatal: the transcript still renders without beat markers */ }
+
   if (state.activeConvoId !== c.id) return; // user clicked away meanwhile
   state.activeMsgs = msgs;
   state.activeFb = fbMap;   // kept for the transcript CSV export (rating + note columns)
@@ -9975,6 +10001,7 @@ function renderTranscript(msgs, fbMap) {
   let targetNode = null;
   const ratedNodes = [];
   const houseNodes = [];   // acted-on replies, in order — for the house-note jumper
+  const msgNodes = [];     // {node, at} per message — lets held/vetoed beats interleave by time
   msgs.forEach(function (m, i) {
     const isUser = m.role === 'user';
     const node = el('div', 'msg ' + (isUser ? 'user' : 'assistant'));
@@ -10034,6 +10061,42 @@ function renderTranscript(msgs, fbMap) {
       });
     }
     body.appendChild(node);
+    msgNodes.push({ node: node, at: new Date(m.created_at).getTime() });
+  });
+
+  // Held & vetoed beats — the concierge's INVISIBLE proactive decisions, interleaved
+  // into the transcript by time so the merchant sees BOTH what the visitor saw and
+  // what was held or blocked before it could reach them. These rows never appeared
+  // on the visitor's screen — that's exactly why they're worth surfacing here.
+  (state.activeBeats || []).forEach(function (b) {
+    const at = new Date(b.created_at).getTime();
+    const veto = b.action === 'beat_veto';
+    const ann = el('div');
+    ann.style.cssText = 'align-self:center; max-width:82%; margin:1px 0; padding:7px 12px; border:1px dashed ' +
+      (veto ? 'rgba(201,138,134,.55)' : 'var(--hairline)') + '; border-radius:8px; background:rgba(0,0,0,.16); ' +
+      'font-size:12px; line-height:1.5; color:var(--text-faint);';
+    const tag = el('div', 'micro');
+    tag.style.cssText = 'letter-spacing:.05em; text-transform:uppercase; margin-bottom:2px; color:' +
+      (veto ? '#c98a86' : 'var(--dim)') + ';';
+    tag.textContent = veto ? '🚫 Blocked — the visitor did NOT see this' : '— Stayed quiet · nothing shown to the visitor';
+    ann.appendChild(tag);
+    if (veto && b.payload && b.payload.line) {
+      const line = el('div');
+      line.style.cssText = 'font-style:italic; opacity:.85; margin-bottom:2px;';
+      line.textContent = '“' + String(b.payload.line) + '”';
+      ann.appendChild(line);
+    }
+    const why = veto ? ((b.payload && b.payload.reason) || b.result) : b.result;
+    if (why) { const w = el('div', 'micro'); w.style.opacity = '.65'; w.textContent = String(why); ann.appendChild(w); }
+    // slot it after the last message at or before this beat's time
+    let after = null;
+    for (let k = 0; k < msgNodes.length; k++) {
+      if (!isNaN(msgNodes[k].at) && msgNodes[k].at <= at + 1500) after = msgNodes[k].node;
+    }
+    if (after && after.nextSibling) body.insertBefore(ann, after.nextSibling);
+    else if (after) body.appendChild(ann);
+    else if (msgNodes.length) body.insertBefore(ann, msgNodes[0].node);
+    else body.appendChild(ann);
   });
 
   // House-note jumper: a sticky bar to step through the replies that carried out a
