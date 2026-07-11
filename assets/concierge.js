@@ -71,6 +71,28 @@
     }
     return merged;
   }
+  /* A video source is either a direct file (mp4/webm/data:video), played in a
+     native <video>, or a link to a known host (YouTube/Vimeo), played in a
+     sandboxed <iframe> — a raw YouTube/Vimeo page URL is NOT a video file and
+     will not play in <video>. Returns { url, portrait } for a recognised host
+     (url = the privacy-friendly embed URL), else null → render as a file. */
+  function videoEmbed(src) {
+    if (typeof src !== 'string') { return null; }
+    var s = src.trim(), m;
+    /* YouTube Shorts — portrait */
+    if ((m = /youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/.exec(s))) {
+      return { url: 'https://www.youtube-nocookie.com/embed/' + m[1], portrait: true };
+    }
+    /* YouTube watch / youtu.be / embed / live — landscape */
+    if ((m = /(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/.exec(s))) {
+      return { url: 'https://www.youtube-nocookie.com/embed/' + m[1], portrait: false };
+    }
+    /* Vimeo */
+    if ((m = /vimeo\.com\/(?:video\/)?(\d{5,})/.exec(s))) {
+      return { url: 'https://player.vimeo.com/video/' + m[1], portrait: false };
+    }
+    return null;
+  }
   /* remote starters (from ?config=1) REPLACE the KB map when present */
   function suggestedMap() {
     if (remoteStarters) { return remoteStarters; }
@@ -504,6 +526,11 @@
       '.cx-fig{margin:.2em 0 .95em;}',
       '.cx-fig img{display:block;max-width:100%;height:auto;border:1px solid var(--cx-hair-soft);}',
       '.cx-fig video{display:block;max-width:100%;height:auto;border:1px solid var(--cx-hair-soft);background:#000;}',
+      /* responsive iframe embed (YouTube/Vimeo): 16:9 by default, 9:16 for Shorts */
+      '.cx-embed{position:relative;width:100%;padding-top:56.25%;border:1px solid var(--cx-hair-soft);background:#000;}',
+      '.cx-embed.cx-embed-portrait{width:270px;max-width:100%;padding-top:0;height:480px;margin:0 auto;}',
+      '.cx-embed iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;}',
+      '.cx-embed.cx-embed-portrait iframe{position:static;}',
       '.cx-actionrow{margin:.3em 0 .9em;}',
       '.cx-action{min-height:44px;display:inline-flex;align-items:center;gap:.5rem;cursor:pointer;',
       'font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;',
@@ -1102,20 +1129,37 @@
         if (vmeta && typeof vmeta === 'object' && typeof vmeta.src === 'string') {
           var vfig = document.createElement('figure');
           vfig.className = 'cx-fig cx-fade-in';
-          var vid = document.createElement('video');
-          vid.setAttribute('controls', '');
-          vid.setAttribute('preload', 'metadata');
-          vid.setAttribute('playsinline', '');
-          if (typeof vmeta.poster === 'string' && vmeta.poster) { vid.setAttribute('poster', vmeta.poster); }
           var vlabel = (typeof vmeta.label === 'string') ? vmeta.label
             : ((typeof vmeta.alt === 'string') ? vmeta.alt : '');
-          if (vlabel) { vid.setAttribute('aria-label', vlabel); }
-          var vsrc = document.createElement('source');
-          vsrc.setAttribute('src', vmeta.src);
-          vsrc.setAttribute('type', 'video/mp4');
-          vid.appendChild(vsrc);
-          if (vlabel) { vid.appendChild(document.createTextNode(vlabel)); }
-          vfig.appendChild(vid);
+          var emb = videoEmbed(vmeta.src);
+          if (emb) {
+            /* YouTube/Vimeo — responsive iframe (portrait for Shorts) */
+            var box = document.createElement('div');
+            box.className = 'cx-embed' + (emb.portrait ? ' cx-embed-portrait' : '');
+            var ifr = document.createElement('iframe');
+            ifr.setAttribute('src', emb.url);
+            ifr.setAttribute('title', vlabel || 'video');
+            ifr.setAttribute('loading', 'lazy');
+            ifr.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+            ifr.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            ifr.setAttribute('allowfullscreen', '');
+            box.appendChild(ifr);
+            vfig.appendChild(box);
+          } else {
+            /* direct file — native <video> */
+            var vid = document.createElement('video');
+            vid.setAttribute('controls', '');
+            vid.setAttribute('preload', 'metadata');
+            vid.setAttribute('playsinline', '');
+            if (typeof vmeta.poster === 'string' && vmeta.poster) { vid.setAttribute('poster', vmeta.poster); }
+            if (vlabel) { vid.setAttribute('aria-label', vlabel); }
+            var vsrc = document.createElement('source');
+            vsrc.setAttribute('src', vmeta.src);
+            vsrc.setAttribute('type', 'video/mp4');
+            vid.appendChild(vsrc);
+            if (vlabel) { vid.appendChild(document.createTextNode(vlabel)); }
+            vfig.appendChild(vid);
+          }
           frag.appendChild(vfig);
         }
         i++; continue;
@@ -1752,13 +1796,13 @@
       if (orCfg().idleReach === false && y < window.innerHeight * 0.5) { noteSkip('dwell opener: idleReach is OFF in admin and the page has not been scrolled past half a screen (one-shot, will not retry)'); return; }
       var sec = currentSection();
       var lines = {
-        'what-makes-it-special': 'Good evening. The car you\u2019re reading about \u2014 I can tell you whether it would suit the room you have in mind.',
+        'what-makes-it-special': 'Good evening. The car you\u2019re reading about \u2014 I’m happy to answer anything about it.',
         'sec-20-407-invested-all-documented': 'Good evening. Care questions are my favorite kind \u2014 ask me anything.',
         'every-angle-every-light': 'Good evening. If this one is meant as a gift, I can arrange a card in another name.',
-        'serious-buyers-get-serious-answers': 'Good evening. Your number is held while you decide. If it helps, tell me the room \u2014 I\u2019ll suggest the right one.'
+        'serious-buyers-get-serious-answers': 'Good evening. I\u2019m right here \u2014 ask me anything about it.'
       };
       showOutreach('dwell', lines[sec] ||
-        'Good evening. I\u2019m the concierge for 2003 Porsche 911 Turbo \u2014 tell me the room it\u2019s for, and I\u2019ll help you choose.');
+        'Good evening. I\u2019m the concierge for 2003 Porsche 911 Turbo \u2014 ask me anything about it.');
     }, dwellMs);
   })();
 
@@ -1779,12 +1823,12 @@
       }
       var sec = currentSection();
       var lines = {
-        'what-makes-it-special': 'Still with the car? Made in small numbered batches — I can hold the right one for your room whenever you like.',
-        'every-angle-every-light': 'Picture the quiet hour with it in the room. If a name should go on the card, I can arrange that too.',
+        'what-makes-it-special': 'Still with the car? I’m happy to help whenever you like.',
+        'every-angle-every-light': 'If a name should go on the card, I can arrange that too.',
         'serious-buyers-get-serious-answers': 'Your number is still held. When you’re ready I can open the ledger in a moment — no payment, this is a demonstration.'
       };
       showOutreach('dwell2', lines[sec] ||
-        'One more thought — a piece made to be kept and repaired, not replaced. I’m here when you’d like to talk it through.');
+        'One more thought — I’m right here whenever you’d like to talk it through.');
     }, dwell2Ms);
   })();
 
@@ -2343,25 +2387,25 @@
     if (postSale) {
       /* they already commissioned — invite a SECOND entry, never "still eyeing" */
       return authEmail
-        ? 'Your number’s in the ledger. When you’re ready — a companion car for another room, or one as a gift with the card in another name?'
+        ? 'Your number’s in the ledger. When you’re ready — anything else I can help you with?'
         : 'Your number is safely in the ledger. A companion car for another room, or one sent as a gift — I can arrange either.';
     }
     var sec = currentSection();
     if (authEmail) {
       var s = {
-        'what-makes-it-special': 'Still weighing it? Tell me the room and I’ll say whether it suits.',
+        'what-makes-it-special': 'Still weighing it? Ask me anything and I’ll help.',
         'serious-buyers-get-serious-answers': 'Your number is held while you decide — say the word and I’ll open the ledger.',
-        'every-angle-every-light': 'Thinking it over? A companion car for another room is an easy addition whenever you like.'
+        'every-angle-every-light': 'Thinking it over? I’m here for any question whenever you like.'
       };
       return s[sec] || 'Still here whenever you’d like to pick this back up — anything I can pull up for you?';
     }
     var a = {
-      'what-makes-it-special': 'Good evening — tell me the room and I’ll say whether the car suits it.',
+      'what-makes-it-special': 'Good evening — ask me anything about the car.',
       'sec-20-407-invested-all-documented': 'Questions about care or the making? Ask me anything.',
       'every-angle-every-light': 'If this one is a gift, the card can carry another name — I can arrange it.',
-      'serious-buyers-get-serious-answers': 'Your number is held while you decide. Tell me the room and I’ll help you choose.'
+      'serious-buyers-get-serious-answers': 'Your number is held while you decide. Ask me anything about it.'
     };
-    return a[sec] || 'Good evening — I’m the concierge for 2003 Porsche 911 Turbo. Tell me the room it’s for and I’ll help you choose.';
+    return a[sec] || 'Good evening — I’m the concierge for 2003 Porsche 911 Turbo. Ask me anything about it.';
   }
   var reengageBusy = false;
   var reengageBusyAt = 0;       /* watchdog: a hung compose must never mute the bubble */

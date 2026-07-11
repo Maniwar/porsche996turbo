@@ -257,6 +257,29 @@ function resolveModel(data: ConciergeData): string {
   return Deno.env.get("MODEL") || DEFAULT_MODEL;
 }
 
+// Diagnostic beat rows — beat_hold ("stayed quiet") and beat_veto ("judge killed
+// a line") — are pure observability: the Actions tab reads them to explain silence
+// and vetoes, but nothing operational depends on them. On a busy site beat_hold is
+// the fastest-growing row in concierge_actions (one per idle beat, per visitor), so
+// it is the first thing to shed at scale. config.beat_audit_log gates BOTH off; the
+// functional beat_action "spoke" row (which enforces offer-once) is NEVER gated.
+// Default ON so the reference demo keeps its spoke/held/vetoed strip; stamped sites
+// seed it OFF (scale-first) — see the kit's setup rewrite.
+function beatAuditOn(config: Record<string, unknown> | null | undefined): boolean {
+  const oc = config?.outreach as Record<string, unknown> | undefined;
+  return oc?.beat_audit_log !== false;
+}
+
+// How the proactive give-first/presence beat engages when no sale action fits.
+// 'expertise' (default) hands over house knowledge — right for a repeat clientele.
+// 'offer' invites the shopper to SEE or ARRANGE something — right for a single-item
+// INQUIRY page, where reciting facts reads as "inventorying" and gets vetoed.
+// Set per site via config.outreach.proactive_style; stamped inquiry sites seed 'offer'.
+function proactiveStyleFrom(config: Record<string, unknown> | null | undefined): "expertise" | "offer" {
+  const oc = config?.outreach as Record<string, unknown> | undefined;
+  return oc?.proactive_style === "offer" ? "offer" : "expertise";
+}
+
 // The model used to GRADE conversation goals (live and on re-grade). Admin can pick a
 // separate one (config.grader_model) — e.g. a stronger judge — without changing what
 // answers shoppers; blank falls back to the concierge model.
@@ -2243,6 +2266,20 @@ function sellingBlock(data: ConciergeData): string {
         "then re-open the door):\n" + lines.join("\n") + "\n";
     }
   }
+  // INQUIRY FORMS — when a shopper can hand the house a lead through a form, the
+  // form IS the path. Present only when such a form is enabled, and as a HARD rule
+  // for every audience — so it does not depend on a soft SOP being followed, which
+  // is exactly how a shopper got routed to email instead of shown the form.
+  const inquiryForms = data.forms.filter((f) => f.submit_tool === "submit_inquiry");
+  if (inquiryForms.length > 0) {
+    const list = inquiryForms.map((f) => `{{form:${f.slug}}} for ${f.title.toLowerCase()}`).join("; ");
+    s += "\nINQUIRY FORMS (the shopper's path to the owner — the form IS how they reach the house):\n" +
+      "- When someone makes or signals a genuine offer, asks to negotiate, wants to see it in person, or " +
+      "asks how to make an offer / arrange a viewing, PRESENT THE MATCHING FORM: put its token on its OWN " +
+      "line so they fill it in themselves and the owner is notified — " + list + ". Do this yourself, in " +
+      "chat; do NOT tell them to email instead, and do NOT merely describe the form. It needs no account and " +
+      "works for anyone. Emit the token verbatim on its own line, with no serial number.\n";
+  }
   return s;
 }
 
@@ -3872,7 +3909,7 @@ async function handleChatPost(req: Request): Promise<Response> {
         beatDecision = chooseBeatAction(
           ledger,
           dataForBeat.config?.beat_actions as Record<string, { enabled?: boolean }> | undefined,
-          { restHours: proposalRestHoursFrom(dataForBeat.config?.outreach) },
+          { restHours: proposalRestHoursFrom(dataForBeat.config?.outreach), proactiveStyle: proactiveStyleFrom(dataForBeat.config) },
         );
         beatAudit = { action: beatDecision.action, beat: "nudge", ledger, trace: beatDecision.trace };
       }
@@ -4249,15 +4286,17 @@ async function handleChatPost(req: Request): Promise<Response> {
           // the judge killed it — so it gets its own action ('beat_veto') with
           // the killed line and the judge's reason in the payload.
           try {
-            const cid = await conversationPromise;
-            pgInsert("concierge_actions", {
-              conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
-              action: vetoReason !== null ? "beat_veto" : "beat_hold", serial: null,
-              payload: vetoReason !== null
-                ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined }
-                : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined },
-              result: vetoReason !== null ? "vetoed — " + vetoReason : "beat held — nothing new to say",
-            }).catch(() => { /* audit failures never break the chat */ });
+            if (beatAuditOn(data.config)) {
+              const cid = await conversationPromise;
+              pgInsert("concierge_actions", {
+                conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
+                action: vetoReason !== null ? "beat_veto" : "beat_hold", serial: null,
+                payload: vetoReason !== null
+                  ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined }
+                  : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined },
+                result: vetoReason !== null ? "vetoed — " + vetoReason : "beat held — nothing new to say",
+              }).catch(() => { /* audit failures never break the chat */ });
+            }
           } catch { /* skip audit */ }
         } else {
           for (const piece of chunked(text)) send({ t: piece });
@@ -4402,12 +4441,15 @@ async function handleChatPost(req: Request): Promise<Response> {
             // to the audit log so hold rate is measurable (Actions tab,
             // action='beat_hold'). The substance gate working looks like holds,
             // not text; without this row, silence and breakage look identical.
-            pgInsert("concierge_actions", {
-              conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
-              action: "beat_hold", serial: null,
-              payload: { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined },
-              result: "beat held — nothing new to say",
-            }).catch(() => { /* audit failures never break the chat */ });
+            // Gated: pure diagnostics, the highest-volume beat row (see beatAuditOn).
+            if (beatAuditOn(data.config)) {
+              pgInsert("concierge_actions", {
+                conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
+                action: "beat_hold", serial: null,
+                payload: { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined },
+                result: "beat held — nothing new to say",
+              }).catch(() => { /* audit failures never break the chat */ });
+            }
           } else {
             if (holdish) { finalText = "I'm here — what can I help you with?"; }
             for (const piece of chunked(finalText)) send({ t: piece });
@@ -4956,11 +4998,11 @@ async function handleReengage(req: Request): Promise<Response> {
         bubbleDecision = chooseBeatAction(
           ledger,
           data.config?.beat_actions as Record<string, { enabled?: boolean }> | undefined,
-          { restHours: proposalRestHoursFrom(data.config?.outreach) },
+          { restHours: proposalRestHoursFrom(data.config?.outreach), proactiveStyle: proactiveStyleFrom(data.config) },
         );
         bubbleAudit = { action: bubbleDecision.action, beat: "bubble", ledger, trace: bubbleDecision.trace };
         if (bubbleDecision.action === "HOLD") {
-          pgInsert("concierge_actions", {
+          if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
             conversation_id: cid, user_id: customer.id, email: customer.email,
             action: "beat_hold", serial: null,
             payload: { kind: "bubble", decision: bubbleAudit },
@@ -5085,7 +5127,7 @@ async function handleReengage(req: Request): Promise<Response> {
     // bubbles too — the docs promise "every held beat is logged", and mean it.
     // (One terminal defense stays: an old saved override may still say "HOLD".)
     if (!speak || /^\W*hold\W*$/i.test(text)) {
-      pgInsert("concierge_actions", {
+      if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
         conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
         action: "beat_hold", serial: null,
         payload: { kind: "bubble" },
@@ -5103,7 +5145,7 @@ async function handleReengage(req: Request): Promise<Response> {
       if (oj?.beatJudge !== false) {
         const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble");
         if (v.veto) {
-          pgInsert("concierge_actions", {
+          if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
             conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
             action: "beat_veto", serial: null,
             payload: { kind: "bubble", line: text, reason: v.reason || "vetoed by the reach-out judge", decision: bubbleAudit ?? undefined },
