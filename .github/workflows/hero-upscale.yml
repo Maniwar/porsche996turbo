@@ -91,25 +91,30 @@ jobs:
           PY
 
       - name: Optimise + before/after sheet
+        continue-on-error: true
         run: |
-          sudo apt-get -qq update && sudo apt-get -qq install -y jpegoptim imagemagick
-          jpegoptim -q -m88 --strip-all frames_hi/*.jpg
-          du -sh frames_hi; ls frames_hi | wc -l
+          set +e
+          sudo apt-get -qq update && sudo apt-get -qq install -y jpegoptim imagemagick || true
+          jpegoptim -q -m88 --strip-all frames_hi/*.jpg || true
+          du -sh frames_hi || true; ls frames_hi | wc -l || true
           # side-by-side crop of frame 41: old (upscaled by viewer) vs new hi-res
-          convert frames/frame_041.jpg -resize 1920x1080 /tmp/old.png
-          convert frames_hi/frame_041.jpg /tmp/new.png
+          convert frames/frame_041.jpg -resize 1920x1080 /tmp/old.png || true
+          convert frames_hi/frame_041.jpg /tmp/new.png || true
           montage /tmp/old.png /tmp/new.png -tile 2x1 -geometry 900x506+6+6 -background '#120a0a' \
             -title 'left: current (960 upscaled)   right: new hi-res' compare_41.jpg || true
+          true
 
       - name: Push upscaled frames to review branch
+        if: always()
         env:
           OUT: ${{ inputs.out_branch }}
         run: |
+          test -n "$(ls frames_hi/frame_*.jpg 2>/dev/null)" || { echo "no upscaled frames to push"; exit 1; }
           git config user.name  "github-actions"
           git config user.email "actions@github.com"
           git checkout -B "$OUT"
           rm -rf frames_upscaled && mv frames_hi frames_upscaled
-          cp compare_41.jpg frames_upscaled/_compare_41.jpg || true
+          cp compare_41.jpg frames_upscaled/_compare_41.jpg 2>/dev/null || true
           git add frames_upscaled
           git commit -m "Hi-res upscaled hero frames (${{ inputs.factor }}x, ${{ inputs.count }} frames)"
           git push -f origin "$OUT"
