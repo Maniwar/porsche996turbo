@@ -271,7 +271,7 @@ function beatAuditOn(config: Record<string, unknown> | null | undefined): boolea
 }
 
 // The page 'section' is an INTERNAL routing id (e.g. "section-3", "hero",
-// "the-wool"). It helps the model pick content relevant to where the visitor is
+// "specs"). It helps the model pick content relevant to where the visitor is
 // reading — but it must NEVER reach the visitor's screen. A closed-panel bubble
 // that said "Section three shows the suspension rebuild…" (seen live on the 996
 // page) leaked the scaffolding. Turn a generic/numbered id into a neutral phrase,
