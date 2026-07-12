@@ -107,8 +107,13 @@
     /* ── HERO ── */
     .hero {
       position: relative;
-      height: 100vh;
-      min-height: 640px;
+      /* The turntable frames are 16:9 (~1.778) landscape and the car nearly spans
+         the frame width. On a tall/near-square window a 100vh box turns portrait and
+         `cover` crops the sides — clipping the car's nose and tail. Cap the height so
+         the box never gets narrower than the image (~1.7), so cover shows the whole
+         car at every resolution. On typical 16:9 laptops 100vh still wins (full-bleed). */
+      height: min(100vh, calc(100vw / 1.7));
+      min-height: 440px;
       display: flex;
       align-items: stretch;         /* hero-content fills height so title sits top, meta drops to bottom */
       overflow: hidden;
@@ -451,7 +456,7 @@
     @media (prefers-reduced-motion: reduce) { .cond-flip { transition:none; } }
 
     /* ── HERO 3D PARALLAX + DRAG SCRUB ── */
-    #heroBg canvas, .hero-img-mobile canvas { transform:scale(1.07) translate3d(var(--px,0px), var(--py,0px), 0); will-change:transform; }
+    #heroBg canvas, .hero-img-mobile canvas { transform:scale(1.04) translate3d(var(--px,0px), var(--py,0px), 0); will-change:transform; }
     .hero-content { transform:translate3d(var(--cx,0px), var(--cy,0px), 0); }
     .hero { touch-action:pan-y; user-select:none; -webkit-user-select:none; }
     .drag-cue {
