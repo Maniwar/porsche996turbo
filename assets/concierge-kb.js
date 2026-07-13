@@ -172,6 +172,17 @@
     demo: [
     {
       "match": [
+        "call",
+        "phone",
+        "talk",
+        "speak",
+        "voice",
+        "number"
+      ],
+      "answer": "You can call and talk it through with the AI voice concierge for this car: **+1 (424) 799-1987**. It's an AI voice line (not the owner) that answers questions about the 996 by phone. Prefer to keep it here? Ask me anything — and for a serious offer or a viewing/PPI, the owner is reached through the form so it's captured properly."
+    },
+    {
+      "match": [
         "price",
         "cost",
         "how much",

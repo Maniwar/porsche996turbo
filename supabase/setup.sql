@@ -1093,6 +1093,29 @@ insert into public.concierge_sops (slug, title, content_md, enabled, sort_order,
   end if;
 end $seed$;
 
+-- Voice handoff: this listing has a dedicated AI voice concierge phone line.
+-- Seed the fact (KB) and the handoff procedure (SOP) IDEMPOTENTLY (by slug) so
+-- they land even on an already-seeded database. DRAFTS-FIRST: both seed
+-- enabled=false — the owner reviews and enables them in the Studio. Honesty is
+-- preserved: the copy states plainly it is an AI line, not the owner, and does
+-- not let the phone replace the offer/viewing forms.
+insert into public.concierge_kb (slug, title, content_md, enabled, sort_order) values
+('phone-voice-concierge', 'Call & talk — AI voice concierge',
+ $kb$- Prefer to talk it through? Call the AI voice concierge for this car: **+1 (424) 799-1987**.
+- It is an AI voice line (not the owner) that answers questions about this 2003 911 Turbo by phone. For a serious offer, a viewing, or a PPI, use the forms so the owner is emailed and follows up directly.$kb$,
+ false, 25)
+on conflict (slug) do nothing;
+
+insert into public.concierge_sops (slug, title, content_md, enabled, sort_order, audience) values
+('voice-handoff', 'Shopper wants to talk / prefers a call',
+ $sop$Use when a shopper asks to speak to someone, prefers voice, has a lot of back-and-forth questions, or is on mobile and would rather talk than type.
+1. Offer the line plainly: **+1 (424) 799-1987** — say it is an AI voice concierge for this car that answers questions by phone. Be honest that it is not the owner.
+2. Keep it optional. They are welcome to keep asking here; do not push them off-chat.
+3. For an actual offer or a viewing/PPI, still capture it with **{{form:make-an-offer}}** or **{{form:book-a-viewing}}** so the owner is emailed — the phone line does not replace those.
+4. Never imply the number reaches the owner directly, or that the call can close a sale or negotiate price; it answers questions about the car.$sop$,
+ false, 25, 'all')
+on conflict (slug) do nothing;
+
 -- Register forms: seed only when the table is empty. DRAFTS-FIRST: enabled=false
 -- (and in inquiry mode there are no orders for the form to act on anyway); the
 -- engine never emits a {{form:…}} token for a disabled form, so this is inert
