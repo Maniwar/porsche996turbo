@@ -2317,7 +2317,7 @@
         /* a legacy plumbing-only line already persisted before the blank-bubble
            guard existed would re-render as an empty bubble forever — skip it */
         if (!((rendered.textContent || '').replace(/\s+/g, '')) &&
-            !(rendered.querySelector && rendered.querySelector('.cx-form,.cx-actionrow,.cx-replies,img,button'))) {
+            !(rendered.querySelector && rendered.querySelector('.cx-form,.cx-actionrow,.cx-replies,img,video,iframe,button'))) {
           continue;
         }
         turn.appendChild(rendered);
@@ -2903,7 +2903,7 @@
        than silence — so check the render, not the raw string. */
     var probe = mdRender(content || '');
     var visiblyBlank = !((probe.textContent || '').replace(/\s+/g, '')) &&
-      !(probe.querySelector && probe.querySelector('.cx-form,.cx-actionrow,.cx-replies,img,button'));
+      !(probe.querySelector && probe.querySelector('.cx-form,.cx-actionrow,.cx-replies,img,video,iframe,button'));
     if (visiblyBlank && shell.proactive) {
       /* a proactive line with nothing to show — withdraw the bubble entirely
          and treat it like a hold: quiet now, circle back spaciously */
