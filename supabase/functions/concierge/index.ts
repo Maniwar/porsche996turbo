@@ -4587,7 +4587,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               pgInsert("concierge_actions", {
                 conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
                 action: "beat_action", serial: null,
-                payload: { ...beatAudit, outcome: "spoke" },
+                payload: { ...beatAudit, outcome: "spoke", coaching: coaching ?? undefined },
                 result: String(beatAudit.action ?? ""),
               }).catch(() => { /* audit failures never break the chat */ });
             }
@@ -4745,7 +4745,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               pgInsert("concierge_actions", {
                 conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
                 action: "beat_action", serial: null,
-                payload: { ...beatAudit, outcome: "spoke", coaching: coaching ?? undefined },
+                payload: { ...beatAudit, outcome: "spoke" },
                 result: String(beatAudit.action ?? ""),
               }).catch(() => { /* audit failures never break the chat */ });
             }
