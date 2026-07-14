@@ -267,3 +267,45 @@ export function chooseBeatAction(
   trace.push("HOLD: no rule qualified — nothing new and true to say");
   return { action: "HOLD", detail: "every qualified subject is spent or absent", trace };
 }
+
+// ── Coach feedback loop — presentation of the "what's landing" digest ────────
+// The pure half of the loop (COACH.md §5): turn the raw beat_learning_digest
+// jsonb into the private "WHAT'S LANDING LATELY" block the coach weighs — or ""
+// when the sample is too thin to be honest signal (a fresh house gets no
+// fabricated pattern). Kept here, pure, so it is unit-tested; the DB read lives
+// in index.ts (beatLearningBlock).
+export interface LearningBucket {
+  beat?: string;
+  move?: string;
+  n?: number;
+  reply_rate?: number;
+}
+export interface LearningDigest {
+  window_days?: number;
+  total_spoke?: number;
+  buckets?: LearningBucket[];
+}
+
+export function renderLearningDigest(
+  digest: LearningDigest | null | undefined,
+  minSpoke = 8,
+): string {
+  if (!digest || typeof digest !== "object") return "";
+  const buckets = Array.isArray(digest.buckets) ? digest.buckets : [];
+  const totalSpoke = typeof digest.total_spoke === "number" ? digest.total_spoke : 0;
+  // Honest about thin data: below the floor, or with no surviving buckets, the
+  // coach gets nothing and falls back to method-only.
+  if (totalSpoke < minSpoke || buckets.length === 0) return "";
+  const lines = buckets.slice(0, 6).map((b) => {
+    const pct = Math.round((Number(b.reply_rate) || 0) * 100);
+    return "- " + String(b.move ?? "?") + " on a " + String(b.beat ?? "?") +
+      ": " + pct + "% replied (n=" + (Number(b.n) || 0) + ")";
+  });
+  return "[WHAT'S LANDING LATELY — this house's OWN outcomes over the last " +
+    (digest.window_days ?? 14) + " days: the share of shoppers who answered within " +
+    "half an hour of each kind of proactive line. This is real reaction, not theory.]\n" +
+    lines.join("\n") +
+    "\nWeigh it: lean toward the moves that are landing and away from the ones that " +
+    "aren't; treat a small n as a weak signal, never a rule. Silence after a move is " +
+    "itself a signal — if a move keeps getting ignored, a lighter touch (or holding) may beat repeating it.";
+}

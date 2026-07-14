@@ -10,7 +10,9 @@ import {
   DEFAULT_PROPOSAL_REST_HOURS,
   extractSubjects,
   hasPendingAsk,
+  type LearningDigest,
   PLACEHOLDER_ADDR,
+  renderLearningDigest,
   proposalGate,
   proposalRestHoursFrom,
   type SalesLedger,
@@ -232,4 +234,44 @@ Deno.test("extractSubjects marks the sign-in invitation as a spent subject", () 
   assert(subjects.some((s) => s.includes("sign-in")), "sign-in theme extracted: " + subjects.join("|"));
   const clean = extractSubjects(["The Loden suits a north room."]);
   assert(!clean.some((s) => s.includes("sign-in")), "no sign-in theme without the offer");
+});
+
+
+// ── Coach feedback loop presentation (renderLearningDigest) ──────────────────
+function digest(over: Partial<LearningDigest> = {}): LearningDigest {
+  return {
+    window_days: 14,
+    total_spoke: 20,
+    buckets: [
+      { beat: "nudge", move: "PROPOSE_COMPANION", n: 19, reply_rate: 0.42 },
+      { beat: "bubble", move: "REASSURE", n: 8, reply_rate: 0.12 },
+    ],
+    ...over,
+  };
+}
+
+Deno.test("digest with signal renders a weighted 'what's landing' block", () => {
+  const out = renderLearningDigest(digest(), 8);
+  assert(out.length > 0, "non-empty with signal");
+  assert(out.includes("PROPOSE_COMPANION on a nudge: 42% replied (n=19)"), "formats a bucket: " + out);
+  assert(out.includes("REASSURE on a bubble: 12% replied (n=8)"), "formats the second bucket");
+  assert(/last 14 days/.test(out), "names the window");
+  assert(/lighter touch|holding/.test(out), "carries the restraint cue (can push the coach down)");
+});
+
+Deno.test("honest on thin data: below the spoke floor ⇒ empty (no invented pattern)", () => {
+  assertEq(renderLearningDigest(digest({ total_spoke: 5 }), 8), "", "5 spoken < floor 8 ⇒ empty");
+  assertEq(renderLearningDigest(digest({ total_spoke: 0, buckets: [] }), 8), "", "no data ⇒ empty");
+  assertEq(renderLearningDigest(null, 8), "", "null digest ⇒ empty");
+  assertEq(renderLearningDigest(undefined, 8), "", "undefined digest ⇒ empty");
+  assertEq(renderLearningDigest(digest({ buckets: [] }), 8), "", "spoke over floor but no surviving buckets ⇒ empty");
+});
+
+Deno.test("digest caps at six buckets and tolerates missing fields", () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ beat: "nudge", move: "M" + i, n: 5, reply_rate: 0.5 }));
+  const out = renderLearningDigest(digest({ buckets: many }), 8);
+  const shown = out.split("\n").filter((l) => l.startsWith("- ")).length;
+  assertEq(shown, 6, "at most six buckets are shown");
+  const sparse = renderLearningDigest(digest({ buckets: [{ n: 10 } as never] }), 8);
+  assert(sparse.includes("? on a ?: 0% replied (n=10)"), "missing move/beat/rate degrade to placeholders: " + sparse);
 });

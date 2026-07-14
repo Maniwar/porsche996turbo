@@ -35,8 +35,10 @@ import {
   chooseBeatAction,
   extractSubjects,
   hasPendingAsk,
+  type LearningDigest,
   PLACEHOLDER_ADDR,
   proposalRestHoursFrom,
+  renderLearningDigest,
   type SalesLedger,
 } from "./beats.ts";
 
@@ -3026,26 +3028,12 @@ async function beatLearningBlock(
   const oc = config?.outreach as Record<string, unknown> | undefined;
   if (oc?.coachLearning === false) return "";
   try {
-    // deno-lint-ignore no-explicit-any
-    const digest = await pgRpc<any>("beat_learning_digest", {
+    const digest = await pgRpc<LearningDigest>("beat_learning_digest", {
       p_days: 14, p_ttl_min: 20, p_min_n: 3,
     });
-    const buckets = Array.isArray(digest?.buckets) ? digest.buckets : [];
-    const totalSpoke = typeof digest?.total_spoke === "number" ? digest.total_spoke : 0;
-    if (totalSpoke < COACH_LEARN_MIN_SPOKE || buckets.length === 0) return "";
-    const lines = buckets.slice(0, 6).map((b: Record<string, unknown>) => {
-      const pct = Math.round(Number(b.reply_rate ?? 0) * 100);
-      const move = String(b.move ?? "?");
-      const beat = String(b.beat ?? "?");
-      return "- " + move + " on a " + beat + ": " + pct + "% replied (n=" + Number(b.n ?? 0) + ")";
-    });
-    return "[WHAT'S LANDING LATELY — this house's OWN outcomes over the last " +
-      (digest.window_days ?? 14) + " days: the share of shoppers who answered within " +
-      "half an hour of each kind of proactive line. This is real reaction, not theory.]\n" +
-      lines.join("\n") +
-      "\nWeigh it: lean toward the moves that are landing and away from the ones that " +
-      "aren't; treat a small n as a weak signal, never a rule. Silence after a move is " +
-      "itself a signal — if a move keeps getting ignored, a lighter touch (or holding) may beat repeating it.";
+    // renderLearningDigest is pure (beats.ts) and unit-tested; the honesty floor
+    // and formatting live there so a fresh house provably gets an empty block.
+    return renderLearningDigest(digest, COACH_LEARN_MIN_SPOKE);
   } catch {
     return "";
   }
@@ -3109,6 +3097,29 @@ async function handleToolsGet(req: Request): Promise<Response> {
   if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
   const data = await loadConciergeData();
   return jsonResponse(req, 200, { tools: toolsManifest(data) });
+}
+
+// ── GET ?insights=1 — the coach feedback-loop digest, for the operator ───────
+// Observability for the loop (COACH.md §5): returns the SAME "what's landing"
+// digest the coach reads — reply rate after each proactive move — plus the
+// rendered block (or "" when the data is too thin to be honest). Admin-only, and
+// aggregate-only by construction (counts + rates by move; never a shopper, a
+// message, or any PII), so it is safe to surface in the studio. `?days=` lets
+// the operator widen the window; `fresh=1` bypasses the cache to recompute now.
+async function handleInsightsGet(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const url = new URL(req.url);
+  const days = Math.min(Math.max(parseInt(url.searchParams.get("days") || "14", 10) || 14, 1), 120);
+  const fresh = url.searchParams.get("fresh") === "1";
+  const digest = await pgRpc<LearningDigest>("beat_learning_digest", {
+    p_days: days, p_ttl_min: fresh ? 0 : 20, p_min_n: 3,
+  });
+  return jsonResponse(req, 200, {
+    digest: digest ?? null,
+    // What the coach would actually be handed right now (honesty floor applied).
+    coach_block: renderLearningDigest(digest, COACH_LEARN_MIN_SPOKE),
+    min_spoke: COACH_LEARN_MIN_SPOKE,
+  });
 }
 
 // ── GET ?defaults=1 — the built-in BASE texts, for the admin Tuning "Base" boxes ─
@@ -5558,6 +5569,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("defaults")) {
     return await handleDefaultsGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("insights")) {
+    return await handleInsightsGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("preview")) {
     return await handlePreviewGet(req);
