@@ -839,6 +839,84 @@ revoke execute on function public.prune_high_write(int) from public, anon, authe
 -- Nightly with pg_cron (enable the extension first), uncomment:
 --   select cron.schedule('prune-high-write', '0 3 * * *', $$select public.prune_high_write(180)$$);
 
+-- ─── Coach feedback loop — the "what's actually working" digest ───────────────
+-- Closes the loop for the sales-strategist coach (COACH.md): it lets the coach
+-- reason over OUTCOMES the drafter never sees. For every proactive beat that
+-- SPOKE (a beat_action row, payload.outcome='spoke'), did the shopper answer —
+-- a user turn in the same conversation within 30 min? We bucket that reply rate
+-- by beat kind + move over a trailing window, so the coach can bias toward what
+-- is landing for THIS house rather than theory. Self-caching into
+-- concierge_insights so the hot path reads one row; it recomputes only past the
+-- TTL. Honest about thin data: buckets under p_min_n are dropped, and a quiet
+-- house simply returns few or none (the coach then falls back to method-only).
+create table if not exists public.concierge_insights (
+  kind text primary key,
+  payload jsonb not null,
+  computed_at timestamptz not null default now());
+alter table public.concierge_insights enable row level security;
+-- No policy: reachable only through the security-definer function below (service
+-- role / definer bypasses RLS); direct anon/authenticated reads are denied.
+
+create or replace function public.beat_learning_digest(
+  p_days int default 14, p_ttl_min int default 20, p_min_n int default 3)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_row     public.concierge_insights;
+  v_days    int := greatest(coalesce(p_days, 14), 1);
+  v_ttl     int := greatest(coalesce(p_ttl_min, 20), 1);
+  v_min     int := greatest(coalesce(p_min_n, 3), 1);
+  v_payload jsonb;
+begin
+  -- Serve the cached digest while it is fresh.
+  select * into v_row from public.concierge_insights where kind = 'beat_learning';
+  if found and v_row.computed_at > now() - make_interval(mins => v_ttl) then
+    return v_row.payload;
+  end if;
+
+  with spoke as (
+    select a.conversation_id, a.created_at,
+           coalesce(nullif(a.payload->>'beat', ''), 'other')   as beat,
+           coalesce(nullif(a.payload->>'action', ''), 'other') as move
+    from public.concierge_actions a
+    where a.action = 'beat_action'
+      and a.payload->>'outcome' = 'spoke'
+      and a.created_at > now() - make_interval(days => v_days)
+  ),
+  scored as (
+    select s.beat, s.move,
+      exists (
+        select 1 from public.concierge_messages m
+        where m.conversation_id = s.conversation_id
+          and m.role = 'user'
+          and m.created_at >  s.created_at
+          and m.created_at <  s.created_at + interval '30 minutes'
+      ) as answered
+    from spoke s
+  ),
+  agg as (
+    select beat, move, count(*) as n, count(*) filter (where answered) as answered
+    from scored group by beat, move
+  )
+  select jsonb_build_object(
+    'window_days', v_days,
+    'total_spoke', coalesce((select count(*) from scored), 0),
+    'buckets', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'beat', beat, 'move', move, 'n', n,
+               'reply_rate', round((answered::numeric / n), 2))
+             order by (answered::numeric / n) desc, n desc)
+      from agg where n >= v_min), '[]'::jsonb)
+  ) into v_payload;
+
+  insert into public.concierge_insights (kind, payload, computed_at)
+  values ('beat_learning', v_payload, now())
+  on conflict (kind) do update
+    set payload = excluded.payload, computed_at = excluded.computed_at;
+
+  return v_payload;
+end $$;
+revoke execute on function public.beat_learning_digest(int, int, int) from public, anon, authenticated;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. SEED DATA (admins, config, KB, SOPs, forms, goals) — safe to re-run
 -- ─────────────────────────────────────────────────────────────────────────────

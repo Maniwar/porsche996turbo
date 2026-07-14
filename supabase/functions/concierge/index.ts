@@ -2922,15 +2922,20 @@ async function coachBeatLine(
   baseSystem: any,
   // deno-lint-ignore no-explicit-any
   messages: any[],
+  learning = "",
 ): Promise<{ move: string; tactic: string; avoid: string } | null> {
   try {
     // Reuse the drafter's system verbatim (shared cached prefix when it's blocks),
-    // then append the coaching task so the strategist sees the identical context.
+    // then append the coaching task — and, when the feedback loop has signal, the
+    // house's own outcome digest (beatLearningBlock). The outcomes are the ONE
+    // thing the drafter never sees, so they are what make the coach a second
+    // brain rather than a mirror. See COACH.md → the feedback loop.
+    const task = BEAT_COACH_TASK + (learning ? "\n\n" + learning : "");
     const system = Array.isArray(baseSystem)
-      ? [...baseSystem, { type: "text", text: BEAT_COACH_TASK }]
+      ? [...baseSystem, { type: "text", text: task }]
       : (typeof baseSystem === "string" && baseSystem
-        ? baseSystem + "\n\n" + BEAT_COACH_TASK
-        : BEAT_COACH_TASK);
+        ? baseSystem + "\n\n" + task
+        : task);
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -3005,6 +3010,45 @@ function coachingBlock(c: { move: string; tactic: string; avoid: string } | null
   if (c.tactic) lines.push("TACTIC: " + c.tactic);
   if (c.avoid) lines.push("AVOID: " + c.avoid);
   return "\n\n" + lines.join("\n");
+}
+
+// The coach feedback loop: fetch the house's own "what's actually landing"
+// digest (beat_learning_digest — reply rate after each proactive move, computed
+// from the audit trail and DB-cached with a TTL) and render it for the coach.
+// This is the ONE input the drafter never sees — real house reactions, not
+// theory — so it's what turns the coach from a mirror into a learning layer.
+// Honest about thin data: below a floor of spoken beats we return "" and the
+// coach falls back to method-only. Fail-open (any error → ""). See COACH.md.
+const COACH_LEARN_MIN_SPOKE = 8;
+async function beatLearningBlock(
+  config: Record<string, unknown> | null | undefined,
+): Promise<string> {
+  const oc = config?.outreach as Record<string, unknown> | undefined;
+  if (oc?.coachLearning === false) return "";
+  try {
+    // deno-lint-ignore no-explicit-any
+    const digest = await pgRpc<any>("beat_learning_digest", {
+      p_days: 14, p_ttl_min: 20, p_min_n: 3,
+    });
+    const buckets = Array.isArray(digest?.buckets) ? digest.buckets : [];
+    const totalSpoke = typeof digest?.total_spoke === "number" ? digest.total_spoke : 0;
+    if (totalSpoke < COACH_LEARN_MIN_SPOKE || buckets.length === 0) return "";
+    const lines = buckets.slice(0, 6).map((b: Record<string, unknown>) => {
+      const pct = Math.round(Number(b.reply_rate ?? 0) * 100);
+      const move = String(b.move ?? "?");
+      const beat = String(b.beat ?? "?");
+      return "- " + move + " on a " + beat + ": " + pct + "% replied (n=" + Number(b.n ?? 0) + ")";
+    });
+    return "[WHAT'S LANDING LATELY — this house's OWN outcomes over the last " +
+      (digest.window_days ?? 14) + " days: the share of shoppers who answered within " +
+      "half an hour of each kind of proactive line. This is real reaction, not theory.]\n" +
+      lines.join("\n") +
+      "\nWeigh it: lean toward the moves that are landing and away from the ones that " +
+      "aren't; treat a small n as a weak signal, never a rule. Silence after a move is " +
+      "itself a signal — if a move keeps getting ignored, a lighter touch (or holding) may beat repeating it.";
+  } catch {
+    return "";
+  }
 }
 
 function sseResponse(req: Request, stream: ReadableStream<Uint8Array>): Response {
@@ -4415,7 +4459,8 @@ async function handleChatPost(req: Request): Promise<Response> {
         try {
           const oc = data.config?.outreach as Record<string, unknown> | undefined;
           if (oc?.beatCoach !== false) {
-            coaching = await coachBeatLine(apiKey, model, system, validated.messages);
+            const learning = await beatLearningBlock(data.config);
+            coaching = await coachBeatLine(apiKey, model, system, validated.messages, learning);
             const block = coachingBlock(coaching);
             if (block) system.push({ type: "text", text: block });
           }
@@ -5305,7 +5350,8 @@ async function handleReengage(req: Request): Promise<Response> {
     try {
       const oc = data.config?.outreach as Record<string, unknown> | undefined;
       if (oc?.beatCoach !== false) {
-        coaching = await coachBeatLine(apiKey, model, sys, [{ role: "user", content: "Write the line now." }]);
+        const learning = await beatLearningBlock(data.config);
+        coaching = await coachBeatLine(apiKey, model, sys, [{ role: "user", content: "Write the line now." }], learning);
         sys += coachingBlock(coaching);
       }
     } catch { /* coach is advisory; never blocks the bubble */ }
