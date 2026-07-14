@@ -1451,6 +1451,10 @@
               <input type="number" id="cfg-goalrate" class="mono-field" data-unit="0–1" min="0" max="1" step="0.05" placeholder="1"></div>
           </div>
           <label class="ck-check" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+            <input type="checkbox" id="cfg-beat-coach" checked>
+            <span class="micro"><strong>Coach every reach-out with a sales strategist (recommended)</strong> <span class="info-badge" title="A 'second brain' that reads the whole situation — the selling method, this patron's register and history, the stage — and privately briefs the concierge on the single best move BEFORE it writes each unprompted line (follow-up, opener, page bubble). It only ever suggests plays the house's own honesty rules, price posture, and scope allow, and it never speaks to the visitor — the concierge does. When the strategist is unreachable the line is written without the brief rather than going silent. Costs a moment's delay and a small model charge per reach-out; the brief that shaped each line is kept under Actions.">i</span></span>
+          </label>
+          <label class="ck-check" style="display:flex;align-items:center;gap:8px;margin-top:10px;">
             <input type="checkbox" id="cfg-beat-judge" checked>
             <span class="micro"><strong>Review every reach-out before it sends (recommended)</strong> <span class="info-badge" title="A second, stricter reading of each unprompted line — follow-up, opener, and page bubble alike — before the visitor sees it. It kills lines that leak internal wording, keep score of the visitor's silence, invent discounts, or pressure; each kill is logged under Actions with the line and the reason (Reach-outs strip: vetoed). If the reviewer is ever unreachable, lines pass through unreviewed rather than going silent. Costs a moment's delay and a small model charge per reach-out.">i</span></span>
           </label>
@@ -3435,6 +3439,7 @@ async function loadConfig() {
   $('cfg-draft').value = ms2s(o.draftMs);
   $('cfg-idlereach').checked = o.idleReach !== false; // default: reach out
   $('cfg-substance-gate').checked = o.substanceGate !== false; // default: gated
+  if ($('cfg-beat-coach')) $('cfg-beat-coach').checked = o.beatCoach !== false; // default: coached
   if ($('cfg-beat-judge')) $('cfg-beat-judge').checked = o.beatJudge !== false; // default: reviewed
   if ($('cfg-beat-audit')) $('cfg-beat-audit').checked = o.beat_audit_log !== false; // default: log (demo); stamped sites seed false
   if ($('cfg-proactive-style')) $('cfg-proactive-style').value = (o.proactive_style === 'offer') ? 'offer' : 'expertise';
@@ -3848,6 +3853,7 @@ async function saveEngagement() {
   const dr = s2ms('cfg-draft'); if (dr) o.draftMs = dr;
   o.idleReach = $('cfg-idlereach').checked;
   o.substanceGate = $('cfg-substance-gate').checked;
+  if ($('cfg-beat-coach')) o.beatCoach = $('cfg-beat-coach').checked;
   if ($('cfg-beat-judge')) o.beatJudge = $('cfg-beat-judge').checked;
   if ($('cfg-beat-audit')) o.beat_audit_log = $('cfg-beat-audit').checked;
   if ($('cfg-proactive-style')) o.proactive_style = ($('cfg-proactive-style').value === 'offer') ? 'offer' : 'expertise';

@@ -2784,26 +2784,52 @@ function stripPlumbing(t: string): string {
 // Admin toggle: Engagement → House rules → outreach.beatJudge (default ON).
 // Every veto writes a beat_veto row (Actions tab: spoke · held · vetoed).
 const BEAT_JUDGE_MODEL = "claude-haiku-4-5-20251001";
+// The sales-strategist coach reuses the conversation model by default (its value
+// is smart, house-grounded tactical reasoning — the same brain the house paid
+// for), but a dedicated tier can be pinned here without touching the call sites.
+const BEAT_COACH_MODEL = "";
 const BEAT_JUDGE_CRITERION =
-  "The line is fit to send as an unprompted concierge reach-out. VETO (pass=false) ONLY if it " +
-  "clearly exhibits at least one of these defects: " +
+  "You review ONE line a sales concierge is about to send UNPROMPTED. VETO (pass=false) if it " +
+  "clearly exhibits at least one UNIVERSAL defect below, OR clearly contradicts the HOUSE RULES you " +
+  "are given. The HOUSE RULES are authoritative for what THIS house may claim, how it prices, and " +
+  "what it may offer; the universal defects always apply regardless of the house. " +
+  "UNIVERSAL DEFECTS: " +
   "(1) plumbing or meta leak — it mentions instructions, prompts, rules, beats, tools, holding, " +
   "being an AI or model, or narrates its own outreach ('reach-out #2', 'checking in as instructed'); " +
   "(2) scorekeeping or guilt — it counts its own messages or points at the shopper's silence " +
   "('I've reached out twice', 'since you haven't replied'); " +
-  "(3) invented commerce — a discount, price cut, sale, coupon, free shipping, or limited-time " +
-  "offer (the house never discounts; the edition's numbered scarcity is the only real urgency); " +
+  "(3) invented commerce — it invents a discount, price cut, sale, coupon, free shipping, urgency, or " +
+  "countdown the HOUSE RULES do not authorize (if the house holds a firm price, any discount is a veto; " +
+  "if the house rules permit offers or negotiation, INVITING one is legitimate, not invented); " +
   "(4) pressure or desperation — begging, 'last chance', manufactured countdowns; " +
   "(5) broken output — cut off mid-sentence, raw JSON or code, gibberish, visibly duplicated text; " +
   "(6) inventorying the shopper — reciting their own stored data back at them in aggregate " +
-  "('you're furnishing five rooms across two cities', 'your third order this month'): one remembered " +
-  "detail worn lightly is service, a tally of their life is surveillance. " +
+  "('you're furnishing five rooms across two cities'): one remembered detail worn lightly is service, " +
+  "a tally of their life is surveillance. " +
+  "AGAINST THE HOUSE RULES: also veto if the line asserts a price, figure, count, product, guarantee, " +
+  "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
+  "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. If " +
+  "the house rules PERMIT something, offering it is LEGITIMATE — never veto an authorized move as invented. " +
   "Warmth, brevity, one light question, and {{reply:…}}/{{action:…}} pills are all LEGITIMATE. " +
   "When uncertain, pass it.";
+// The judge is grounded per-house in the effective constitution's HONESTY & SCOPE
+// (the admin-editable voice_base, else the BRAND_SYSTEM fallback — the same honesty
+// source that binds the drafting prompt, and the block the kit stamps per product).
+// It reads the house's TRUTH (price posture, scope, what may be claimed/offered),
+// never the selling dial — so a harder or softer sell can never move the gate.
+function houseHonestyRules(cfg: { voice_base?: unknown } | null | undefined): string {
+  const base = (cfg && typeof cfg.voice_base === "string" && cfg.voice_base.trim())
+    ? cfg.voice_base
+    : BRAND_SYSTEM;
+  const i = base.search(/HONESTY\s*&\s*SCOPE/i);
+  const slice = i >= 0 ? base.slice(i) : base;
+  return slice.replace(/\{\{[A-Z_]+\}\}/g, "").trimEnd().slice(0, 1600);
+}
 async function judgeBeatLine(
   apiKey: string,
   line: string,
   kind: string,
+  houseRules = "",
 ): Promise<{ veto: boolean; reason: string }> {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2840,8 +2866,9 @@ async function judgeBeatLine(
         }],
         messages: [{
           role: "user",
-          content: "CRITERION:\n" + BEAT_JUDGE_CRITERION + "\n\nBEAT KIND: " + kind +
-            "\n\nTHE LINE:\n" + line,
+          content: "CRITERION:\n" + BEAT_JUDGE_CRITERION +
+            (houseRules ? "\n\nHOUSE RULES (authoritative for this house):\n" + houseRules : "") +
+            "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + line,
         }],
       }),
     });
@@ -2855,6 +2882,129 @@ async function judgeBeatLine(
   } catch {
     return { veto: false, reason: "" };
   }
+}
+
+// ── Sales-strategist coach on proactive lines ───────────────────────────────
+// The mirror image of the judge. The judge reads the DRAFTED line and subtracts
+// defects (post-draft, suppressive). The coach reads the whole situation BEFORE
+// the line is drafted and adds strategy (pre-draft, generative): a quiet "second
+// brain" that names the single best sales play for THIS exact moment, then hands
+// it to the drafting model as a private brief.
+//
+// Why a focused prompt and NOT a tool the model may call: a model drafting a weak
+// line is exactly the model that won't think to ask for help, so a self-elective
+// coaching tool systematically misses the moments it's most needed. Coupling the
+// coach to the (already rare) proactive beats makes it deterministic, auditable,
+// and off the shopper's critical path — the same reasoning that keeps the judge
+// an always-on independent reading rather than a tool.
+//
+// It is grounded, not free-associating: it reuses the drafter's ENTIRE system
+// prompt (constitution, KB, SOPs, selling method, the dial, hooks/objections,
+// this patron's register + client book, the stage) as its context — so it reuses
+// the cached prefix and cannot coach anything the house's own honesty rules,
+// price posture, or scope forbid. The judge still reviews whatever it inspires.
+// Fail-OPEN: any error/timeout returns null and the line drafts un-coached.
+// Admin toggle: Engagement → House rules → outreach.beatCoach (default ON).
+const BEAT_COACH_TASK =
+  "PAUSE before any line is written and put on your other hat: you are the house's master sales " +
+  "strategist — a private second brain coaching the concierge, never the voice the shopper hears. " +
+  "Read EVERYTHING above: the house's selling method, the assertiveness dial, this patron's register " +
+  "and client book, the stage of the sale, and the whole conversation. Then name the single best play " +
+  "for THIS exact moment. Be specific to THIS person and THIS beat — not generic sales advice. Stay " +
+  "strictly inside the house's honesty rules, price posture, and scope: never coach a discount, a claim, " +
+  "or a pressure the house forbids. You are briefing the concierge who will write the line, not writing " +
+  "it. Reply with one coach_note tool call.";
+
+async function coachBeatLine(
+  apiKey: string,
+  model: string,
+  // deno-lint-ignore no-explicit-any
+  baseSystem: any,
+  // deno-lint-ignore no-explicit-any
+  messages: any[],
+): Promise<{ move: string; tactic: string; avoid: string } | null> {
+  try {
+    // Reuse the drafter's system verbatim (shared cached prefix when it's blocks),
+    // then append the coaching task so the strategist sees the identical context.
+    const system = Array.isArray(baseSystem)
+      ? [...baseSystem, { type: "text", text: BEAT_COACH_TASK }]
+      : (typeof baseSystem === "string" && baseSystem
+        ? baseSystem + "\n\n" + BEAT_COACH_TASK
+        : BEAT_COACH_TASK);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({
+        model: BEAT_COACH_MODEL || model,
+        max_tokens: 220,
+        temperature: 0.4,
+        system,
+        messages: (Array.isArray(messages) && messages.length)
+          ? messages
+          : [{ role: "user", content: "(the shopper has gone quiet — brief the next move)" }],
+        tool_choice: { type: "tool", name: "coach_note" },
+        tools: [{
+          name: "coach_note",
+          description:
+            "Privately brief the concierge on the single best sales play for this exact moment. " +
+            "Not shown to the shopper.",
+          input_schema: {
+            type: "object",
+            properties: {
+              move: {
+                type: "string",
+                description:
+                  "the single best move to make now, named in the house's own selling vocabulary (<=16 words)",
+              },
+              tactic: {
+                type: "string",
+                description:
+                  "one concrete tactic for THIS patron and moment — grounded in their register/history/stage (<=32 words)",
+              },
+              avoid: {
+                type: "string",
+                description: "the one thing NOT to do here (<=16 words)",
+              },
+            },
+            required: ["move", "tactic", "avoid"],
+          },
+        }],
+      }),
+    });
+    if (!res.ok) return null;
+    // deno-lint-ignore no-explicit-any
+    const j = await res.json() as any;
+    // deno-lint-ignore no-explicit-any
+    const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "coach_note");
+    const inp = tool?.input;
+    if (!inp || typeof inp !== "object") return null;
+    const s = (v: unknown) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const move = s(inp.move), tactic = s(inp.tactic), avoid = s(inp.avoid);
+    if (!move && !tactic) return null;
+    return { move, tactic, avoid };
+  } catch {
+    return null;
+  }
+}
+
+// Render the coach's brief as a private system block the drafter acts on but must
+// never quote, mention, or reveal. Empty string when there is no coaching.
+function coachingBlock(c: { move: string; tactic: string; avoid: string } | null): string {
+  if (!c) return "";
+  const lines = [
+    "[SALES STRATEGIST — your house sales lead's private read of THIS moment. " +
+    "Act on it in the line you write; never quote it, name it, or hint it exists.]",
+  ];
+  if (c.move) lines.push("BEST MOVE: " + c.move);
+  if (c.tactic) lines.push("TACTIC: " + c.tactic);
+  if (c.avoid) lines.push("AVOID: " + c.avoid);
+  return "\n\n" + lines.join("\n");
 }
 
 function sseResponse(req: Request, stream: ReadableStream<Uint8Array>): Response {
@@ -4254,6 +4404,22 @@ async function handleChatPost(req: Request): Promise<Response> {
         };
         let text = "";
         let speak = false;
+        // The sales-strategist coach: a second brain that briefs the draft BEFORE
+        // it's written (default ON; Engagement → House rules turns it off). It
+        // reuses the drafter's full system (so it's grounded in the same house
+        // context and reuses the cached prefix) and appends its read as a private
+        // STRATEGY block the drafter acts on but never quotes. Fail-open — no
+        // coaching just means the line drafts as it did before. The judge below
+        // still reviews whatever it inspires.
+        let coaching: { move: string; tactic: string; avoid: string } | null = null;
+        try {
+          const oc = data.config?.outreach as Record<string, unknown> | undefined;
+          if (oc?.beatCoach !== false) {
+            coaching = await coachBeatLine(apiKey, model, system, validated.messages);
+            const block = coachingBlock(coaching);
+            if (block) system.push({ type: "text", text: block });
+          }
+        } catch { /* coach is advisory; never blocks the beat */ }
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -4317,9 +4483,10 @@ async function handleChatPost(req: Request): Promise<Response> {
         let vetoReason: string | null = null;
         if (!held) {
           try {
-            const oj = (await loadConciergeData()).config?.outreach as Record<string, unknown> | undefined;
+            const jcfg = (await loadConciergeData()).config;
+            const oj = jcfg?.outreach as Record<string, unknown> | undefined;
             if (oj?.beatJudge !== false) {
-              const v = await judgeBeatLine(apiKey, text, isNudge ? "nudge" : "opener");
+              const v = await judgeBeatLine(apiKey, text, isNudge ? "nudge" : "opener", houseHonestyRules(jcfg));
               if (v.veto) vetoReason = v.reason || "vetoed by the reach-out judge";
             }
           } catch { /* fail-open */ }
@@ -4340,8 +4507,8 @@ async function handleChatPost(req: Request): Promise<Response> {
                 conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
                 action: vetoReason !== null ? "beat_veto" : "beat_hold", serial: null,
                 payload: vetoReason !== null
-                  ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined }
-                  : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined },
+                  ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined, coaching: coaching ?? undefined }
+                  : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined, coaching: coaching ?? undefined },
                 result: vetoReason !== null ? "vetoed — " + vetoReason : "beat held — nothing new to say",
               }).catch(() => { /* audit failures never break the chat */ });
             }
@@ -4522,7 +4689,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               pgInsert("concierge_actions", {
                 conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
                 action: "beat_action", serial: null,
-                payload: { ...beatAudit, outcome: "spoke" },
+                payload: { ...beatAudit, outcome: "spoke", coaching: coaching ?? undefined },
                 result: String(beatAudit.action ?? ""),
               }).catch(() => { /* audit failures never break the chat */ });
             }
@@ -5131,6 +5298,17 @@ async function handleReengage(req: Request): Promise<Response> {
         "{{tokens}}, no greeting boilerplate. Just the line." + SECTION_PRIVACY + bubbleVoice + houseClause +
         repeatGuard + bubbleBrief + beatNotesClause(data.config);
     }
+    // The sales-strategist coach briefs the bubble draft too (default ON; same
+    // Engagement → House rules toggle). Reuses this bubble's full sys as context
+    // and appends a private STRATEGY block. Fail-open. The judge still reviews.
+    let coaching: { move: string; tactic: string; avoid: string } | null = null;
+    try {
+      const oc = data.config?.outreach as Record<string, unknown> | undefined;
+      if (oc?.beatCoach !== false) {
+        coaching = await coachBeatLine(apiKey, model, sys, [{ role: "user", content: "Write the line now." }]);
+        sys += coachingBlock(coaching);
+      }
+    } catch { /* coach is advisory; never blocks the bubble */ }
     const started = Date.now();
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -5178,7 +5356,7 @@ async function handleReengage(req: Request): Promise<Response> {
       if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
         conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
         action: "beat_hold", serial: null,
-        payload: { kind: "bubble" },
+        payload: { kind: "bubble", coaching: coaching ?? undefined },
         result: "beat held — nothing new to say",
       }).catch(() => { /* audit failures never break the outreach */ });
       return jsonResponse(req, 200, { text: null, hold: true });
@@ -5193,7 +5371,7 @@ async function handleReengage(req: Request): Promise<Response> {
       if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
         conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
         action: "beat_veto", serial: null,
-        payload: { kind: "bubble", line: text, reason: "leaked internal section label", decision: bubbleAudit ?? undefined },
+        payload: { kind: "bubble", line: text, reason: "leaked internal section label", decision: bubbleAudit ?? undefined, coaching: coaching ?? undefined },
         result: "vetoed — leaked internal section label",
       }).catch(() => { /* audit is best-effort */ });
       return jsonResponse(req, 200, { text: null, hold: true });
@@ -5205,12 +5383,12 @@ async function handleReengage(req: Request): Promise<Response> {
     try {
       const oj = data.config?.outreach as Record<string, unknown> | undefined;
       if (oj?.beatJudge !== false) {
-        const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble");
+        const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble", houseHonestyRules(data.config));
         if (v.veto) {
           if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
             conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
             action: "beat_veto", serial: null,
-            payload: { kind: "bubble", line: text, reason: v.reason || "vetoed by the reach-out judge", decision: bubbleAudit ?? undefined },
+            payload: { kind: "bubble", line: text, reason: v.reason || "vetoed by the reach-out judge", decision: bubbleAudit ?? undefined, coaching: coaching ?? undefined },
             result: "vetoed — " + (v.reason || "vetoed by the reach-out judge"),
           }).catch(() => { /* audit is best-effort */ });
           return jsonResponse(req, 200, { text: null, hold: true });
@@ -5259,7 +5437,7 @@ async function handleReengage(req: Request): Promise<Response> {
         pgInsert("concierge_actions", {
           conversation_id: cid, user_id: customer.id, email: customer.email,
           action: "beat_action", serial: null,
-          payload: { ...bubbleAudit, outcome: "spoke" },
+          payload: { ...bubbleAudit, outcome: "spoke", coaching: coaching ?? undefined },
           result: String(bubbleAudit.action ?? ""),
         }).catch(() => { /* audit is best-effort */ });
       }
