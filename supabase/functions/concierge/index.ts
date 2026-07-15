@@ -4835,6 +4835,17 @@ async function handleChatPost(req: Request): Promise<Response> {
               result: "REQUEST_NPS",
             });
           }
+        } else if (!(validated.sessionKey || "").startsWith("qa-")) {
+          // A held wrap-up ask must be as diagnosable as a held beat: the
+          // NPS tab's "Held by the gate" line and the Actions tab both read
+          // payload.npsGate — without this row, "why didn't it ask?" is
+          // invisible exactly when the operator is testing it.
+          pgInsert("concierge_actions", {
+            conversation_id: cidW, user_id: customer?.id ?? null, email: customer?.email ?? null,
+            action: "beat_hold", serial: null,
+            payload: { action: "REQUEST_NPS", via: "wrapup", npsGate: gate, outcome: "held" },
+            result: "held: " + gate.reason,
+          });
         }
       }
     }
