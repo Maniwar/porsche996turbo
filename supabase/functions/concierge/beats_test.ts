@@ -15,6 +15,7 @@ import {
   renderLearningDigest,
   npsSegment,
   npsScore,
+  npsResponseRate,
   npsTriggerGate,
   detractorThemes,
   renderCustomerNps,
@@ -110,6 +111,18 @@ Deno.test("KEEP_WARM is once per section per day, then HOLD", () => {
   const l = ledger({ spentActions: ["KEEP_WARM:wool"] });
   const d = chooseBeatAction(l, undefined, { nowMs: NOW });
   assertEq(d.action, "HOLD", "warm line already given for this section today");
+});
+
+Deno.test("proactiveStyle 'offer' makes the presence beat offer-first, not recite", () => {
+  const l = ledger({ spentActions: [] });
+  const expertise = chooseBeatAction(l, undefined, { nowMs: NOW, proactiveStyle: "expertise" });
+  assertEq(expertise.action, "KEEP_WARM:wool", "same action either way");
+  assert(expertise.detail.includes("GIVE FIRST"), "expertise brief hands over knowledge");
+  const offer = chooseBeatAction(l, undefined, { nowMs: NOW, proactiveStyle: "offer" });
+  assertEq(offer.action, "KEEP_WARM:wool", "offer mode keeps the presence beat");
+  assert(offer.detail.includes("OFFER-FIRST"), "offer brief invites, not recites");
+  assert(/NEVER recite/.test(offer.detail), "offer brief forbids reciting facts at the shopper");
+  assert(!offer.detail.includes("GIVE FIRST"), "offer brief is not the expertise brief");
 });
 
 // ── Escalating proposal cool-off ─────────────────────────────────────────────
@@ -298,6 +311,15 @@ Deno.test("npsScore = %promoters − %detractors; passives ignored in the numera
   assertEq(npsScore([7, 8, 7]), 0, "all passives ⇒ 0 (there ARE responses), not null");
   assertEq(npsScore([]), null, "no responses ⇒ null, never 0");
   assertEq(npsScore([10, 99, -1, 5]), 0, "out-of-range dropped: 1 prom, 1 det over 2 ⇒ 0");
+});
+
+Deno.test("npsResponseRate = responses ÷ offers; null when nothing offered, never a fake 0%", () => {
+  assertEq(npsResponseRate(4, 1), 25, "1 of 4 offers answered ⇒ 25%");
+  assertEq(npsResponseRate(3, 3), 100, "every offer answered ⇒ 100%");
+  assertEq(npsResponseRate(0, 0), null, "no offers ⇒ null — the dashboard shows '—', not 0%");
+  assertEq(npsResponseRate(0, 2), null, "responses without offers still null when offers=0");
+  assertEq(npsResponseRate(2, 3), 150, "more responses than offers is shown, not hidden (window-edge anomaly)");
+  assertEq(npsResponseRate(3, -1), 0, "negative response count clamps to 0");
 });
 
 Deno.test("npsTriggerGate fires once, only at a natural close, past the cooldown", () => {

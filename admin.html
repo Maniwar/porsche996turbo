@@ -946,6 +946,7 @@
     <button class="tab" data-tab="customers" role="tab">Orders &amp; Customers</button>
     <button class="tab" data-tab="conversations" role="tab">Conversations</button>
     <button class="tab" data-tab="conversion" role="tab">Conversion</button>
+    <button class="tab" data-tab="nps" role="tab">NPS</button>
     <button class="tab" data-tab="actions" role="tab">Actions</button>
     <button class="tab" data-tab="website" role="tab">Website</button>
     <button class="tab" data-tab="tools" role="tab">Tools</button>
@@ -2018,27 +2019,6 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="stat"><span class="micro">👍 rate (all-time)<span class="info-badge" title="Thumbs-up ÷ all rated replies, ALL-TIME (feedback rows carry no timestamp, so this cannot be range-scoped). A reply-quality signal, not a conversion metric.">i</span></span><div class="val" id="cv-thumbs">—</div><div class="cv-delta"></div></div>
       </div>
 
-      <!-- NPS — the closed-loop rating (NPS.md): score capture is live in chat;
-           this card reads nps_metrics() so the number here matches the engine. -->
-      <section class="card" id="nps-card" style="display:none;">
-        <div class="card-head">
-          <h3>NPS — session ratings</h3>
-          <span class="micro">%promoters − %detractors over the selected range · detractor themes are the fix-first list · spec: <span class="mono">NPS.md</span></span>
-          <button id="nps-csv" class="btn ghost" type="button" style="margin-left:auto;padding:4px 12px;">Export CSV</button>
-        </div>
-        <div class="cv-kpis" style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:10px;">
-          <div class="stat"><span class="micro">NPS<span class="info-badge" title="%promoters (9–10) − %detractors (0–6), −100…100. '—' means no responses in the range: no data is never shown as a zero.">i</span></span><div class="val" id="nps-score">—</div></div>
-          <div class="stat"><span class="micro">Responses</span><div class="val" id="nps-n">—</div></div>
-          <div class="stat"><span class="micro">Promoters</span><div class="val" id="nps-prom" style="color:var(--ok,#7fae90);">—</div></div>
-          <div class="stat"><span class="micro">Passives</span><div class="val" id="nps-pass">—</div></div>
-          <div class="stat"><span class="micro">Detractors</span><div class="val" id="nps-det" style="color:var(--bad,#c98a6f);">—</div></div>
-        </div>
-        <div id="nps-themes" class="micro" style="margin-bottom:10px;"></div>
-        <div id="nps-extra" class="micro" style="margin-bottom:10px;"></div>
-        <div id="nps-chart" class="cv-chart" style="margin-bottom:12px;"></div>
-        <div id="nps-recent"></div>
-      </section>
-
       <!-- The behavioral funnel over time — visits → chat → spoke → register → commission -->
       <section class="card">
         <div class="card-head">
@@ -2142,6 +2122,50 @@ need to ask my partner | Of course — the hold keeps their number while they ta
     </div>
 
     <!-- ============ TAB 7 : WEBSITE (storefront CMS) ============ -->
+    <div id="panel-nps" class="panel">
+      <div class="panel-head">
+        <span class="micro">The satisfaction loop</span>
+        <h2>NPS</h2>
+      </div>
+      <p class="note">The closed rating loop (<span class="mono">NPS.md</span>): the concierge asks <b>once</b> at a
+        natural close (a pure, unit-tested gate), the score and reason are captured deterministically, the reason is
+        categorized against the vocabulary below, and each customer's history quietly grounds the coach — never quoted
+        back at the shopper. QA traffic (<span class="mono">qa-</span> sessions) never counts toward any number here.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <span class="micro">Range</span>
+        <span id="nps-range" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
+      </div>
+
+      <section class="card" id="nps-card">
+        <div class="card-head">
+          <h3>NPS — session ratings</h3>
+          <span class="micro">%promoters − %detractors · offers → holds → responses → rate · detractor themes are the fix-first list · spec: <span class="mono">NPS.md</span></span>
+          <button id="nps-csv" class="btn ghost" type="button" style="margin-left:auto;padding:4px 12px;">Export CSV</button>
+        </div>
+        <div class="cv-kpis" style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:10px;">
+          <div class="stat"><span class="micro">NPS<span class="info-badge" title="%promoters (9–10) − %detractors (0–6), −100…100. '—' means no responses in the range: no data is never shown as a zero.">i</span></span><div class="val" id="nps-score">—</div></div>
+          <div class="stat"><span class="micro">Offers<span class="info-badge" title="Times the survey line was actually spoken in the range (beat_action rows with action REQUEST_NPS). The gate holds below are the times it was considered and deliberately NOT asked.">i</span></span><div class="val" id="nps-offers">—</div></div>
+          <div class="stat"><span class="micro">Responses</span><div class="val" id="nps-n">—</div></div>
+          <div class="stat"><span class="micro">Response rate<span class="info-badge" title="Responses ÷ offers, both within the range. '—' when nothing was offered — no data is never shown as a zero. Can exceed 100% when a rating lands just after the range's first day's offer.">i</span></span><div class="val" id="nps-rr">—</div></div>
+          <div class="stat"><span class="micro">Promoters</span><div class="val" id="nps-prom" style="color:var(--ok,#7fae90);">—</div></div>
+          <div class="stat"><span class="micro">Passives</span><div class="val" id="nps-pass">—</div></div>
+          <div class="stat"><span class="micro">Detractors</span><div class="val" id="nps-det" style="color:var(--bad,#c98a6f);">—</div></div>
+        </div>
+        <div id="nps-themes" class="micro" style="margin-bottom:10px;"></div>
+        <div id="nps-holds" class="micro" style="margin-bottom:10px;"></div>
+        <div id="nps-chart" class="cv-chart" style="margin-bottom:12px;"></div>
+        <div id="nps-extra" class="micro" style="margin-bottom:10px;"></div>
+        <div id="nps-recent"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>By category</h3>
+          <span class="micro">Mentions in the range against the admin-managed vocabulary (<span class="mono">nps_categories</span>) — outlined = detractor-focus, the fix-first half. ✎ on a response re-categorizes (logged as human).</span>
+        </div>
+        <div id="nps-cats"></div>
+      </section>
+    </div>
     <div id="panel-website" class="panel">
       <div class="panel-head">
         <span class="micro">Storefront copy &amp; SEO</span>
@@ -2783,7 +2807,7 @@ async function doSignOut() {
   route();
 }
 
-const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'actions', 'website', 'tools', 'evals', 'edition'];
+const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'nps', 'actions', 'website', 'tools', 'evals', 'edition'];
 function activateTab(name, fromHistory) {
   document.querySelectorAll('nav.tabs .tab').forEach(function (b) {
     b.classList.toggle('on', b.dataset.tab === name);
@@ -2798,6 +2822,7 @@ function activateTab(name, fromHistory) {
     try { history.pushState({ tab: name }, '', '#' + name); } catch (eH) { /* ignore */ }
   }
   if (name === 'conversion') loadConversion();
+  if (name === 'nps') loadNps();
   if (name === 'tuning') autoGrowAll('#panel-tuning .tsub.on');
   if (name === 'knowledge') autoGrowAll('#kb-list');
   if (name === 'procedures') autoGrowAll('#sop-list');
@@ -8677,7 +8702,7 @@ async function renderNpsCard() {
     if (th2) th2.textContent = 'NPS unavailable — ' + msg;
     console.warn('[concierge-admin] nps_metrics: ' + msg);
   };
-  const days = (state.cvRange === undefined || state.cvRange === null) ? 30 : (state.cvRange || 3650);
+  const days = (state.npsRange === undefined || state.npsRange === null) ? 30 : (state.npsRange || 3650);
   try {
     const r = await sb.rpc('nps_metrics', { p_days: days });
     if (r.error) { npsFail(r.error.message || JSON.stringify(r.error)); return; }
@@ -8689,6 +8714,8 @@ async function renderNpsCard() {
     $('nps-prom').textContent = String(m.promoters || 0);
     $('nps-pass').textContent = String(m.passives || 0);
     $('nps-det').textContent = String(m.detractors || 0);
+    if ($('nps-offers')) $('nps-offers').textContent = String(m.offers || 0);
+    if ($('nps-rr')) $('nps-rr').textContent = (m.response_rate === null || m.response_rate === undefined) ? '—' : (m.response_rate + '%');
     const th = $('nps-themes'); th.textContent = '';
     const det = (m.detractor_themes || []).slice(0, 5);
     if (det.length) {
@@ -8696,6 +8723,45 @@ async function renderNpsCard() {
       th.appendChild(document.createTextNode(det.map(function (t) { return t.slug + ' ×' + t.n; }).join(' · ')));
     } else if ((m.responses || 0) > 0) {
       th.appendChild(document.createTextNode('No detractor themes in the range — nothing to fix first.'));
+    }
+    // Why it was NOT asked — the gate's own accounting (payload.npsGate).
+    const hd = $('nps-holds');
+    if (hd) {
+      hd.textContent = '';
+      const holds = m.gate_holds || [];
+      if (holds.length) {
+        hd.appendChild(el('b', null, 'Held by the gate (not asked): '));
+        hd.appendChild(document.createTextNode(holds.map(function (h) { return h.reason + ' ×' + h.n; }).join(' · ')));
+      }
+    }
+    // By category — the full vocabulary with counts, zeros included, so the
+    // operator sees the classifier working (or not) at a glance.
+    const catsEl = $('nps-cats');
+    if (catsEl) {
+      catsEl.textContent = '';
+      const vocab = state.npsCats || [];
+      const totBy = {}; (m.themes || []).forEach(function (t) { totBy[t.slug] = t.n; });
+      const detBy = {}; (m.detractor_themes || []).forEach(function (t) { detBy[t.slug] = t.n; });
+      var maxN = 1; (m.themes || []).forEach(function (t) { if (t.n > maxN) maxN = t.n; });
+      vocab.forEach(function (c) {
+        const n = totBy[c.slug] || 0, dn = detBy[c.slug] || 0;
+        const row = el('div', null);
+        row.style.cssText = 'display:flex;gap:12px;align-items:center;padding:5px 0;border-top:1px solid rgba(196,155,91,.12);';
+        const lab = el('span', 'micro', c.label || c.slug);
+        lab.style.cssText = 'flex:0 0 170px;' + (c.detractor_focus ? 'font-weight:700;' : '');
+        lab.title = c.slug + (c.detractor_focus ? ' · detractor-focus (fix-first)' : '');
+        row.appendChild(lab);
+        const barWrap = el('div', null);
+        barWrap.style.cssText = 'flex:1;height:8px;border-radius:4px;background:rgba(196,155,91,.10);overflow:hidden;';
+        const bar = el('div', null);
+        bar.style.cssText = 'height:100%;width:' + Math.round(n / maxN * 100) + '%;background:' +
+          (c.detractor_focus ? 'var(--bad,#c98a6f)' : 'var(--ok,#7fae90)') + ';opacity:.75;';
+        barWrap.appendChild(bar);
+        row.appendChild(barWrap);
+        row.appendChild(el('span', 'micro', n + (dn ? ' (' + dn + ' from detractors)' : '')));
+        catsEl.appendChild(row);
+      });
+      if (!vocab.length) catsEl.appendChild(el('div', 'micro', 'No categories in the vocabulary — seed nps_categories.'));
     }
     await loadNpsMaps();
     // ---- Trend: segment counts per bucket (NPS itself rides the tooltip, so
@@ -8827,8 +8893,39 @@ async function renderNpsCard() {
   } catch (e) { npsFail((e && e.message) || String(e)); }
 }
 
-async function loadConversion() {
+/* ---- The NPS tab (NPS.md): offers → holds → responses → rate, by category. ----
+   The card + calculation are the same nps_metrics() everywhere; the tab only
+   adds the reporting surface the metrics home never had room for. */
+async function loadNpsCats() {
+  if (state.npsCats) return state.npsCats;
+  try {
+    const r = await sb.from('nps_categories')
+      .select('slug,label,detractor_focus,enabled,sort')
+      .order('sort', { ascending: true });
+    state.npsCats = (r.data || []).filter(function (c) { return c.enabled !== false; });
+  } catch (e) { state.npsCats = []; }
+  return state.npsCats;
+}
+const NPS_RANGES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [0, 'All time']];
+function npsRangeRow() {
+  const holder = $('nps-range');
+  if (!holder) return;
+  holder.textContent = '';
+  const cur = (state.npsRange === undefined) ? 30 : state.npsRange;
+  NPS_RANGES.forEach(function (r) {
+    const c = el('button', 'ord-chip' + (cur === r[0] ? ' on' : ''), r[1]);
+    c.type = 'button';
+    c.addEventListener('click', function () { state.npsRange = r[0]; loadNps(); });
+    holder.appendChild(c);
+  });
+}
+async function loadNps() {
+  npsRangeRow();
+  await loadNpsCats();
   renderNpsCard();
+}
+
+async function loadConversion() {
   cvChipRow('cv-range', CV_RANGES, 'cvRange', 30);
   cvChipRow('cv-gran', CV_GRANS, 'cvGran', 'auto');
   cvChipRow('cv-compare', CV_CMPS, 'cvCmp', 'prior');

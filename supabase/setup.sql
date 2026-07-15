@@ -1027,6 +1027,26 @@ begin
     from resp, lateral jsonb_array_elements(coalesce(categories, '[]'::jsonb)) c
     where nullif(c->>'slug', '') is not null
     group by 1
+  ),
+  -- The survey was actually SPOKEN: beat_action rows carrying REQUEST_NPS.
+  -- (Not coach-scoped — beat rows carry no coach — so response_rate is
+  -- reported only for the all-coaches view, never approximated.)
+  offers as (
+    select count(*) as n
+    from public.concierge_actions a
+    where a.action = 'beat_action'
+      and a.payload->>'action' = 'REQUEST_NPS'
+      and a.created_at > now() - make_interval(days => v_days)
+  ),
+  -- The gate said NO and logged why (payload.npsGate) — the "why it was
+  -- correctly not asked" accounting, mirroring npsTriggerGate's reasons.
+  holds as (
+    select coalesce(a.payload->'npsGate'->>'reason', '?') as reason, count(*) as n
+    from public.concierge_actions a
+    where a.action in ('beat_action', 'beat_hold')
+      and (a.payload->'npsGate'->>'ask') = 'false'
+      and a.created_at > now() - make_interval(days => v_days)
+    group by 1
   )
   select jsonb_build_object(
     'window_days', v_days,
@@ -1039,6 +1059,16 @@ begin
     'promoters',  (select prom from seg),
     'passives',   (select pass from seg),
     'detractors', (select det from seg),
+    'offers', (select n from offers),
+    -- responses ÷ offers, both in-window (npsResponseRate in beats.ts is the
+    -- unit-tested mirror). Null — never a fake zero — when nothing was
+    -- offered, or when coach-scoped (offers cannot be coach-scoped).
+    'response_rate', case when p_coach is null and (select n from offers) > 0
+                          then round((select n from seg)::numeric / (select n from offers) * 100)
+                          else null end,
+    'gate_holds', coalesce((
+      select jsonb_agg(jsonb_build_object('reason', reason, 'n', n) order by n desc, reason)
+      from holds), '[]'::jsonb),
     'themes', coalesce((
       select jsonb_agg(jsonb_build_object('slug', slug, 'n', n) order by n desc, slug)
       from cats), '[]'::jsonb),

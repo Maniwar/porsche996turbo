@@ -345,6 +345,18 @@ export function npsScore(scores: number[]): number | null {
   return Math.round(((prom - det) / valid.length) * 100);
 }
 
+/**
+ * Survey RESPONSE RATE — responses ÷ offers, as a whole percent. Null (never a
+ * fake 0%) when nothing was offered. Deliberately uncapped: more responses
+ * than offers is a data anomaly the dashboard should show, not hide.
+ * nps_metrics() in setup.sql mirrors this formula.
+ */
+export function npsResponseRate(offered: number, responded: number): number | null {
+  if (!Number.isFinite(offered) || offered <= 0) return null;
+  const r = Number.isFinite(responded) ? Math.max(0, responded) : 0;
+  return Math.round((r / offered) * 100);
+}
+
 export interface NpsTriggerState {
   enabled: boolean;
   concluded: boolean;              // a natural end reached (order placed / goal met / wrap-up / "that's all")
