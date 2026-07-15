@@ -31,6 +31,17 @@
     return (typeof u === 'string') ? u.replace(/^\s+|\s+$/g, '').replace(/\/+$/, '') : '';
   }
   function supaKey() {
+    /* The studio lets the operator save a working publishable key in this
+       browser (its key field) precisely because a baked key can be rotated
+       out from under the page. Honor the same override here — otherwise the
+       admin's magic-link session sits in shared storage while the widget,
+       stuck on a dead baked key, can neither read nor refresh it. Publishable
+       keys only: a secret key must never run in the widget. */
+    try {
+      var ak = window.localStorage.getItem('porsche_admin_key') || '';
+      ak = ak.replace(/^\s+|\s+$/g, '');
+      if (ak && ak.indexOf('sb_secret') !== 0) { return ak; }
+    } catch (eK) { /* ignore */ }
     var k = cfg().supabaseAnonKey;
     return (typeof k === 'string') ? k.replace(/^\s+|\s+$/g, '') : '';
   }
