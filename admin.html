@@ -6426,20 +6426,29 @@ async function loadCustomers(more) {
     });
   } catch (e) { /* the merge is additive — orders still render without it */ }
   // Inquiry leads belong in the book too — on an inquiry-mode site they ARE
-  // the pipeline. Merged by email; a contact who later signs in or orders
-  // simply gains standing (the earlier merges own the key).
+  // the pipeline. VERIFIED ties come from meta.user_id (the submitter was
+  // signed in — the identity is real); everything else is merged by the email
+  // the visitor TYPED, which proves nothing — labelled unverified so a typed
+  // address can never impersonate a patron's standing.
   try {
     const ires = await sb.from('concierge_inquiries')
-      .select('email,name,kind,created_at')
+      .select('email,name,kind,created_at,meta')
       .not('email', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1000);
     (ires.data || []).forEach(function (inq) {
-      const key = (inq.email || 'unknown').toLowerCase();
+      const verifiedId = (inq.meta && inq.meta.user_id) ? inq.meta.user_id : null;
+      const em = (verifiedId && inq.meta.user_email) ? inq.meta.user_email : inq.email;
+      const key = (em || 'unknown').toLowerCase();
       if (!byKey.has(key)) {
-        byKey.set(key, { email: inq.email, name: inq.name || '', user_id: null, orders: [], latest: inq.created_at, lead: true });
-      } else if (!byKey.get(key).name && inq.name) {
-        byKey.get(key).name = inq.name;
+        byKey.set(key, {
+          email: em, name: inq.name || '', user_id: verifiedId, orders: [],
+          latest: inq.created_at, lead: true, leadVerified: !!verifiedId
+        });
+      } else {
+        const c = byKey.get(key);
+        if (!c.name && inq.name) c.name = inq.name;
+        if (!c.user_id && verifiedId) c.user_id = verifiedId;
       }
     });
   } catch (e) { /* additive — sites without the table simply skip it */ }
@@ -6448,7 +6457,7 @@ async function loadCustomers(more) {
     return {
       email: c.email, name: c.name || '—', user_id: c.user_id || null, orders: c.orders,
       notes: notesByKey.get((c.email || 'unknown').toLowerCase()) || [],
-      count: active, tier: c.orders.length ? tierFor(Math.max(1, active)) : (c.lead ? 'Inquiry' : 'Signed in'),
+      count: active, tier: c.orders.length ? tierFor(Math.max(1, active)) : (c.lead ? (c.leadVerified ? 'Inquiry ✓' : 'Inquiry (unverified)') : 'Signed in'),
       ltv: active * PRICE, latest: c.orders.length ? c.orders[0].placed_at : c.latest
     };
   }).sort(function (a, b) {
