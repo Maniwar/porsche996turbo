@@ -953,6 +953,11 @@ alter table public.nps_responses enable row level security;
 drop policy if exists nps_responses_admin_read on public.nps_responses;
 create policy nps_responses_admin_read on public.nps_responses
   for select using (public.is_concierge_admin());
+-- Admins may re-categorize a response (category_source flips to 'human' in the
+-- studio); the score/reason themselves are never edited from the UI.
+drop policy if exists nps_responses_admin_update on public.nps_responses;
+create policy nps_responses_admin_update on public.nps_responses
+  for update using (public.is_concierge_admin()) with check (public.is_concierge_admin());
 
 -- Admin-managed classification vocabulary. detractor_focus flags the actionable
 -- "why unhappy" themes the coach + dashboards emphasise. prompt_hint steers the

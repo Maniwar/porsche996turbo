@@ -2024,6 +2024,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="card-head">
           <h3>NPS — session ratings</h3>
           <span class="micro">%promoters − %detractors over the selected range · detractor themes are the fix-first list · spec: <span class="mono">NPS.md</span></span>
+          <button id="nps-csv" class="btn ghost" type="button" style="margin-left:auto;padding:4px 12px;">Export CSV</button>
         </div>
         <div class="cv-kpis" style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:10px;">
           <div class="stat"><span class="micro">NPS<span class="info-badge" title="%promoters (9–10) − %detractors (0–6), −100…100. '—' means no responses in the range: no data is never shown as a zero.">i</span></span><div class="val" id="nps-score">—</div></div>
@@ -2033,6 +2034,8 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <div class="stat"><span class="micro">Detractors</span><div class="val" id="nps-det" style="color:var(--bad,#c98a6f);">—</div></div>
         </div>
         <div id="nps-themes" class="micro" style="margin-bottom:10px;"></div>
+        <div id="nps-extra" class="micro" style="margin-bottom:10px;"></div>
+        <div id="nps-chart" class="cv-chart" style="margin-bottom:12px;"></div>
         <div id="nps-recent"></div>
       </section>
 
@@ -8641,7 +8644,7 @@ const cvFmtPct = function (v) { return (Math.round(v * 10) / 10) + '%'; };
 async function loadNpsMaps() {
   try {
     const r = await sb.from('nps_responses')
-      .select('conversation_id,score,segment,reason_text,categories,created_at,concierge_conversations(user_email)')
+      .select('id,conversation_id,coach_id,score,segment,reason_text,categories,created_at,concierge_conversations(user_email)')
       .order('created_at', { ascending: false }).limit(500);
     if (r.error) return;
     const byConvo = {}, byEmail = {};
@@ -8686,16 +8689,129 @@ async function renderNpsCard() {
       th.appendChild(document.createTextNode('No detractor themes in the range — nothing to fix first.'));
     }
     await loadNpsMaps();
+    // ---- Trend: segment counts per bucket (NPS itself rides the tooltip, so
+    // the chart never needs a negative axis); window matches the card range.
+    try {
+      const nowMs = Date.now();
+      const fromMs = nowMs - days * 86400000;
+      const bk = cvBuckets(fromMs, nowMs, state.cvGran);
+      const segIdx = { promoter: 0, passive: 1, detractor: 2 };
+      const counts = [bk.starts.map(function () { return 0; }), bk.starts.map(function () { return 0; }), bk.starts.map(function () { return 0; })];
+      (state.npsRows || []).forEach(function (row) {
+        const t = new Date(row.created_at).getTime();
+        if (t < fromMs) return;
+        const i = bk.idx(t); if (i < 0) return;
+        const si = segIdx[row.segment]; if (si === undefined) return;
+        counts[si][i]++;
+      });
+      const anyData = counts.some(function (arr) { return arr.some(function (v) { return v > 0; }); });
+      const chartEl = $('nps-chart');
+      if (chartEl) {
+        chartEl.textContent = '';
+        if (anyData) cvChart(chartEl, {
+          labels: bk.labels, gran: bk.gran,
+          aria: 'NPS responses by segment over time, per ' + bk.gran,
+          series: [
+            { name: 'Promoters', color: '#7fae90', values: counts[0] },
+            { name: 'Passives', color: '#b6a98f', values: counts[1] },
+            { name: 'Detractors', color: '#c98a6f', values: counts[2] },
+          ],
+          tipNote: function (i) {
+            const n = counts[0][i] + counts[1][i] + counts[2][i];
+            const nps = n ? Math.round(((counts[0][i] - counts[2][i]) / n) * 100) : null;
+            return n ? ('bucket NPS ' + nps + ' · ' + n + ' response' + (n === 1 ? '' : 's')) : 'no responses';
+          }
+        });
+      }
+    } catch (eC) { /* the chart is optional */ }
+    // ---- Per-coach + segment movement (from the loaded rows) ----
+    const extra = $('nps-extra');
+    if (extra) {
+      extra.textContent = '';
+      const byCoach = {};
+      (state.npsRows || []).forEach(function (row) {
+        const k = row.coach_id || '—';
+        (byCoach[k] = byCoach[k] || []).push(row.score);
+      });
+      const coaches = Object.keys(byCoach);
+      if (coaches.length > 1) {
+        const parts = coaches.map(function (k) {
+          const arr = byCoach[k];
+          let pr = 0, de = 0;
+          arr.forEach(function (sc2) { if (sc2 >= 9) pr++; else if (sc2 <= 6) de++; });
+          return k + ' · n=' + arr.length + ' · NPS ' + Math.round(((pr - de) / arr.length) * 100);
+        });
+        extra.appendChild(el('div', null, 'By coach: ' + parts.join('  |  ')));
+      }
+      const RANK = { detractor: 0, passive: 1, promoter: 2 };
+      let up = 0, down = 0; const atRisk = [];
+      Object.keys(state.npsByEmail || {}).forEach(function (em) {
+        const all = (state.npsRows || []).filter(function (row) {
+          const e2 = row.concierge_conversations && row.concierge_conversations.user_email;
+          return e2 && String(e2).toLowerCase() === em;
+        });
+        if (all.length < 2) return;
+        const newest = all[0], oldest = all[all.length - 1]; // npsRows is newest-first
+        const d = RANK[newest.segment] - RANK[oldest.segment];
+        if (d > 0) up++;
+        if (d < 0) { down++; atRisk.push(em); }
+      });
+      if (up || down) {
+        extra.appendChild(el('div', null,
+          'Segment movement (repeat raters): ↑ ' + up + ' improved · ↓ ' + down + ' declined' +
+          (atRisk.length ? ' — at risk: ' + atRisk.slice(0, 3).join(', ') : '')));
+      }
+    }
+    // ---- CSV export (bind once) ----
+    const csvBtn = $('nps-csv');
+    if (csvBtn && !csvBtn._bound) {
+      csvBtn._bound = true;
+      csvBtn.addEventListener('click', function () {
+        const head = ['date', 'score', 'segment', 'coach', 'categories', 'reason', 'conversation_id'];
+        const esc2 = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+        const lines = [head.join(',')].concat((state.npsRows || []).map(function (row) {
+          return [row.created_at, row.score, row.segment, row.coach_id || '',
+            (row.categories || []).map(function (c) { return c && c.slug; }).filter(Boolean).join('|'),
+            row.reason_text || '', row.conversation_id || ''].map(esc2).join(',');
+        }));
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+        const aEl = document.createElement('a');
+        aEl.href = URL.createObjectURL(blob);
+        aEl.download = 'nps-responses.csv';
+        aEl.click();
+        setTimeout(function () { URL.revokeObjectURL(aEl.href); }, 5000);
+      });
+    }
     const rec = $('nps-recent'); rec.textContent = '';
     const rows = (state.npsRows || []).slice(0, 8);
-    if (rows.length) rec.appendChild(el('div', 'micro', 'Recent ratings — the reason is the lever:'));
+    if (rows.length) rec.appendChild(el('div', 'micro', 'Recent ratings — the reason is the lever (✎ re-categorizes):'));
     rows.forEach(function (row) {
       const line = el('div', null);
       line.style.cssText = 'display:flex;gap:10px;align-items:baseline;padding:4px 0;border-top:1px solid rgba(196,155,91,.12);';
       line.appendChild(npsSegBadge(row.segment, row.score));
       const cats = (row.categories || []).map(function (c) { return c && c.slug; }).filter(Boolean).join(', ');
       const why = (row.reason_text || '').slice(0, 120) || '(no reason given)';
-      line.appendChild(el('span', 'micro', why + (cats ? '  [' + cats + ']' : '')));
+      const txtEl = el('span', 'micro', why + (cats ? '  [' + cats + ']' : ''));
+      line.appendChild(txtEl);
+      // Human re-categorization — logged as category_source='human' (NPS.md §4).
+      if (row.id !== undefined || row.conversation_id) {
+        const fix = el('button', 'btn ghost', '✎'); fix.type = 'button';
+        fix.title = 'Re-categorize (comma-separated slugs from the vocabulary)';
+        fix.style.cssText = 'padding:0 8px;font-size:11px;';
+        fix.addEventListener('click', async function () {
+          const cur = (row.categories || []).map(function (c) { return c && c.slug; }).filter(Boolean).join(', ');
+          const inp = prompt('Categories for this response (comma-separated slugs):', cur);
+          if (inp === null) return;
+          const slugs = inp.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean).slice(0, 3);
+          const q = sb.from('nps_responses')
+            .update({ categories: slugs.map(function (g) { return { slug: g }; }), category_source: 'human' });
+          const r2 = await (row.id !== undefined ? q.eq('id', row.id) : q.eq('conversation_id', row.conversation_id));
+          if (r2.error) { toast('Re-categorize failed: ' + r2.error.message, true); return; }
+          toast('Re-categorized');
+          state.npsByEmail = null; renderNpsCard();
+        });
+        line.appendChild(fix);
+      }
       line.appendChild(el('span', 'micro', fmtWhen(row.created_at)));
       rec.appendChild(line);
     });
