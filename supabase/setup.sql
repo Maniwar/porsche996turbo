@@ -995,6 +995,13 @@ declare
   v_days int := greatest(coalesce(p_days, 30), 1);
   v jsonb;
 begin
+  -- Callable by the admin studio (JWT must be a concierge admin) and by the
+  -- edge function (service role) — the get_edition() guard pattern. Aggregate
+  -- only; never exposes an individual row.
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
   with resp as (
     select r.score, r.segment, r.categories
     from public.nps_responses r
@@ -1036,7 +1043,8 @@ begin
   ) into v;
   return v;
 end $$;
-revoke execute on function public.nps_metrics(int, text) from public, anon, authenticated;
+grant execute on function public.nps_metrics(int, text) to authenticated;
+revoke execute on function public.nps_metrics(int, text) from public, anon;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. SEED DATA (admins, config, KB, SOPs, forms, goals) — safe to re-run

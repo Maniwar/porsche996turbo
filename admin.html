@@ -1462,6 +1462,23 @@
             <input type="checkbox" id="cfg-beat-audit">
             <span class="micro"><strong>Log held &amp; vetoed beats (diagnostic)</strong> <span class="info-badge" title="Records a row under Actions every time a proactive beat stays quiet ('held') or the reviewer kills a line ('vetoed'), so you can diagnose why the concierge is silent. These are the highest-volume rows in the log and nothing operational needs them — leave OFF at scale, turn ON only while troubleshooting. The functional 'spoke' rows (which enforce offer-once) are always kept regardless.">i</span></span>
           </label>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(196,155,91,.18);">
+            <label class="ck-check" style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="cfg-nps-on" checked>
+              <span class="micro"><strong>Ask for a session rating after a sale or a met goal (NPS)</strong> <span class="info-badge" title="At a natural close — an order placed or a conversation goal met — the concierge asks ONE warm rating question and shows a tappable 0–10 scale. Once per conversation, never while its own question is pending, never inside the per-patron cooldown, and the invitation line still passes the reach-out reviewer. The follow-up 'what made you give that score?' is captured and auto-categorized; see the NPS card on the Conversion tab.">i</span></span>
+            </label>
+            <div class="ed-grid" style="margin-top:10px;">
+              <div><label class="micro" for="cfg-nps-min">Only after the conversation has run (minutes) <span class="info-badge" title="A session shorter than this is never surveyed — a five-second bounce isn't worth a rating.">i</span></label>
+                <input type="number" id="cfg-nps-min" class="mono-field" data-unit="min" min="0" step="1" placeholder="3"></div>
+              <div><label class="micro" for="cfg-nps-cool">Don't re-survey the same patron for (days) <span class="info-badge" title="Over-prompting lowers both response rate and trust. 30 days is a sane default.">i</span></label>
+                <input type="number" id="cfg-nps-cool" class="mono-field" data-unit="days" min="0" step="1" placeholder="30"></div>
+            </div>
+            <div style="margin-top:10px;">
+              <label class="micro" for="cfg-nps-q">The rating question (one line)</label>
+              <input type="text" id="cfg-nps-q" class="mono-field" style="width:100%;" maxlength="300"
+                placeholder="Before you go — how likely are you to recommend us to a friend, 0 to 10?">
+            </div>
+          </div>
           <div style="margin-top:12px;">
             <label class="micro" for="cfg-proactive-style">When it engages first, the concierge should… <span class="info-badge" title="How the proactive 'presence' beat opens when no specific sale action fits. GIVE EXPERTISE hands over a piece of house knowledge — right for a repeat-purchase clientele who own things and have a history. OFFER TO SHOW invites the shopper to see or arrange one concrete thing (a photo, a video, the documents, a viewing, an offer) — right for a single-item INQUIRY page, where reciting facts at a first-time shopper reads as 'inventorying' and gets vetoed. Stamped inquiry sites default to Offer.">i</span></label>
             <select id="cfg-proactive-style" class="mono-field">
@@ -2000,6 +2017,24 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="stat"><span class="micro">Conversations<span class="info-badge" title="Conversations started in the range (by created_at), signed-in and anonymous alike.">i</span></span><div class="val" id="cv-convos">—</div><div class="cv-delta" id="cv-convos-d"></div></div>
         <div class="stat"><span class="micro">👍 rate (all-time)<span class="info-badge" title="Thumbs-up ÷ all rated replies, ALL-TIME (feedback rows carry no timestamp, so this cannot be range-scoped). A reply-quality signal, not a conversion metric.">i</span></span><div class="val" id="cv-thumbs">—</div><div class="cv-delta"></div></div>
       </div>
+
+      <!-- NPS — the closed-loop rating (NPS.md): score capture is live in chat;
+           this card reads nps_metrics() so the number here matches the engine. -->
+      <section class="card" id="nps-card" style="display:none;">
+        <div class="card-head">
+          <h3>NPS — session ratings</h3>
+          <span class="micro">%promoters − %detractors over the selected range · detractor themes are the fix-first list · spec: <span class="mono">NPS.md</span></span>
+        </div>
+        <div class="cv-kpis" style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:10px;">
+          <div class="stat"><span class="micro">NPS<span class="info-badge" title="%promoters (9–10) − %detractors (0–6), −100…100. '—' means no responses in the range: no data is never shown as a zero.">i</span></span><div class="val" id="nps-score">—</div></div>
+          <div class="stat"><span class="micro">Responses</span><div class="val" id="nps-n">—</div></div>
+          <div class="stat"><span class="micro">Promoters</span><div class="val" id="nps-prom" style="color:var(--ok,#7fae90);">—</div></div>
+          <div class="stat"><span class="micro">Passives</span><div class="val" id="nps-pass">—</div></div>
+          <div class="stat"><span class="micro">Detractors</span><div class="val" id="nps-det" style="color:var(--bad,#c98a6f);">—</div></div>
+        </div>
+        <div id="nps-themes" class="micro" style="margin-bottom:10px;"></div>
+        <div id="nps-recent"></div>
+      </section>
 
       <!-- The behavioral funnel over time — visits → chat → spoke → register → commission -->
       <section class="card">
@@ -3441,6 +3476,11 @@ async function loadConfig() {
   $('cfg-substance-gate').checked = o.substanceGate !== false; // default: gated
   if ($('cfg-beat-coach')) $('cfg-beat-coach').checked = o.beatCoach !== false; // default: coached
   if ($('cfg-beat-judge')) $('cfg-beat-judge').checked = o.beatJudge !== false; // default: reviewed
+  const onps = (o.nps && typeof o.nps === 'object') ? o.nps : {};
+  if ($('cfg-nps-on'))   $('cfg-nps-on').checked = onps.enabled !== false; // default: asked
+  if ($('cfg-nps-min'))  $('cfg-nps-min').value  = (typeof onps.minMinutes  === 'number') ? onps.minMinutes  : '';
+  if ($('cfg-nps-cool')) $('cfg-nps-cool').value = (typeof onps.cooldownDays === 'number') ? onps.cooldownDays : '';
+  if ($('cfg-nps-q'))    $('cfg-nps-q').value    = (typeof onps.question === 'string') ? onps.question : '';
   if ($('cfg-beat-audit')) $('cfg-beat-audit').checked = o.beat_audit_log !== false; // default: log (demo); stamped sites seed false
   if ($('cfg-proactive-style')) $('cfg-proactive-style').value = (o.proactive_style === 'offer') ? 'offer' : 'expertise';
   $('cfg-anon-nudges').checked = o.anonNudges === true; // default: off
@@ -3855,6 +3895,16 @@ async function saveEngagement() {
   o.substanceGate = $('cfg-substance-gate').checked;
   if ($('cfg-beat-coach')) o.beatCoach = $('cfg-beat-coach').checked;
   if ($('cfg-beat-judge')) o.beatJudge = $('cfg-beat-judge').checked;
+  if ($('cfg-nps-on')) {
+    const nps = { enabled: $('cfg-nps-on').checked };
+    const nMin = parseFloat($('cfg-nps-min') ? $('cfg-nps-min').value : '');
+    const nCool = parseFloat($('cfg-nps-cool') ? $('cfg-nps-cool').value : '');
+    const nQ = ($('cfg-nps-q') ? $('cfg-nps-q').value : '').trim();
+    if (isFinite(nMin) && nMin >= 0) nps.minMinutes = nMin;
+    if (isFinite(nCool) && nCool >= 0) nps.cooldownDays = nCool;
+    if (nQ) nps.question = nQ.slice(0, 300);
+    o.nps = nps;
+  }
   if ($('cfg-beat-audit')) o.beat_audit_log = $('cfg-beat-audit').checked;
   if ($('cfg-proactive-style')) o.proactive_style = ($('cfg-proactive-style').value === 'offer') ? 'offer' : 'expertise';
   o.anonNudges = $('cfg-anon-nudges').checked;
@@ -6201,6 +6251,7 @@ function isIpLike(s) {
 }
 
 async function loadCustomers(more) {
+  if (!state.npsByEmail) loadNpsMaps().then(function () { try { renderCustomers(); } catch (e) {} });
   if (!more) { pageState.cust = 0; state.custSel = new Set(); state.patSel = new Set(); state.custChip = ''; state._custJumpDone = false; }
   const serialQ = fkw('cust-serial'), statusQ = fval('cust-status'),
         cwQ = fval('cust-variant'), giftQ = fval('cust-gift');
@@ -7259,6 +7310,13 @@ function renderPatrons(list, q) {
     meta.appendChild(document.createTextNode(' · ' + c.count + (c.count === 1 ? ' car' : ' cars') +
       ' · last ' + fmtWhen(c.latest)));
     head.appendChild(meta);
+    // The patron's rating standing (NPS.md), when they have one on file.
+    const pnps = (state.npsByEmail || {})[(c.email || '').toLowerCase()];
+    if (pnps && pnps.latest) {
+      const pb = npsSegBadge(pnps.latest.segment, pnps.latest.score);
+      pb.title = pnps.n + ' rating' + (pnps.n === 1 ? '' : 's') + ' on file — latest shown';
+      head.appendChild(pb);
+    }
     head.addEventListener('click', function () { row.classList.toggle('open'); });
     row.appendChild(head);
 
@@ -8576,7 +8634,76 @@ const cvFmtMoney = function (v, axis) {
 };
 const cvFmtPct = function (v) { return (Math.round(v * 10) / 10) + '%'; };
 
+/* NPS (NPS.md) — the Conversion-tab card + shared per-convo/per-email maps.
+   nps_metrics() is the same math the engine tests (npsScore); the recent list
+   reads the raw rows via admin RLS. All best-effort — a missing table (an
+   install that hasn't applied the schema yet) just hides the card. */
+async function loadNpsMaps() {
+  try {
+    const r = await sb.from('nps_responses')
+      .select('conversation_id,score,segment,reason_text,categories,created_at,concierge_conversations(user_email)')
+      .order('created_at', { ascending: false }).limit(500);
+    if (r.error) return;
+    const byConvo = {}, byEmail = {};
+    (r.data || []).forEach(function (row) {
+      if (row.conversation_id && !byConvo[row.conversation_id]) byConvo[row.conversation_id] = row;
+      const em = row.concierge_conversations && row.concierge_conversations.user_email;
+      if (em) {
+        const k = String(em).toLowerCase();
+        if (!byEmail[k]) byEmail[k] = { latest: row, n: 0 };
+        byEmail[k].n++;
+      }
+    });
+    state.npsByConvo = byConvo; state.npsByEmail = byEmail; state.npsRows = r.data || [];
+  } catch (e) { /* the card is optional */ }
+}
+function npsSegBadge(seg, score) {
+  const col = seg === 'promoter' ? 'var(--ok,#7fae90)' : (seg === 'detractor' ? 'var(--bad,#c98a6f)' : 'var(--wool-dim,#b6a98f)');
+  const b = el('span', 'mono', '★ ' + score + '/10 ' + seg);
+  b.style.cssText = 'color:' + col + ';font-size:11px;letter-spacing:.04em;';
+  return b;
+}
+async function renderNpsCard() {
+  const card = $('nps-card');
+  if (!card) return;
+  const days = (state.cvRange === undefined || state.cvRange === null) ? 30 : (state.cvRange || 3650);
+  try {
+    const r = await sb.rpc('nps_metrics', { p_days: days });
+    if (r.error || !r.data) { card.style.display = 'none'; return; }
+    const m = r.data;
+    card.style.display = '';
+    $('nps-score').textContent = (m.nps === null || m.nps === undefined) ? '—' : String(m.nps);
+    $('nps-n').textContent = String(m.responses || 0);
+    $('nps-prom').textContent = String(m.promoters || 0);
+    $('nps-pass').textContent = String(m.passives || 0);
+    $('nps-det').textContent = String(m.detractors || 0);
+    const th = $('nps-themes'); th.textContent = '';
+    const det = (m.detractor_themes || []).slice(0, 5);
+    if (det.length) {
+      th.appendChild(el('b', null, 'Detractor themes (fix first): '));
+      th.appendChild(document.createTextNode(det.map(function (t) { return t.slug + ' ×' + t.n; }).join(' · ')));
+    } else if ((m.responses || 0) > 0) {
+      th.appendChild(document.createTextNode('No detractor themes in the range — nothing to fix first.'));
+    }
+    await loadNpsMaps();
+    const rec = $('nps-recent'); rec.textContent = '';
+    const rows = (state.npsRows || []).slice(0, 8);
+    if (rows.length) rec.appendChild(el('div', 'micro', 'Recent ratings — the reason is the lever:'));
+    rows.forEach(function (row) {
+      const line = el('div', null);
+      line.style.cssText = 'display:flex;gap:10px;align-items:baseline;padding:4px 0;border-top:1px solid rgba(196,155,91,.12);';
+      line.appendChild(npsSegBadge(row.segment, row.score));
+      const cats = (row.categories || []).map(function (c) { return c && c.slug; }).filter(Boolean).join(', ');
+      const why = (row.reason_text || '').slice(0, 120) || '(no reason given)';
+      line.appendChild(el('span', 'micro', why + (cats ? '  [' + cats + ']' : '')));
+      line.appendChild(el('span', 'micro', fmtWhen(row.created_at)));
+      rec.appendChild(line);
+    });
+  } catch (e) { card.style.display = 'none'; }
+}
+
 async function loadConversion() {
+  renderNpsCard();
   cvChipRow('cv-range', CV_RANGES, 'cvRange', 30);
   cvChipRow('cv-gran', CV_GRANS, 'cvGran', 'auto');
   cvChipRow('cv-compare', CV_CMPS, 'cvCmp', 'prior');
@@ -9677,6 +9804,21 @@ async function openConvo(c) {
     toast('Conversation id copied');
   });
   head.appendChild(cid);
+  // The session's rating, when one exists (NPS.md) — score, segment, and the
+  // reason snippet, right where the transcript is read.
+  (async function () {
+    try {
+      const nr = await sb.from('nps_responses')
+        .select('score,segment,reason_text,categories').eq('conversation_id', c.id).limit(1);
+      if (!nr.error && nr.data && nr.data[0]) {
+        const row = nr.data[0];
+        const badge = npsSegBadge(row.segment, row.score);
+        badge.title = (row.reason_text ? '“' + row.reason_text.slice(0, 200) + '”' : 'No reason given') +
+          ((row.categories || []).length ? ' — ' + row.categories.map(function (x) { return x.slug; }).join(', ') : '');
+        head.appendChild(badge);
+      }
+    } catch (e) { /* optional */ }
+  })();
   if (c.ip) {
     // Admin-only forensic detail (this whole view is admin-gated). Click to copy —
     // the IP you'd cite when reporting abuse to a provider or authority.

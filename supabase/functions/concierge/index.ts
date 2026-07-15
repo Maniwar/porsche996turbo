@@ -36,8 +36,11 @@ import {
   extractSubjects,
   hasPendingAsk,
   type LearningDigest,
+  type NpsHistoryItem,
+  npsTriggerGate,
   PLACEHOLDER_ADDR,
   proposalRestHoursFrom,
+  renderCustomerNps,
   renderLearningDigest,
   type SalesLedger,
 } from "./beats.ts";
@@ -2766,7 +2769,8 @@ function stripPlumbing(t: string): string {
       return (low.startsWith("{{img:") || low.startsWith("{{video:") ||
           low.startsWith("{{reply:") ||
           low.startsWith("{{form:") || low === "{{action:commission}}" ||
-          low === "{{action:signin}}" || low === "{{action:snooze}}")
+          low === "{{action:signin}}" || low === "{{action:snooze}}" ||
+          low === "{{nps}}")
         ? m
         : "";
     })
@@ -2798,8 +2802,9 @@ const BEAT_JUDGE_CRITERION =
   "UNIVERSAL DEFECTS: " +
   "(1) plumbing or meta leak — it mentions instructions, prompts, rules, beats, tools, holding, " +
   "being an AI or model, or narrates its own outreach ('reach-out #2', 'checking in as instructed'); " +
-  "(2) scorekeeping or guilt — it counts its own messages or points at the shopper's silence " +
-  "('I've reached out twice', 'since you haven't replied'); " +
+  "(2) scorekeeping or guilt — it counts its own messages, points at the shopper's silence " +
+  "('I've reached out twice', 'since you haven't replied'), or quotes the shopper's own past " +
+  "ratings or survey answers back at them ('you rated us a 3'); " +
   "(3) invented commerce — it invents a discount, price cut, sale, coupon, free shipping, urgency, or " +
   "countdown the HOUSE RULES do not authorize (if the house holds a firm price, any discount is a veto; " +
   "if the house rules permit offers or negotiation, INVITING one is legitimate, not invented); " +
@@ -2812,8 +2817,9 @@ const BEAT_JUDGE_CRITERION =
   "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
   "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. If " +
   "the house rules PERMIT something, offering it is LEGITIMATE — never veto an authorized move as invented. " +
-  "Warmth, brevity, one light question, and {{reply:…}}/{{action:…}} pills are all LEGITIMATE. " +
-  "When uncertain, pass it.";
+  "Warmth, brevity, one light question, and {{reply:…}}/{{action:…}}/{{nps}} pills are all LEGITIMATE " +
+  "(a {{nps}} token renders the house's rating scale — ASKING for a rating once, warmly, is fine; " +
+  "quoting a past one is not). When uncertain, pass it.";
 // The judge is grounded per-house in the effective constitution's HONESTY & SCOPE
 // (the admin-editable voice_base, else the BRAND_SYSTEM fallback — the same honesty
 // source that binds the drafting prompt, and the block the kit stamps per product).
@@ -3037,6 +3043,152 @@ async function beatLearningBlock(
   } catch {
     return "";
   }
+}
+
+// ── NPS — the live wiring (NPS.md §9; pure logic + tests in beats.ts) ────────
+// The survey is a beat: the nudge path calls npsTriggerGate and, when it says
+// ask, overrides the beat brief with REQUEST_NPS. The widget renders the {{nps}}
+// token as a 0–10 pill row; a tap arrives as a normal user turn carrying
+// context.nps={score}, and the NEXT turn carries context.nps_reason=1 so the
+// reason attaches to the open row. Categorisation is async and fail-open.
+function npsConfigFrom(config: Record<string, unknown> | null | undefined): {
+  enabled: boolean; minMs: number; cooldownMs: number; question: string;
+} {
+  const oc = config?.outreach as Record<string, unknown> | undefined;
+  const n = (oc?.nps && typeof oc.nps === "object") ? oc.nps as Record<string, unknown> : {};
+  const minMin = typeof n.minMinutes === "number" && n.minMinutes >= 0 ? n.minMinutes : 3;
+  const coolDays = typeof n.cooldownDays === "number" && n.cooldownDays >= 0 ? n.cooldownDays : 30;
+  return {
+    enabled: n.enabled !== false, // absent = ON, the house pattern
+    minMs: Math.round(minMin * 60000),
+    cooldownMs: Math.round(coolDays * 86400000),
+    question: (typeof n.question === "string" && n.question.trim())
+      ? n.question.trim().slice(0, 300)
+      : "Before you go — how likely are you to recommend us to a friend, 0 to 10?",
+  };
+}
+
+/** The customer's NPS history as the coach's private brief (renderCustomerNps
+ * carries the never-quote-a-score guard; empty on thin/no history). */
+async function npsCoachBrief(customerId: string | null | undefined): Promise<string> {
+  if (!customerId) return "";
+  try {
+    const rows = await pgSelect<{ score: number; categories: unknown; created_at: string }>(
+      `nps_responses?select=score,categories,created_at&customer_id=eq.${encodeURIComponent(customerId)}` +
+      `&order=created_at.desc&limit=6`,
+    );
+    if (!rows || rows.length === 0) return "";
+    const history: NpsHistoryItem[] = rows.map((r) => ({
+      score: r.score,
+      categories: Array.isArray(r.categories) ? r.categories as NpsHistoryItem["categories"] : [],
+      submittedAtMs: Date.parse(r.created_at) || 0,
+    }));
+    return renderCustomerNps(history);
+  } catch {
+    return "";
+  }
+}
+
+/** Classify a reason into the admin-managed nps_categories — one forced-tool
+ * Haiku call, async + fail-open (an uncategorised row is still a row). */
+async function categorizeNpsReason(apiKey: string, responseId: number, reason: string): Promise<void> {
+  try {
+    const cats = await pgSelect<{ slug: string; label: string; prompt_hint: string }>(
+      `nps_categories?select=slug,label,prompt_hint&enabled=eq.true&order=sort.asc`,
+    );
+    if (!cats || cats.length === 0) return;
+    const slugs = cats.map((c) => c.slug);
+    const menu = cats.map((c) => `- ${c.slug}: ${c.label}${c.prompt_hint ? " — " + c.prompt_hint : ""}`).join("\n");
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({
+        model: BEAT_JUDGE_MODEL,
+        max_tokens: 150,
+        temperature: 0,
+        system:
+          "You classify ONE piece of customer feedback into the given categories. Choose 1-3 that " +
+          "genuinely fit; use 'other' only when nothing fits. Reply with a single classify call.",
+        tool_choice: { type: "tool", name: "classify" },
+        tools: [{
+          name: "classify",
+          description: "Record the categories this feedback belongs to.",
+          input_schema: {
+            type: "object",
+            properties: {
+              categories: {
+                type: "array",
+                items: { type: "string", enum: slugs },
+                description: "1-3 category slugs that genuinely fit",
+              },
+            },
+            required: ["categories"],
+          },
+        }],
+        messages: [{ role: "user", content: "CATEGORIES:\n" + menu + "\n\nFEEDBACK:\n" + reason.slice(0, 1000) }],
+      }),
+    });
+    if (!res.ok) return;
+    // deno-lint-ignore no-explicit-any
+    const j = await res.json() as any;
+    // deno-lint-ignore no-explicit-any
+    const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "classify");
+    const picked = Array.isArray(tool?.input?.categories)
+      ? (tool.input.categories as unknown[]).filter((s) => typeof s === "string" && slugs.includes(s as string)).slice(0, 3)
+      : [];
+    if (picked.length === 0) return;
+    await pgPatch(`nps_responses?id=eq.${responseId}`, {
+      categories: picked.map((slug) => ({ slug })),
+      category_source: "llm",
+    });
+  } catch { /* categorisation is best-effort */ }
+}
+
+/** Record a submitted score — once per conversation (the DB-side half of the
+ * offer-once discipline; the trigger gate is the ask-side half). */
+async function captureNpsScore(
+  cid: string | null,
+  customer: { id: string; email: string | null } | null,
+  score: number,
+  coachId: string,
+): Promise<void> {
+  if (!cid || !Number.isFinite(score) || score < 0 || score > 10) return;
+  try {
+    const existing = await pgSelect<{ id: number }>(
+      `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(cid)}&limit=1`,
+    );
+    if (existing && existing.length > 0) return; // once per session
+    await pgInsert("nps_responses", {
+      conversation_id: cid,
+      customer_id: customer?.id ?? null,
+      coach_id: coachId,
+      score: Math.round(score),
+      survey_version: "v1",
+    });
+  } catch { /* capture is best-effort — the chat never breaks over a survey */ }
+}
+
+/** Attach the follow-up turn as the reason on the conversation's open (reason-
+ * less, recent) row, then categorise it async. */
+async function attachNpsReason(cid: string | null, reason: string, apiKey: string): Promise<void> {
+  if (!cid || !reason || !reason.trim()) return;
+  try {
+    const rows = await pgSelect<{ id: number; created_at: string }>(
+      `nps_responses?select=id,created_at&conversation_id=eq.${encodeURIComponent(cid)}` +
+      `&reason_text=is.null&order=created_at.desc&limit=1`,
+    );
+    const row = rows && rows[0];
+    if (!row) return;
+    if (Date.now() - (Date.parse(row.created_at) || 0) > 15 * 60000) return; // stale — don't misattach
+    const text = reason.trim().slice(0, 2000);
+    await pgPatch(`nps_responses?id=eq.${row.id}`, { reason_text: text });
+    categorizeNpsReason(apiKey, row.id, text).catch(() => { /* async */ });
+  } catch { /* best-effort */ }
 }
 
 function sseResponse(req: Request, stream: ReadableStream<Uint8Array>): Response {
@@ -4152,11 +4304,17 @@ async function handleChatPost(req: Request): Promise<Response> {
           ? String((validated.context as Record<string, unknown>).section).toLowerCase() : "";
         const sk = validated.sessionKey ?? "";
         let gs: Record<string, { status?: string }> | null = null;
+        let convId: string | null = null;
+        let convCreatedMs = 0;
         if (sk) {
-          const rows = await pgSelect<{ goal_status: Record<string, { status?: string }> | null }>(
-            `concierge_conversations?select=goal_status&session_key=eq.${encodeURIComponent(sk)}&order=created_at.desc&limit=1`,
+          const rows = await pgSelect<{ id: string; created_at: string; goal_status: Record<string, { status?: string }> | null }>(
+            `concierge_conversations?select=id,created_at,goal_status&session_key=eq.${encodeURIComponent(sk)}&order=created_at.desc&limit=1`,
           );
-          if (rows && rows[0]) gs = rows[0].goal_status;
+          if (rows && rows[0]) {
+            gs = rows[0].goal_status;
+            convId = rows[0].id;
+            convCreatedMs = Date.parse(rows[0].created_at) || 0;
+          }
         }
         const ledger = await buildSalesLedger(recall.customer, dataForBeat, beatSection, gs, unansweredAsk);
         beatDecision = chooseBeatAction(
@@ -4165,6 +4323,47 @@ async function handleChatPost(req: Request): Promise<Response> {
           { restHours: proposalRestHoursFrom(dataForBeat.config?.outreach), proactiveStyle: proactiveStyleFrom(dataForBeat.config) },
         );
         beatAudit = { action: beatDecision.action, beat: "nudge", ledger, trace: beatDecision.trace };
+        // ── REQUEST_NPS — the survey beat (NPS.md). The gate is pure and
+        // unit-tested (npsTriggerGate); this block only gathers its inputs.
+        // Service always outranks a survey, and a pending question of ours
+        // forbids asking anything new — including this.
+        try {
+          const npsCfg = npsConfigFrom(dataForBeat.config);
+          const goalMet = !!gs && Object.values(gs).some((g) => g && g.status === "met");
+          if (npsCfg.enabled && convId && beatDecision.action !== "FIX_BLOCKED_ORDER" && !unansweredAsk) {
+            const [convRows, custRows] = await Promise.all([
+              pgSelect<{ id: number }>(
+                `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(convId)}&limit=1`,
+              ),
+              pgSelect<{ created_at: string }>(
+                `nps_responses?select=created_at&customer_id=eq.${encodeURIComponent(recall.customer.id)}` +
+                `&order=created_at.desc&limit=1`,
+              ),
+            ]);
+            const gate = npsTriggerGate({
+              enabled: npsCfg.enabled,
+              concluded: ledger.postSaleWindow || goalMet,
+              alreadySurveyedSession: !!(convRows && convRows.length),
+              sessionDurationMs: convCreatedMs ? Date.now() - convCreatedMs : 0,
+              minDurationMs: npsCfg.minMs,
+              lastSurveyedAtMs: (custRows && custRows[0]) ? (Date.parse(custRows[0].created_at) || null) : null,
+              cooldownMs: npsCfg.cooldownMs,
+              nowMs: Date.now(),
+            });
+            if (beatAudit) beatAudit.npsGate = gate;
+            if (gate.ask) {
+              beatDecision = {
+                action: "REQUEST_NPS",
+                detail: "ask for a session rating, ONCE and lightly: say this question warmly in one short " +
+                  "line — “" + npsCfg.question + "” — then put the token {{nps}} ALONE on its own line " +
+                  "after it (the shopper taps a number on the scale it renders). Do not list numbers in " +
+                  "words, do not explain the scale, and never pressure — if they ignore it, it is never asked again",
+                trace: beatDecision.trace.concat(["REQUEST_NPS: " + gate.reason]),
+              };
+              beatAudit = { action: "REQUEST_NPS", beat: "nudge", ledger, trace: beatDecision.trace };
+            }
+          }
+        } catch { /* the survey gate is best-effort — a failure just means no ask */ }
       }
     } catch { /* ledger is best-effort — the beat falls back to prompt judgment */ }
     // The HOT-EXCHANGE window: the first check-in moments after the patron
@@ -4401,6 +4600,43 @@ async function handleChatPost(req: Request): Promise<Response> {
   const conversationPromise = logUserTurn(validated, customer, isNudge || isOpener, ip);
   const startedAt = Date.now();
 
+  // ── NPS capture (NPS.md) — deterministic, never model-dependent. A scale-
+  // pill tap arrives as a normal user turn carrying context.nps={score}; the
+  // NEXT turn carries context.nps_reason=1 so the free-text "why" attaches to
+  // the open row. Both writes are async + fail-open; the model only supplies
+  // the warm language, steered by a private system note.
+  try {
+    const nctx = (validated.context && typeof validated.context === "object")
+      ? validated.context as Record<string, unknown> : {};
+    const npsIn = (nctx.nps && typeof nctx.nps === "object") ? nctx.nps as Record<string, unknown> : null;
+    const npsScoreIn = (npsIn && typeof npsIn.score === "number" &&
+      npsIn.score >= 0 && npsIn.score <= 10) ? Math.round(npsIn.score) : null;
+    const npsReasonIn = nctx.nps_reason === 1 || nctx.nps_reason === true;
+    if (npsScoreIn !== null) {
+      system.push({
+        type: "text",
+        text: "\n\n[SURVEY — the visitor just rated the session " + npsScoreIn + "/10 by tapping the " +
+          "scale. Thank them warmly in ONE short line and ask what made them give that score — " +
+          "nothing else. Never repeat or evaluate the number, and never mention scores again after this.]",
+      });
+      conversationPromise.then((cid) =>
+        captureNpsScore(cid, customer, npsScoreIn, model)
+      ).catch(() => { /* capture is best-effort */ });
+    } else if (npsReasonIn) {
+      system.push({
+        type: "text",
+        text: "\n\n[SURVEY — the visitor just explained their rating. Receive it graciously in one short " +
+          "line: if it names a problem, acknowledge it plainly and say what the house can do forward; if " +
+          "it is praise, thank them lightly. Never mention numbers, scores, or the survey again.]",
+      });
+      const lastUserMsg = [...validated.messages].reverse().find((m) => m.role === "user");
+      const reasonText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      conversationPromise.then((cid) =>
+        attachNpsReason(cid, reasonText, apiKey)
+      ).catch(() => { /* attach is best-effort */ });
+    }
+  } catch { /* the survey never breaks the chat */ }
+
   // ── Semantic cache — anonymous, single-turn questions only ────────────────
   // Multi-turn answers depend on conversation context; signed-in answers on
   // the register. Neither may be cached or served from cache.
@@ -4470,7 +4706,13 @@ async function handleChatPost(req: Request): Promise<Response> {
         try {
           const oc = data.config?.outreach as Record<string, unknown> | undefined;
           if (oc?.beatCoach !== false) {
-            const learning = await beatLearningBlock(data.config);
+            // House outcomes + THIS customer's NPS history (empty when thin) —
+            // the two signals the drafter never sees. See COACH.md §5, NPS.md §5.
+            const [learningPart, npsPart] = await Promise.all([
+              beatLearningBlock(data.config),
+              npsCoachBrief(customer?.id),
+            ]);
+            const learning = learningPart + npsPart;
             coaching = await coachBeatLine(apiKey, model, system, validated.messages, learning);
             const block = coachingBlock(coaching);
             if (block) system.push({ type: "text", text: block });
@@ -5361,7 +5603,11 @@ async function handleReengage(req: Request): Promise<Response> {
     try {
       const oc = data.config?.outreach as Record<string, unknown> | undefined;
       if (oc?.beatCoach !== false) {
-        const learning = await beatLearningBlock(data.config);
+        const [learningPart, npsPart] = await Promise.all([
+          beatLearningBlock(data.config),
+          npsCoachBrief(customer?.id),
+        ]);
+        const learning = learningPart + npsPart;
         coaching = await coachBeatLine(apiKey, model, sys, [{ role: "user", content: "Write the line now." }], learning);
         sys += coachingBlock(coaching);
       }

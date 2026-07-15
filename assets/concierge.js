@@ -134,6 +134,8 @@
       'how it is made, or the number that will be yours.';
   }
   var entryMode = 'typed';      /* how the current exchange was initiated */
+  var pendingNpsScore = null;   /* a tapped survey score, sent as context.nps on the next POST */
+  var npsAwaitReason = false;   /* the next typed message is the survey's "why" (context.nps_reason) */
   var lastSkip = '';            /* why the last proactive beat did NOT fire — surfaced
                                    by PorscheConcierge.status() so "the bot is
                                    quiet" is diagnosable instead of a mystery */
@@ -587,6 +589,9 @@
       'border-color:var(--cx-page-accent-soft);}',
       '.cx-reply:disabled{opacity:.35;cursor:default;}',
       '.cx-replies-used .cx-reply{opacity:.35;}',
+      /* the NPS 0-10 scale row (the {{nps}} token) */
+      '.cx-npsrow{gap:6px;}',
+      '.cx-npsrow .cx-reply{min-width:2.6em;text-align:center;padding:.55em .2em;}',
 
       /* in-chat forms */
       '.cx-form{border:1px solid rgba(211,184,142,.4);background:rgba(211,184,142,.05);',
@@ -1069,7 +1074,7 @@
     return low.indexOf('{{img:') === 0 || low.indexOf('{{video:') === 0 ||
       low.indexOf('{{reply:') === 0 ||
       low.indexOf('{{form:') === 0 || low === '{{action:commission}}' ||
-      low === '{{action:signin}}';
+      low === '{{action:signin}}' || low === '{{nps}}';
   }
   function stripPlumbing(t) {
     if (typeof t !== 'string' || t.indexOf('<function_calls') < 0 &&
@@ -1289,6 +1294,38 @@
           frag.appendChild(el('p', '',
             'The register can’t raise that card right now — tell me the details here and I’ll enter them by hand.'));
         }
+        i++; continue;
+      }
+
+      /* {{nps}} on its own line — the survey scale (NPS.md): a 0-10 pill
+         row. A tap sends the score as a visible turn ("8/10") plus
+         context.nps={score}, so the server records it deterministically and
+         the model only supplies the warm follow-up. */
+      if (trimmed.toLowerCase() === '{{nps}}') {
+        flushPara();
+        var nrow = el('div', 'cx-replies cx-npsrow cx-fade-in');
+        nrow.setAttribute('role', 'group');
+        nrow.setAttribute('aria-label', 'Rate this session, 0 to 10');
+        (function (rowEl) {
+          var sc;
+          for (sc = 0; sc <= 10; sc++) {
+            (function (scoreVal) {
+              var nb = el('button', 'cx-reply', String(scoreVal));
+              nb.type = 'button';
+              nb.setAttribute('aria-label', 'Rate ' + scoreVal + ' out of 10');
+              nb.addEventListener('click', function () {
+                if (streaming) { return; }
+                rowEl.classList.add('cx-replies-used');
+                var nbs = rowEl.querySelectorAll('button');
+                for (var nbi = 0; nbi < nbs.length; nbi++) { nbs[nbi].disabled = true; }
+                pendingNpsScore = scoreVal;
+                sendMessage(scoreVal + '/10');
+              });
+              rowEl.appendChild(nb);
+            })(sc);
+          }
+        })(nrow);
+        frag.appendChild(nrow);
         i++; continue;
       }
 
@@ -3189,6 +3226,17 @@
     var ctx = freshState();
     if (pendingNudge) { ctx.nudge = pendingNudge; pendingNudge = null; }
     if (pendingOpener) { ctx.opener = pendingOpener; pendingOpener = null; }
+    /* survey plumbing (NPS.md): a tapped score rides THIS post; the very next
+       real user message (never a nudge/opener) carries the reason flag so the
+       server attaches the free-text "why" to the open row */
+    if (pendingNpsScore != null) {
+      ctx.nps = { score: pendingNpsScore };
+      pendingNpsScore = null;
+      npsAwaitReason = true;
+    } else if (npsAwaitReason && !ctx.nudge && !ctx.opener) {
+      ctx.nps_reason = 1;
+      npsAwaitReason = false;
+    }
     /* The opening greeting is a client-rendered bubble (see renderHistory) that
        the visitor sees but that never entered `history` — so the server never
        logged it and the admin transcript began a line late. On the FIRST turn of
