@@ -952,6 +952,7 @@
     <button class="tab" data-tab="conversion" role="tab">Conversion</button>
     <button class="tab" data-tab="nps" role="tab">NPS</button>
     <button class="tab" data-tab="spend" role="tab">Spend</button>
+    <button class="tab" data-tab="calendar" role="tab">Calendar</button>
     <button class="tab" data-tab="actions" role="tab">Actions</button>
     <button class="tab" data-tab="website" role="tab">Website</button>
     <button class="tab" data-tab="tools" role="tab">Tools</button>
@@ -2130,6 +2131,71 @@ need to ask my partner | Of course — the hold keeps their number while they ta
     </div>
 
     <!-- ============ TAB 7 : WEBSITE (storefront CMS) ============ -->
+    <div id="panel-calendar" class="panel">
+      <div class="panel-head">
+        <span class="micro">appointments &amp; callbacks</span>
+        <h2>Calendar</h2>
+      </div>
+      <p class="note">The concierge books ONLY what this page publishes (<span class="mono">APPOINTMENTS.md</span>):
+        availability is computed from your hours, never invented; double-booking is impossible by construction;
+        a visitor's contact is stored here and never spoken in chat. The feature ships <b>off</b> — set a timezone
+        and hours below, enable an offering, then flip the master switch. QA traffic never occupies a slot.</p>
+      <div id="cal-note" class="micro" style="margin-bottom:10px;"></div>
+
+      <section class="card">
+        <div class="card-head"><h3>The queue</h3><span class="micro">act first, browse second</span></div>
+        <div id="cal-queue"><div class="empty micro">Loading…</div></div>
+      </section>
+
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head"><h3>Next 7 days</h3><span class="micro">every standing booking, day by day</span></div>
+        <div id="cal-week"><div class="empty micro">Loading…</div></div>
+      </section>
+
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head"><h3>House rules</h3><span class="micro">the master switch and its guardrails</span></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+          <label class="micro"><input type="checkbox" id="cal-on"> Bookings on</label>
+          <label class="micro"><input type="checkbox" id="cal-cb" checked> Callbacks on</label>
+          <label class="micro">Owner email <input type="email" id="cal-owner" style="width:220px;margin-left:6px;"></label>
+          <label class="micro">Max open per contact <input type="number" id="cal-cap" min="1" style="width:60px;margin-left:6px;" placeholder="2"></label>
+          <label class="micro">Request TTL (hours) <input type="number" id="cal-ttl" min="0" style="width:60px;margin-left:6px;" placeholder="24"></label>
+          <button id="cal-save-rules" class="btn" type="button">Save rules</button>
+        </div>
+        <p class="note" style="margin-top:8px;">The switch refuses to turn on until at least one enabled location has
+          business hours — an empty calendar must never be offered. Requests not confirmed within the TTL auto-cancel
+          (0 = never) and free their slot.</p>
+      </section>
+
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head"><h3>Locations &amp; hours</h3><span class="micro">each place keeps its own clock</span></div>
+        <div id="cal-locs"></div>
+        <div id="cal-add-loc" style="margin-top:10px;"></div>
+      </section>
+
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head"><h3>Offerings</h3><span class="micro">what can be booked — drafts ship disabled</span></div>
+        <p class="note">Duration is how long a visit lasts; the <b>increment</b> is the start-time grid (a 60-minute
+          session on a 10-minute grid is normal). Availability lines read like speech:
+          <span class="mono">Sat 10:00-16:00; Tue 09:00-13:00 @15</span> (the <span class="mono">@15</span> overrides
+          the increment for that window). Windows outside business hours yield nothing and warn on save.</p>
+        <div id="cal-types"></div>
+        <div style="margin-top:10px;"><button id="cal-add-type" class="btn ghost" type="button">Add an offering</button></div>
+      </section>
+
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head"><h3>Closures &amp; exceptions</h3><span class="micro">dated overrides</span></div>
+        <div id="cal-exc"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+          <input type="date" id="cal-exc-date">
+          <label class="micro"><input type="checkbox" id="cal-exc-closed" checked> Closed all day</label>
+          <input type="text" id="cal-exc-win" placeholder="or window 10:00-14:00" style="width:170px;">
+          <input type="text" id="cal-exc-note" placeholder="note (shown only here)" style="width:200px;">
+          <button id="cal-exc-add" class="btn ghost" type="button">Add</button>
+        </div>
+      </section>
+    </div>
+
     <div id="panel-spend" class="panel">
       <div class="panel-head">
         <span class="micro">API consumption</span>
@@ -2764,6 +2830,42 @@ function wireStatic() {
   if (TAB_NAMES.indexOf(initialTab) >= 0 && initialTab !== 'tuning') activateTab(initialTab, true);
   $('cv-refresh').addEventListener('click', function () { loadConversion(); });
   if ($('sp-refresh')) $('sp-refresh').addEventListener('click', function () { loadSpend(); });
+  if ($('cal-save-rules')) $('cal-save-rules').addEventListener('click', async function () {
+    try {
+      const on = $('cal-on').checked;
+      if (on) {
+        // the refusal rule: no hours, no switch
+        const okLoc = (state.calLocs || []).some(function (l) {
+          return l.enabled && l.timezone && (state.calHours || []).some(function (h) { return h.location_id === l.id; });
+        });
+        if (!okLoc) { calFail(new Error('Refusing to enable: no enabled location has business hours yet.')); $('cal-on').checked = false; return; }
+      }
+      const v = { enabled: on,
+        callbacks: { enabled: $('cal-cb').checked },
+        ownerEmail: $('cal-owner').value.trim() };
+      const cap = Number($('cal-cap').value); if ($('cal-cap').value !== '' && Number.isFinite(cap) && cap >= 1) v.maxOpenPerContact = Math.round(cap);
+      const ttl = Number($('cal-ttl').value); if ($('cal-ttl').value !== '' && Number.isFinite(ttl) && ttl >= 0) v.requestTtlHours = Math.round(ttl);
+      const r = await sb.from('concierge_config').upsert([{ key: 'bookings', value: v, updated_at: nowIso() }], { onConflict: 'key' });
+      if (r.error) throw new Error(r.error.message);
+      $('cal-note').textContent = on ? 'Bookings are ON.' : 'Saved (bookings off).';
+    } catch (e) { calFail(e); }
+  });
+  if ($('cal-exc-add')) $('cal-exc-add').addEventListener('click', async function () {
+    try {
+      const date = $('cal-exc-date').value;
+      if (!date) throw new Error('Pick a date.');
+      const closed = $('cal-exc-closed').checked;
+      const row = { on_date: date, closed: closed, note: $('cal-exc-note').value.trim() };
+      if (!closed) {
+        const rg = calParseRanges($('cal-exc-win').value);
+        if (rg.length !== 1) throw new Error('An open exception needs exactly one window, e.g. 10:00-14:00.');
+        row.start_min = rg[0][0]; row.end_min = rg[0][1];
+      }
+      const r = await sb.from('concierge_availability_exceptions').insert([row]);
+      if (r.error) throw new Error(r.error.message);
+      loadCalendar();
+    } catch (e) { calFail(e); }
+  });
   $('cv-wkstart').addEventListener('change', function () {
     const v = parseInt($('cv-wkstart').value, 10);
     state.weekStart = v === 1 ? 1 : 0;
@@ -2909,7 +3011,7 @@ async function doSignOut() {
   route();
 }
 
-const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'nps', 'spend', 'actions', 'website', 'tools', 'evals', 'edition'];
+const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'nps', 'spend', 'calendar', 'actions', 'website', 'tools', 'evals', 'edition'];
 function activateTab(name, fromHistory) {
   document.querySelectorAll('nav.tabs .tab').forEach(function (b) {
     b.classList.toggle('on', b.dataset.tab === name);
@@ -2925,6 +3027,7 @@ function activateTab(name, fromHistory) {
   }
   if (name === 'conversion') loadConversion();
   if (name === 'spend') loadSpend();
+  if (name === 'calendar') loadCalendar();
   if (name === 'nps') loadNps();
   if (name === 'tuning') autoGrowAll('#panel-tuning .tsub.on');
   if (name === 'knowledge') autoGrowAll('#kb-list');
@@ -9579,6 +9682,323 @@ async function loadSpend() {
       '. If the schema was just updated, redeploy applied it; otherwise check the connection key.';
     console.warn('[concierge-admin] llm_cost_metrics: ' + (e && e.message ? e.message : e));
   }
+}
+
+/* ── Calendar — appointments & callbacks (APPOINTMENTS.md §7) ────────────────
+   Queue-first; fail-visible (#cal-note); every mutation is the same RPC the
+   chat uses, so the two surfaces can never disagree. */
+const CAL_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function calFail(e) {
+  $('cal-note').textContent = 'Calendar problem — ' + (e && e.message ? e.message : String(e));
+  console.warn('[concierge-admin] calendar:', e);
+}
+function calMin(hm) { const m = /^(\d{1,2}):(\d{2})$/.exec(hm.trim()); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function calHm(min) { return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0'); }
+function calParseRanges(text) {
+  // "09:00-13:00, 14:00-18:00" -> [[540,780],[840,1080]]; '' -> []
+  const out = [];
+  for (const part of String(text || '').split(/[,;]/)) {
+    const t = part.trim(); if (!t) continue;
+    const m = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(t);
+    if (!m) throw new Error('Bad time range: "' + t + '" (use HH:MM-HH:MM)');
+    const a = calMin(m[1]), b = calMin(m[2]);
+    if (a === null || b === null || b <= a) throw new Error('Bad time range: "' + t + '"');
+    out.push([a, b]);
+  }
+  return out;
+}
+function calWhen(iso, tz) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, weekday: 'short',
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+  } catch (e) { return iso; }
+}
+function calRow(html) { const d = document.createElement('div');
+  d.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:6px 0;border-top:1px solid rgba(128,128,128,.15);';
+  d.innerHTML = html; return d; }
+async function calRpc(fn, args) {
+  const r = await sb.rpc(fn, args || {});
+  if (r.error) throw new Error(fn + ': ' + (r.error.message || JSON.stringify(r.error)));
+  return r.data;
+}
+async function calAct(fn, args) {
+  try { const d = await calRpc(fn, args); if (d && d.ok === false) throw new Error(d.reason || 'refused'); await loadCalendar(); }
+  catch (e) { calFail(e); }
+}
+function calBadge(n) {
+  const btn = document.querySelector('nav.tabs .tab[data-tab="calendar"]');
+  if (btn) btn.textContent = n > 0 ? ('Calendar (' + n + ')') : 'Calendar';
+}
+async function loadCalendar() {
+  $('cal-note').textContent = '';
+  try {
+    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR] = await Promise.all([
+      calRpc('appointments_queue'), calRpc('appointments_week', { p_days: 7 }),
+      sb.from('concierge_locations').select('*').order('sort_order'),
+      sb.from('concierge_business_hours').select('*'),
+      sb.from('concierge_appointment_types').select('*').order('sort_order'),
+      sb.from('concierge_availability').select('*'),
+      sb.from('concierge_availability_exceptions').select('*').order('on_date'),
+      sb.from('concierge_config').select('value').eq('key', 'bookings'),
+    ]);
+    for (const r of [locsR, hoursR, typesR, availR, excR, cfgR]) {
+      if (r.error) throw new Error(r.error.message);
+    }
+    const locs = locsR.data || [], hours = hoursR.data || [], types = typesR.data || [];
+    const avail = availR.data || [], exc = excR.data || [];
+    const bcfg = (cfgR.data && cfgR.data[0] && cfgR.data[0].value) || {};
+    state.calLocs = locs; state.calHours = hours; state.calTypes = types; state.calAvail = avail;
+
+    /* house rules */
+    $('cal-on').checked = bcfg.enabled === true;
+    $('cal-cb').checked = !(bcfg.callbacks && bcfg.callbacks.enabled === false);
+    $('cal-owner').value = bcfg.ownerEmail || '';
+    $('cal-cap').value = (typeof bcfg.maxOpenPerContact === 'number') ? bcfg.maxOpenPerContact : '';
+    $('cal-ttl').value = (typeof bcfg.requestTtlHours === 'number') ? bcfg.requestTtlHours : '';
+
+    /* the queue */
+    const qEl = $('cal-queue'); qEl.textContent = '';
+    const pending = (q.requested || []).length + (q.callbacks || []).length + (q.needs_closing || []).length;
+    calBadge(pending);
+    const sect = (title, rows, render, empty) => {
+      const h = el('div', 'micro', title); h.style.cssText = 'margin:10px 0 2px;letter-spacing:.12em;text-transform:uppercase;';
+      qEl.appendChild(h);
+      if (!rows || !rows.length) { qEl.appendChild(el('div', 'empty micro', empty)); return; }
+      rows.forEach((r) => qEl.appendChild(render(r)));
+    };
+    const convoLink = (r) => r.conversation_id
+      ? ' <a href="#conversations" onclick="state.convoJump=\'' + r.conversation_id + '\'" class="mono micro">chat↗</a>' : '';
+    sect('Awaiting confirmation', q.requested, (r) => calRow(
+      '<span>' + (r.is_move ? '↷ move — ' : '') + esc(r.name) + ' · ' + esc(r.type || '') +
+      ' · ' + calWhen(r.starts_at) + (r.location ? ' at ' + esc(r.location) : '') +
+      (r.party ? ' · party ' + r.party : '') + '</span>' +
+      '<span class="micro mono">' + esc(r.contact) + '</span>' +
+      (r.notes ? '<span class="micro">“' + esc(r.notes) + '”</span>' : '') + convoLink(r) +
+      '<span style="margin-left:auto;"><button class="btn" onclick="calAct(\'confirm_appointment\',{p_id:' + r.id + '})">✓ Confirm</button> ' +
+      '<button class="btn ghost" onclick="calAct(\'cancel_appointment\',{p_id:' + r.id + '})">✗ Decline</button></span>'),
+      'Nothing awaiting confirmation.');
+    sect('Callbacks', q.callbacks, (r) => calRow(
+      '<span>' + esc(r.name) + ' — ' + esc(r.contact) + '</span>' +
+      '<span class="micro">window: “' + esc(r.window_pref || '') + '”</span>' +
+      '<span class="micro' + (r.age_min > 1440 ? '" style="color:#d08770;' : '') + '">' + Math.round(r.age_min / 60) + 'h old</span>' + convoLink(r) +
+      '<span style="margin-left:auto;"><button class="btn" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'done\'})">Done</button></span>'),
+      'No open callbacks.');
+    sect('Today', q.today, (r) => calRow(
+      '<span>' + calWhen(r.starts_at) + ' — ' + esc(r.name) + ' · ' + esc(r.type || '') +
+      (r.location ? ' at ' + esc(r.location) : '') + (r.party ? ' · party ' + r.party : '') + '</span>' +
+      (r.notes ? '<span class="micro">“' + esc(r.notes) + '”</span>' : '') +
+      ((r.open_notes || []).length ? '<span class="micro" style="color:#d3b88e;">DUE: ' + r.open_notes.map(esc).join(' · ') + '</span>' : '') +
+      convoLink(r)),
+      'No visits today.');
+    sect('Needs closing', q.needs_closing, (r) => calRow(
+      '<span>' + calWhen(r.starts_at) + ' — ' + esc(r.name) + ' · ' + esc(r.type || '') + '</span>' + convoLink(r) +
+      '<span style="margin-left:auto;"><button class="btn" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'})">Completed</button> ' +
+      '<button class="btn ghost" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'})">No-show</button></span>'),
+      'Nothing to close out.');
+
+    /* week */
+    const wEl = $('cal-week'); wEl.textContent = '';
+    if (!week.length) { wEl.appendChild(el('div', 'empty micro', 'No standing bookings in the next 7 days.')); }
+    else {
+      let day = '';
+      week.forEach((r) => {
+        const d = String(r.starts_at).slice(0, 10);
+        if (d !== day) { day = d;
+          const h = el('div', 'micro', calWhen(r.starts_at, r.location_tz).split(',')[0] + ' · ' + d);
+          h.style.cssText = 'margin:10px 0 2px;letter-spacing:.12em;text-transform:uppercase;'; wEl.appendChild(h); }
+        wEl.appendChild(calRow('<span>' + calWhen(r.starts_at, r.location_tz) + ' — ' + esc(r.name) +
+          ' · ' + esc(r.type || '') + (r.location ? ' at ' + esc(r.location) : '') +
+          (r.status === 'requested' ? ' <span class="micro">(awaiting confirmation)</span>' : '') + '</span>' +
+          '<span class="micro mono">' + esc(r.contact) + '</span>' + convoLink(r)));
+      });
+    }
+
+    /* locations & hours — progressive disclosure */
+    const lEl = $('cal-locs'); lEl.textContent = '';
+    locs.forEach((l) => {
+      const head = calRow('<b>' + esc(l.title) + '</b> <span class="micro mono">' + esc(l.slug) + '</span>' +
+        '<label class="micro">tz <input value="' + esc(l.timezone) + '" data-f="timezone" style="width:190px;"></label>' +
+        '<label class="micro">address <input value="' + esc(l.address || '') + '" data-f="address" style="width:220px;"></label>' +
+        '<label class="micro"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> on</label>' +
+        '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button>');
+      head.dataset.locId = l.id;
+      lEl.appendChild(head);
+      const grid = document.createElement('div');
+      grid.style.cssText = 'padding:4px 0 10px 14px;';
+      for (let d = 0; d < 7; d++) {
+        const ranges = state.calHours.filter((h) => h.location_id === l.id && h.dow === d)
+          .map((h) => calHm(h.open_min) + '-' + calHm(h.close_min)).join(', ');
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin:2px 0;';
+        row.innerHTML = '<span class="micro mono" style="width:34px;">' + CAL_DAYS[d] + '</span>' +
+          '<input data-hours-day="' + d + '" data-loc="' + l.id + '" value="' + esc(ranges) +
+          '" placeholder="closed — or 09:00-13:00, 14:00-18:00" style="width:320px;">';
+        grid.appendChild(row);
+      }
+      const sv = document.createElement('button'); sv.className = 'btn ghost'; sv.type = 'button';
+      sv.textContent = 'Save hours'; sv.addEventListener('click', () => calSaveHours(l.id));
+      grid.appendChild(sv);
+      lEl.appendChild(grid);
+    });
+    const addEl = $('cal-add-loc'); addEl.textContent = '';
+    if (locs.length === 1) {
+      const a = document.createElement('a'); a.href = '#'; a.className = 'micro';
+      a.textContent = '+ Add a second location (each keeps its own clock and hours)';
+      a.addEventListener('click', (ev) => { ev.preventDefault(); a.replaceWith(calNewLocRow()); });
+      addEl.appendChild(a);
+    } else { addEl.appendChild(calNewLocRow()); }
+
+    /* offerings */
+    const tEl = $('cal-types'); tEl.textContent = '';
+    types.forEach((t) => tEl.appendChild(calTypeRow(t)));
+    $('cal-add-type').onclick = () => tEl.appendChild(calTypeRow(null));
+
+    /* exceptions */
+    const eEl = $('cal-exc'); eEl.textContent = '';
+    if (!exc.length) eEl.appendChild(el('div', 'empty micro', 'No dated overrides.'));
+    exc.forEach((x) => {
+      const loc = locs.find((l) => l.id === x.location_id);
+      const typ = types.find((t) => t.id === x.type_id);
+      eEl.appendChild(calRow('<span>' + esc(x.on_date) + ' — ' +
+        (x.closed ? 'closed' : (calHm(x.start_min) + '-' + calHm(x.end_min))) +
+        ' · ' + (loc ? esc(loc.title) : 'every location') + ' · ' + (typ ? esc(typ.title) : 'all offerings') +
+        (x.note ? ' · ' + esc(x.note) : '') + '</span>' +
+        '<span style="margin-left:auto;"><button class="btn ghost" data-del-exc="' + x.id + '">Remove</button></span>'));
+    });
+    eEl.querySelectorAll('[data-del-exc]').forEach((b) => b.addEventListener('click', async () => {
+      try { const r = await sb.from('concierge_availability_exceptions').delete().eq('id', b.dataset.delExc);
+        if (r.error) throw new Error(r.error.message); loadCalendar(); } catch (e) { calFail(e); }
+    }));
+    lEl.querySelectorAll('[data-save-loc]').forEach((b) => b.addEventListener('click', async () => {
+      const row = b.closest('[data-loc-id]');
+      const patch = { timezone: row.querySelector('[data-f="timezone"]').value.trim(),
+        address: row.querySelector('[data-f="address"]').value.trim(),
+        enabled: row.querySelector('[data-f="enabled"]').checked };
+      try { const r = await sb.from('concierge_locations').update(patch).eq('id', b.dataset.saveLoc);
+        if (r.error) throw new Error(r.error.message); loadCalendar(); } catch (e) { calFail(e); }
+    }));
+  } catch (e) { calFail(e); }
+}
+function calNewLocRow() {
+  const d = calRow('<input id="cal-nl-slug" placeholder="slug (e.g. downtown)" style="width:140px;">' +
+    '<input id="cal-nl-title" placeholder="Name" style="width:160px;">' +
+    '<input id="cal-nl-tz" placeholder="IANA timezone (e.g. America/Chicago)" style="width:230px;">' +
+    '<button id="cal-nl-add" class="btn ghost" type="button">Add location</button>');
+  d.querySelector('#cal-nl-add').addEventListener('click', async () => {
+    const slug = d.querySelector('#cal-nl-slug').value.trim().toLowerCase();
+    const title = d.querySelector('#cal-nl-title').value.trim();
+    const tz = d.querySelector('#cal-nl-tz').value.trim();
+    if (!/^[a-z0-9-]{2,40}$/.test(slug) || !title || !tz) { calFail(new Error('A slug (a-z0-9-), a name, and a timezone are needed.')); return; }
+    try { const r = await sb.from('concierge_locations').insert([{ slug, title, timezone: tz }]);
+      if (r.error) throw new Error(r.error.message); loadCalendar(); } catch (e) { calFail(e); }
+  });
+  return d;
+}
+function calAvailText(typeId, locId) {
+  return (state.calAvail || []).filter((a) => a.type_id === typeId && a.location_id === locId)
+    .sort((a, b) => a.dow - b.dow || a.start_min - b.start_min)
+    .map((a) => CAL_DAYS[a.dow] + ' ' + calHm(a.start_min) + '-' + calHm(a.end_min) + (a.step_min ? ' @' + a.step_min : ''))
+    .join('; ');
+}
+function calTypeRow(t) {
+  const locs = state.calLocs || [];
+  const isNew = !t;
+  t = t || { slug: '', title: '', duration_min: 30, step_min: 30, mode: 'in-person', buffer_min: 0,
+    lead_time_min: 240, horizon_days: 21, capacity: 1, max_party: 0, confirm_mode: 'auto',
+    intake_prompt: '', enabled: false, description: '' };
+  const box = document.createElement('div');
+  box.style.cssText = 'border-top:1px solid rgba(128,128,128,.2);padding:10px 0;';
+  const sel = (f, opts, cur) => '<select data-f="' + f + '">' +
+    opts.map((o) => '<option value="' + o + '"' + (String(cur) === String(o) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>';
+  const locSel = locs.length > 1
+    ? '<label class="micro">location ' + sel('loc', locs.map((l) => l.slug), locs[0].slug) + '</label>' : '';
+  box.innerHTML =
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+    '<input data-f="title" value="' + esc(t.title) + '" placeholder="Offering name" style="width:170px;">' +
+    '<input data-f="slug" value="' + esc(t.slug) + '" placeholder="slug" style="width:110px;"' + (isNew ? '' : ' readonly') + '>' +
+    '<label class="micro">min ' + sel('duration_min', [5,10,15,20,30,45,60,90,120,180,240], t.duration_min) + '</label>' +
+    '<label class="micro">grid ' + sel('step_min', [5,10,15,20,30,45,60], t.step_min) + '</label>' +
+    '<label class="micro">' + sel('mode', ['in-person','video','phone'], t.mode) + '</label>' +
+    '<label class="micro">buffer <input data-f="buffer_min" type="number" min="0" value="' + t.buffer_min + '" style="width:52px;"></label>' +
+    '<label class="micro">lead(min) <input data-f="lead_time_min" type="number" min="0" value="' + t.lead_time_min + '" style="width:64px;"></label>' +
+    '<label class="micro">horizon(d) <input data-f="horizon_days" type="number" min="1" value="' + t.horizon_days + '" style="width:52px;"></label>' +
+    '<label class="micro">cap <input data-f="capacity" type="number" min="1" value="' + t.capacity + '" style="width:44px;"></label>' +
+    '<label class="micro">party≤ <input data-f="max_party" type="number" min="0" value="' + t.max_party + '" style="width:44px;"></label>' +
+    '<label class="micro">' + sel('confirm_mode', ['auto','manual'], t.confirm_mode) + '</label>' +
+    '<label class="micro"><input data-f="enabled" type="checkbox"' + (t.enabled ? ' checked' : '') + '> on</label>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px;">' + locSel +
+    '<input data-f="avail" value="' + esc(isNew ? '' : calAvailText(t.id, locs[0] ? locs[0].id : 0)) +
+    '" placeholder="Sat 10:00-16:00; Tue 09:00-13:00 @15" style="flex:1 1 280px;">' +
+    '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="optional extra question" style="width:220px;">' +
+    '<button class="btn ghost" data-save-type>Save</button></div>';
+  const locSelEl = box.querySelector('[data-f="loc"]');
+  if (locSelEl) locSelEl.addEventListener('change', () => {
+    const loc = locs.find((l) => l.slug === locSelEl.value);
+    box.querySelector('[data-f="avail"]').value = isNew ? '' : calAvailText(t.id, loc ? loc.id : 0);
+  });
+  box.querySelector('[data-save-type]').addEventListener('click', async () => {
+    try {
+      const g = (f) => box.querySelector('[data-f="' + f + '"]');
+      const row = { slug: g('slug').value.trim().toLowerCase(), title: g('title').value.trim(),
+        duration_min: +g('duration_min').value, step_min: +g('step_min').value, mode: g('mode').value,
+        buffer_min: +g('buffer_min').value || 0, lead_time_min: +g('lead_time_min').value || 0,
+        horizon_days: +g('horizon_days').value || 21, capacity: +g('capacity').value || 1,
+        max_party: +g('max_party').value || 0, confirm_mode: g('confirm_mode').value,
+        intake_prompt: g('intake_prompt').value.trim(), enabled: g('enabled').checked };
+      if (!/^[a-z0-9-]{2,40}$/.test(row.slug) || !row.title) throw new Error('An offering needs a name and a slug (a-z0-9-).');
+      const up = await sb.from('concierge_appointment_types').upsert([row], { onConflict: 'slug' }).select('id');
+      if (up.error) throw new Error(up.error.message);
+      const typeId = up.data && up.data[0] && up.data[0].id;
+      const loc = (state.calLocs.length > 1 && locSelEl)
+        ? state.calLocs.find((l) => l.slug === locSelEl.value) : state.calLocs[0];
+      if (typeId && loc) {
+        const lines = g('avail').value.trim();
+        const rows = [];
+        if (lines) {
+          for (const part of lines.split(';')) {
+            const p = part.trim(); if (!p) continue;
+            const m = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})(?:\s*@(\d+))?$/i.exec(p);
+            if (!m) throw new Error('Bad availability line: "' + p + '"');
+            const step = m[4] ? +m[4] : null;
+            if (step !== null && [5,10,15,20,30,45,60].indexOf(step) < 0) throw new Error('Increment must be 5/10/15/20/30/45/60');
+            rows.push({ type_id: typeId, location_id: loc.id,
+              dow: CAL_DAYS.findIndex((d2) => d2.toLowerCase() === m[1].toLowerCase()),
+              start_min: calMin(m[2]), end_min: calMin(m[3]), step_min: step });
+          }
+        }
+        const del = await sb.from('concierge_availability').delete().eq('type_id', typeId).eq('location_id', loc.id);
+        if (del.error) throw new Error(del.error.message);
+        if (rows.length) {
+          const ins = await sb.from('concierge_availability').insert(rows);
+          if (ins.error) throw new Error(ins.error.message);
+          // out-of-hours warning (the clamp will silently yield nothing otherwise)
+          const hrs = state.calHours.filter((h) => h.location_id === loc.id);
+          const escapes = rows.filter((r2) => !hrs.some((h) => h.dow === r2.dow && h.open_min < r2.end_min && h.close_min > r2.start_min));
+          if (escapes.length) $('cal-note').textContent =
+            'Saved — but ' + escapes.length + ' window(s) fall entirely outside ' + loc.title +
+            "'s business hours and will yield no slots.";
+        }
+      }
+      loadCalendar();
+    } catch (e) { calFail(e); }
+  });
+  return box;
+}
+async function calSaveHours(locId) {
+  try {
+    const rows = [];
+    document.querySelectorAll('[data-hours-day][data-loc="' + locId + '"]').forEach((inp) => {
+      for (const [a, b] of calParseRanges(inp.value)) {
+        rows.push({ location_id: locId, dow: +inp.dataset.hoursDay, open_min: a, close_min: b });
+      }
+    });
+    const del = await sb.from('concierge_business_hours').delete().eq('location_id', locId);
+    if (del.error) throw new Error(del.error.message);
+    if (rows.length) { const ins = await sb.from('concierge_business_hours').insert(rows);
+      if (ins.error) throw new Error(ins.error.message); }
+    loadCalendar();
+  } catch (e) { calFail(e); }
 }
 
 async function loadConversion() {

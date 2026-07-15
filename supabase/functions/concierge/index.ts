@@ -482,6 +482,7 @@ function bg(p: Promise<unknown>): void {
 async function sendEmail(
   to: string, subject: string, html: string,
   meta?: { kind: string; serial?: number | null },
+  attachments?: Array<{ filename: string; content: string }>,
 ): Promise<void> {
   if (!to) return;
   let ok = false;
@@ -494,7 +495,8 @@ async function sendEmail(
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html }),
+        body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html,
+          ...(attachments && attachments.length ? { attachments } : {}) }),
       });
       ok = res.ok;
       const body = await res.json().catch(() => null) as { id?: string; message?: string } | null;
@@ -992,6 +994,133 @@ const REGISTER_TOOLS: any[] = [
     },
   },
   {
+    name: "get_available_times",
+    description:
+      "The ONLY source of bookable times. Call it FIRST whenever a visitor wants to book, move, " +
+      "or ask about a visit/appointment/call — never name a time, day, or opening hour it did not " +
+      "return THIS turn. With no arguments it lists what can be booked (and, when the house has " +
+      "several locations, the locations — ask WHERE before WHEN and never assume). Then call again " +
+      "with the type (and location) to get real slots. Present AT MOST THREE, using each slot's " +
+      "lead_label EXACTLY as given — the labels already speak the visitor's timezone; never convert " +
+      "or rephrase times yourself. Offer 'more times' rather than a wall of options.",
+    input_schema: {
+      type: "object",
+      properties: {
+        type_slug: { type: "string", description: "Which offering, from the list this tool returns." },
+        location_slug: { type: "string", description: "Which location, when the house has more than one." },
+        from_date: { type: "string", description: "First day to look at, YYYY-MM-DD. Default today." },
+        days: { type: "integer", description: "How many days to scan (1-14). Default 7." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "book_appointment",
+    description:
+      "Book one of the slots get_available_times returned THIS conversation — starts_at must echo a " +
+      "returned slot exactly. Collect the name and contact through the booking form the widget " +
+      "shows, never as free-typed chat. Works signed in or not. If the result says status " +
+      "'requested', the house confirms by hand: say exactly that ('the house will confirm shortly — " +
+      "you'll have an email either way'), never present it as a done deal. If the result says " +
+      "'taken', the slot just went to someone else: say so plainly and warmly, then offer the " +
+      "alternatives the result carries. Never restate their contact details — 'the number you gave' " +
+      "is as specific as you get.",
+    input_schema: {
+      type: "object",
+      properties: {
+        type_slug: { type: "string", description: "The offering being booked." },
+        location_slug: { type: "string", description: "The location (required when the house has more than one)." },
+        starts_at: { type: "string", description: "The slot's starts_at, exactly as returned." },
+        name: { type: "string", description: "The visitor's name." },
+        contact: { type: "string", description: "Their email or phone." },
+        contact_kind: { type: "string", enum: ["email", "phone"], description: "Which kind the contact is." },
+        party_size: { type: "integer", description: "How many people, when the offering asks for it." },
+        notes: { type: "string", description: "Their answer to the offering's question, or a short line in their words." },
+      },
+      required: ["type_slug", "starts_at", "name", "contact", "contact_kind"],
+    },
+  },
+  {
+    name: "get_my_appointments",
+    description:
+      "The visitor's own bookings and callback requests — call it before answering 'when am I " +
+      "coming in?', and FIRST when they want to move, correct, or cancel anything (so you confirm " +
+      "WHICH booking before changing it). Works for a signed-in patron or for bookings made in " +
+      "this same browser session. Read-only.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "reschedule_appointment",
+    description:
+      "Move an existing booking to a new slot get_available_times returned THIS conversation. The " +
+      "move is atomic: if the new time was just taken, THEIR ORIGINAL BOOKING STILL STANDS — " +
+      "reassure them of that first, then offer the alternatives the result carries. When the house " +
+      "confirms by hand, the result says so: their current time holds until the house confirms the " +
+      "new one — say both truths plainly.",
+    input_schema: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "integer", description: "Which booking, from get_my_appointments." },
+        new_starts_at: { type: "string", description: "The new slot's starts_at, exactly as returned." },
+        new_location_slug: { type: "string", description: "Only when moving to a different location." },
+      },
+      required: ["appointment_id", "new_starts_at"],
+    },
+  },
+  {
+    name: "update_appointment",
+    description:
+      "Change the non-time details of their booking or callback: party size, the note, a name or " +
+      "contact correction, a callback window. Confirm WHICH booking first (get_my_appointments), " +
+      "make exactly the change they asked, restate the result in one line.",
+    input_schema: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "integer", description: "Which booking, from get_my_appointments." },
+        party_size: { type: "integer" },
+        notes: { type: "string" },
+        name: { type: "string" },
+        contact: { type: "string" },
+        contact_kind: { type: "string", enum: ["email", "phone"] },
+        window_pref: { type: "string", description: "Callbacks: the new preferred window, in their words." },
+      },
+      required: ["appointment_id"],
+    },
+  },
+  {
+    name: "cancel_appointment",
+    description:
+      "Cancel their booking or callback — always granted graciously, never guilt. Confirm WHICH " +
+      "booking first (get_my_appointments). After cancelling you may offer fresh times ONCE if " +
+      "they seem to want them; otherwise let it rest.",
+    input_schema: {
+      type: "object",
+      properties: {
+        appointment_id: { type: "integer", description: "Which booking, from get_my_appointments." },
+      },
+      required: ["appointment_id"],
+    },
+  },
+  {
+    name: "request_callback",
+    description:
+      "Take a callback request: their phone number (collected through the form, never free-typed " +
+      "chat), a preferred window IN THEIR OWN WORDS, and their name. The only promise you may make " +
+      "is the one the result returns — 'someone will call you then'; never a precise minute, never " +
+      "'right away'. If the house is closed for their window, the result names the next opening — " +
+      "recite it verbatim.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The visitor's name." },
+        phone: { type: "string", description: "The number to call." },
+        window_pref: { type: "string", description: "When suits them, in their words." },
+        notes: { type: "string", description: "One line of context." },
+      },
+      required: ["name", "phone", "window_pref"],
+    },
+  },
+  {
     name: "resend_confirmation",
     description:
       "Re-send a transactional email the owner already should have — the order " +
@@ -1084,6 +1213,99 @@ const REGISTER_TOOLS: any[] = [
 // disabled from the admin, but the manifest flags them so the UI can warn.
 const CORE_TOOLS = new Set(["get_my_orders", "recall_context"]);
 
+// ── Appointments (APPOINTMENTS.md): tool names + master gate ────────────────
+const BOOKING_TOOL_NAMES = new Set([
+  "get_available_times", "book_appointment", "get_my_appointments",
+  "reschedule_appointment", "update_appointment", "cancel_appointment",
+  "request_callback",
+]);
+// deno-lint-ignore no-explicit-any
+function bookingsEnabled(config: Record<string, any>): boolean {
+  const b = config?.bookings;
+  return !!(b && typeof b === "object" && b.enabled === true);   // absent = OFF
+}
+// deno-lint-ignore no-explicit-any
+function callbacksEnabled(config: Record<string, any>): boolean {
+  const b = config?.bookings;
+  return bookingsEnabled(config) && (b.callbacks === undefined || b.callbacks?.enabled !== false);
+}
+/** RFC 5545 minimal event. UID stays stable across reschedules (the original
+ *  booking's id), so calendar apps UPDATE the event instead of duplicating. */
+function buildIcs(uid: string, startsAt: string, endsAt: string,
+  summary: string, location: string, description: string): string {
+  const fmt = (s: string) => new Date(s).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const esc = (s: string) => String(s || "").replace(/\\/g, "\\\\").replace(/[,;]/g, (m) => "\\" + m).replace(/\n/g, "\\n");
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//concierge//booking//EN",
+    "METHOD:REQUEST", "BEGIN:VEVENT",
+    `UID:${uid}`, `DTSTAMP:${fmt(new Date().toISOString())}`,
+    `DTSTART:${fmt(startsAt)}`, `DTEND:${fmt(endsAt)}`,
+    `SUMMARY:${esc(summary)}`, `LOCATION:${esc(location)}`,
+    `DESCRIPTION:${esc(description)}`, "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+}
+/** The context block for hours + (signed-in) the next upcoming booking.
+ *  Injected only when the calendar is on; the model answers "are you open?"
+ *  from THIS, never from page prose (source-of-truth precedence). */
+// deno-lint-ignore no-explicit-any
+async function bookingContextBlock(config: Record<string, any>,
+  customer: Customer | null, sessionKey: string | null): Promise<string> {
+  if (!bookingsEnabled(config)) return "";
+  try {
+    const locs = await pgSelect<{ id: number; title: string; timezone: string }>(
+      `concierge_locations?select=id,title,timezone&enabled=eq.true&order=sort_order`);
+    if (!locs || locs.length === 0) return "";
+    const hours = await pgSelect<{ location_id: number; dow: number; open_min: number; close_min: number }>(
+      `concierge_business_hours?select=location_id,dow,open_min,close_min&order=dow,open_min`);
+    if (!hours || hours.length === 0) return "";
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    const lines: string[] = [];
+    for (const l of locs) {
+      const mine = hours.filter((h) => h.location_id === l.id);
+      if (!mine.length) continue;
+      const byDay: string[] = [];
+      for (let d = 0; d < 7; d++) {
+        const ranges = mine.filter((h) => h.dow === d).map((h) => `${hhmm(h.open_min)}–${hhmm(h.close_min)}`);
+        byDay.push(`${dayNames[d]} ${ranges.length ? ranges.join(" & ") : "closed"}`);
+      }
+      let nowLocal = "";
+      try {
+        nowLocal = new Intl.DateTimeFormat("en-US", {
+          timeZone: l.timezone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+        }).format(new Date());
+      } catch { /* bad tz never breaks the prompt */ }
+      lines.push(`${l.title}: ${byDay.join("; ")}${nowLocal ? ` (local time now: ${nowLocal})` : ""}`);
+    }
+    if (!lines.length) return "";
+    let upcoming = "";
+    if (customer || sessionKey) {
+      const who = customer
+        ? `customer_id=eq.${encodeURIComponent(customer.id)}`
+        : `session_key=eq.${encodeURIComponent(sessionKey!)}`;
+      const appts = await pgSelect<{ starts_at: string; status: string; type_id: number | null; location_id: number | null }>(
+        `concierge_appointments?select=starts_at,status,type_id,location_id&${who}` +
+        `&kind=eq.appointment&status=in.(requested,booked)&starts_at=gt.now&order=starts_at&limit=1`);
+      if (appts && appts[0]) {
+        const a = appts[0];
+        const loc = locs.find((l) => l.id === a.location_id);
+        let when = a.starts_at;
+        try {
+          when = new Intl.DateTimeFormat("en-US", {
+            timeZone: loc?.timezone || "UTC", weekday: "short", month: "short",
+            day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+          }).format(new Date(a.starts_at));
+        } catch { /* keep ISO */ }
+        upcoming = `\nUPCOMING VISIT: ${when}${loc ? ` at ${loc.title}` : ""}` +
+          `${a.status === "requested" ? " (awaiting the house's confirmation)" : ""} — ` +
+          `serve this visit (prepare, confirm details, answer questions); do NOT re-sell or re-book it. ` +
+          `They may move or cancel it whenever they wish.`;
+      }
+    }
+    return `HOURS (authoritative — when the page's prose disagrees, THIS wins; ` +
+      `answer "are you open?" from it and read the next opening from the table):\n` +
+      lines.join("\n") + upcoming;
+  } catch { return ""; /* the calendar must never break the conversation */ }
+}
+
 /** The tools array sent to the model, with admin overrides applied:
  *  disabled tools are dropped; a non-empty description override replaces the
  *  built-in copy. An empty/absent registry leaves every tool at its default. */
@@ -1095,6 +1317,10 @@ function buildToolsForModel(data: ConciergeData): any[] {
   for (const tool of REGISTER_TOOLS) {
     const o = reg.get(tool.name);
     if (o && o.enabled === false) continue;
+    // the toggle cascade's master switch: calendar off ⇒ the model never
+    // even sees the booking tools (and callbacks have their own sub-switch)
+    if (BOOKING_TOOL_NAMES.has(tool.name) && !bookingsEnabled(data.config)) continue;
+    if (tool.name === "request_callback" && !callbacksEnabled(data.config)) continue;
     if (o && typeof o.description === "string" && o.description.trim().length > 0) {
       out.push({ ...tool, description: o.description });
     } else {
@@ -1272,6 +1498,260 @@ async function runRegisterTool(
     if (!row) return "ERROR: the waitlist is unreachable right now.";
     await logAction(cid, customer, "join_waitlist", null, { email }, "added to waitlist");
     return `Done — ${email} is on the waitlist for the next batch; I'll see they're told when it opens.`;
+  }
+
+  // ── Appointments & callbacks (APPOINTMENTS.md) — anonymous-capable ─────────
+  // Every branch masks the contact in what goes back to the model; the SQL
+  // functions own availability, races, ownership, and caps.
+  if (BOOKING_TOOL_NAMES.has(name)) {
+    const safeCust = (customer ?? { id: null, email: null }) as Customer;
+    const sessKey = typeof input.session_key === "string" ? input.session_key : null;
+    const visTz = typeof input.visitor_tz === "string" ? input.visitor_tz : null;
+    // deno-lint-ignore no-explicit-any
+    const bcfgRow = await pgSelect<{ value: any }>("concierge_config?select=value&key=eq.bookings");
+    // deno-lint-ignore no-explicit-any
+    const bcfg: any = (bcfgRow && bcfgRow[0]?.value) || {};
+    if (bcfg.enabled !== true) return "ERROR: booking is not available right now.";
+    const ownerEmail = typeof bcfg.ownerEmail === "string" ? bcfg.ownerEmail : "";
+    const MASK = "[contact on file]";
+
+    if (name === "get_available_times") {
+      const types = await pgSelect<{ slug: string; title: string; description: string;
+        mode: string; duration_min: number; confirm_mode: string; max_party: number;
+        intake_prompt: string }>(
+        "concierge_appointment_types?select=slug,title,description,mode,duration_min,confirm_mode,max_party,intake_prompt&enabled=eq.true&order=sort_order");
+      const locs = await pgSelect<{ slug: string; title: string; address: string }>(
+        "concierge_locations?select=slug,title,address&enabled=eq.true&order=sort_order");
+      if (!types || !locs) return "ERROR: the calendar is unreachable right now.";
+      if (types.length === 0 || locs.length === 0) {
+        return JSON.stringify({ ok: false, reason: "nothing_bookable",
+          note: "Nothing is bookable right now — step down the ladder: offer a callback, or take an inquiry." });
+      }
+      const typeSlug = typeof input.type_slug === "string" ? input.type_slug : "";
+      if (!typeSlug) {
+        return JSON.stringify({ ok: true, types, locations: locs.length > 1 ? locs : undefined,
+          note: locs.length > 1
+            ? "Several locations — ask WHERE before WHEN, plainly. Then call again with type_slug and location_slug."
+            : "Call again with type_slug to get real slots." });
+      }
+      let locSlug = typeof input.location_slug === "string" ? input.location_slug : "";
+      if (!locSlug) {
+        if (locs.length > 1) {
+          return JSON.stringify({ ok: false, reason: "choose_location", locations: locs,
+            note: "Ask which location suits them — never assume." });
+        }
+        locSlug = locs[0].slug;
+      }
+      const fromRaw = typeof input.from_date === "string" ? input.from_date : "";
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(fromRaw) ? fromRaw : new Date().toISOString().slice(0, 10);
+      const days = Math.min(14, Math.max(1, Number(input.days) || 7));
+      const to = new Date(new Date(from + "T12:00:00Z").getTime() + (days - 1) * 86400000)
+        .toISOString().slice(0, 10);
+      // deno-lint-ignore no-explicit-any
+      const r = await pgRpc<any>("appointment_slots", {
+        p_type: typeSlug, p_location: locSlug, p_from: from, p_to: to, p_visitor_tz: visTz });
+      if (!r) return "ERROR: the calendar is unreachable right now.";
+      await logAction(cid, safeCust, "get_available_times", null,
+        { type: typeSlug, location: locSlug, from, days }, r.ok ? `${(r.slots || []).length} slots` : String(r.reason));
+      if (r.ok && Array.isArray(r.slots)) {
+        r.slots = r.slots.slice(0, 8);
+        r.note = "Present at most THREE, each by its lead_label VERBATIM; offer 'more times' for the rest. " +
+          "If empty, say so honestly and step down the ladder (callback, then inquiry).";
+      }
+      return JSON.stringify(r);
+    }
+
+    if (name === "book_appointment") {
+      const contact = typeof input.contact === "string" ? input.contact.trim() : "";
+      const ckind = input.contact_kind === "phone" ? "phone" : "email";
+      // deno-lint-ignore no-explicit-any
+      const r = await pgRpc<any>("book_appointment", {
+        p_type: String(input.type_slug || ""),
+        p_location: String(input.location_slug || "main"),
+        p_starts_at: String(input.starts_at || ""),
+        p_name: String(input.name || ""), p_contact: contact, p_contact_kind: ckind,
+        p_party: Number.isFinite(Number(input.party_size)) ? Number(input.party_size) : null,
+        p_notes: typeof input.notes === "string" ? input.notes.slice(0, 500) : "",
+        p_visitor_tz: visTz, p_customer: customer?.id ?? null,
+        p_conversation: cid, p_session: sessKey });
+      if (!r) return "ERROR: the calendar is unreachable right now.";
+      await logAction(cid, safeCust, "book_appointment", null,
+        { type: input.type_slug, starts_at: input.starts_at, status: r.status ?? r.reason },
+        r.ok ? `booked #${r.id} (${r.status})` : `refused: ${r.reason}`);
+      if (r.ok) {
+        const uid = `appt-${r.id}@concierge`;
+        const locTitle = r.location?.title || "";
+        const locAddr = r.location?.address || "";
+        const isReq = r.status === "requested";
+        if (ckind === "email" && contact) {
+          const ics = buildIcs(uid, r.starts_at, r.ends_at, String(r.type_title || "Appointment"),
+            [locTitle, locAddr].filter(Boolean).join(", "),
+            `${r.lead_label}${r.location?.directions ? " — " + r.location.directions : ""}`);
+          await sendEmail(contact,
+            isReq ? `Request received — ${r.type_title}` : `Confirmed — ${r.type_title}, ${r.shop_label}`,
+            emailShell(isReq ? "Your request is with the house" : "You're booked",
+              [String(r.lead_label || r.shop_label),
+               [locTitle, locAddr].filter(Boolean).join(" — "),
+               isReq ? "The house confirms shortly; you'll have an email either way."
+                     : "A calendar invite is attached. Need to change it? Just ask the concierge."]),
+            { kind: isReq ? "appointment-requested" : "appointment-confirmation" },
+            isReq ? undefined : [{ filename: "appointment.ics", content: btoa(ics) }]);
+        }
+        if (ownerEmail) {
+          await sendEmail(ownerEmail,
+            `${isReq ? "Booking request" : "New booking"}: ${r.type_title} — ${r.shop_label}`,
+            emailShell(isReq ? "A booking awaits your confirmation" : "A new booking",
+              [`${String(input.name || "")} — ${r.shop_label}${locTitle ? " at " + locTitle : ""}`,
+               `Contact: ${contact} (${ckind})`,
+               `Queue: your admin studio → Calendar`]),
+            { kind: "appointment-owner" });
+        }
+        return JSON.stringify({ ok: true, status: r.status, when: r.lead_label,
+          location: { title: locTitle, address: locAddr }, contact: MASK,
+          note: isReq
+            ? "Say EXACTLY: the house will confirm shortly — they'll have an email either way. Never a done deal."
+            : "Confirm in ONE line (what, when, where) and say the email is on its way. Never repeat their contact." });
+      }
+      if (r.reason === "taken" && Array.isArray(r.alternatives)) {
+        // deno-lint-ignore no-explicit-any
+        r.alternatives = r.alternatives.map((s: any) => ({ starts_at: s.starts_at, lead_label: s.lead_label }));
+      }
+      return JSON.stringify(r);
+    }
+
+    if (name === "get_my_appointments") {
+      if (!customer?.id && !sessKey) {
+        return JSON.stringify({ ok: true, appointments: [],
+          note: "No account and no session bookings — they can sign in, or book fresh." });
+      }
+      const who = customer?.id
+        ? `customer_id=eq.${encodeURIComponent(customer.id)}`
+        : `session_key=eq.${encodeURIComponent(sessKey!)}`;
+      const rows = await pgSelect<{ id: number; kind: string; starts_at: string | null;
+        status: string; window_pref: string | null; party_size: number | null;
+        notes: string; type_id: number | null; location_id: number | null }>(
+        `concierge_appointments?select=id,kind,starts_at,status,window_pref,party_size,notes,type_id,location_id&${who}` +
+        `&status=in.(requested,booked,open)&order=starts_at.asc.nullslast&limit=8`);
+      if (rows === null) return "ERROR: the calendar is unreachable right now.";
+      const types = await pgSelect<{ id: number; title: string }>(
+        "concierge_appointment_types?select=id,title");
+      const locs = await pgSelect<{ id: number; title: string; timezone: string }>(
+        "concierge_locations?select=id,title,timezone");
+      const out = rows.map((a) => {
+        const loc = (locs || []).find((l) => l.id === a.location_id);
+        let when: string | null = null;
+        if (a.starts_at) {
+          try {
+            when = new Intl.DateTimeFormat("en-US", { timeZone: loc?.timezone || "UTC",
+              weekday: "short", month: "short", day: "numeric",
+              hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(a.starts_at));
+          } catch { when = a.starts_at; }
+        }
+        return { id: a.id, kind: a.kind, status: a.status, when,
+          location: loc?.title ?? null,
+          type: (types || []).find((t) => t.id === a.type_id)?.title ?? null,
+          window_pref: a.window_pref, party_size: a.party_size, contact: MASK };
+      });
+      await logAction(cid, safeCust, "get_my_appointments", null, null, `${out.length} rows`);
+      return JSON.stringify({ ok: true, appointments: out });
+    }
+
+    if (name === "reschedule_appointment") {
+      const id = Math.floor(Number(input.appointment_id) || 0);
+      let locSlug = typeof input.new_location_slug === "string" ? input.new_location_slug : "";
+      if (!locSlug) {
+        const row = await pgSelect<{ location_id: number | null }>(
+          `concierge_appointments?select=location_id&id=eq.${id}`);
+        const lid = row && row[0]?.location_id;
+        const l = lid ? await pgSelect<{ slug: string }>(`concierge_locations?select=slug&id=eq.${lid}`) : null;
+        locSlug = (l && l[0]?.slug) || "main";
+      }
+      // deno-lint-ignore no-explicit-any
+      const r = await pgRpc<any>("reschedule_appointment", {
+        p_id: id, p_new_location: locSlug,
+        p_new_starts_at: String(input.new_starts_at || ""), p_visitor_tz: visTz,
+        p_cancel_token: null, p_customer: customer?.id ?? null, p_session: sessKey });
+      if (!r) return "ERROR: the calendar is unreachable right now.";
+      await logAction(cid, safeCust, "reschedule_appointment", null,
+        { id, new_starts_at: input.new_starts_at }, r.ok ? `moved (${r.status})` : `refused: ${r.reason}`);
+      if (!r.ok && r.reason === "taken") {
+        r.note = "REASSURE FIRST: their original booking still stands, untouched. Then offer the alternatives.";
+      }
+      if (r.ok && r.no_gap) {
+        r.note = "Say both truths plainly: the current booking holds; the new time awaits the house's confirmation.";
+      }
+      return JSON.stringify(r);
+    }
+
+    if (name === "update_appointment") {
+      // deno-lint-ignore no-explicit-any
+      const r = await pgRpc<any>("update_appointment", {
+        p_id: Math.floor(Number(input.appointment_id) || 0),
+        p_party: Number.isFinite(Number(input.party_size)) ? Number(input.party_size) : null,
+        p_notes: typeof input.notes === "string" ? input.notes.slice(0, 500) : null,
+        p_name: typeof input.name === "string" ? input.name : null,
+        p_contact: typeof input.contact === "string" ? input.contact : null,
+        p_contact_kind: input.contact_kind === "phone" ? "phone" : (input.contact_kind === "email" ? "email" : null),
+        p_window_pref: typeof input.window_pref === "string" ? input.window_pref : null,
+        p_cancel_token: null, p_customer: customer?.id ?? null, p_session: sessKey });
+      if (!r) return "ERROR: the calendar is unreachable right now.";
+      await logAction(cid, safeCust, "update_appointment", null,
+        { id: input.appointment_id }, r.ok ? "updated" : `refused: ${r.reason}`);
+      if (r.ok) r.contact = MASK;
+      return JSON.stringify(r);
+    }
+
+    if (name === "cancel_appointment") {
+      const id = Math.floor(Number(input.appointment_id) || 0);
+      const row = await pgSelect<{ visitor_contact: string; contact_kind: string }>(
+        `concierge_appointments?select=visitor_contact,contact_kind&id=eq.${id}`);
+      // deno-lint-ignore no-explicit-any
+      const r = await pgRpc<any>("cancel_appointment", {
+        p_id: id, p_cancel_token: null,
+        p_customer: customer?.id ?? null, p_session: sessKey });
+      if (!r) return "ERROR: the calendar is unreachable right now.";
+      await logAction(cid, safeCust, "cancel_appointment", null, { id },
+        r.ok ? "cancelled" : `refused: ${r.reason}`);
+      if (r.ok && row && row[0]?.contact_kind === "email" && row[0]?.visitor_contact) {
+        await sendEmail(row[0].visitor_contact, "Your booking is cancelled",
+          emailShell("Cancelled, as you asked",
+            ["The time is released. Book again whenever it suits you — the concierge has the calendar."]),
+          { kind: "appointment-cancelled" });
+      }
+      if (r.ok && ownerEmail) {
+        await sendEmail(ownerEmail, "Booking cancelled",
+          emailShell("A booking was cancelled", [`Appointment #${id} — see the Calendar queue.`]),
+          { kind: "appointment-owner" });
+      }
+      return JSON.stringify(r);
+    }
+
+    if (name === "request_callback") {
+      if (!(bcfg.callbacks === undefined || bcfg.callbacks?.enabled !== false)) {
+        return "ERROR: callbacks are not available — take an inquiry instead.";
+      }
+      const phone = typeof input.phone === "string" ? input.phone.trim().slice(0, 40) : "";
+      const who = typeof input.name === "string" ? input.name.trim().slice(0, 120) : "";
+      const win = typeof input.window_pref === "string" ? input.window_pref.trim().slice(0, 200) : "";
+      if (!phone || !who || !win) return "ERROR: a name, a number, and a preferred window are all needed.";
+      const qa = (sessKey ?? "").startsWith("qa-");
+      const row = await pgInsert<{ id: number }>("concierge_appointments", {
+        kind: "callback", status: "open", visitor_name: who, visitor_contact: phone,
+        contact_kind: "phone", window_pref: win,
+        notes: typeof input.notes === "string" ? input.notes.slice(0, 300) : "",
+        customer_id: customer?.id ?? null, conversation_id: cid, session_key: sessKey, qa });
+      if (!row) return "ERROR: the register is unreachable right now.";
+      await logAction(cid, safeCust, "request_callback", null, { window: win }, `callback #${(row as { id: number }).id}`);
+      if (ownerEmail && !qa) {
+        await sendEmail(ownerEmail, "Callback requested",
+          emailShell("A visitor asked for a call",
+            [`${who} — ${phone}`, `Window, in their words: ${win}`, "Queue: your admin studio → Calendar"]),
+          { kind: "callback-owner" });
+      }
+      return JSON.stringify({ ok: true, contact: MASK, window_pref: win,
+        promise: "someone will call you then",
+        note: "Promise EXACTLY that — 'someone will call you then' — never a precise minute, never 'right away'." });
+    }
   }
 
   if (name === "submit_inquiry") {
@@ -2902,6 +3382,8 @@ const BEAT_JUDGE_CRITERION =
   "(8) selling past a problem — the shopper's latest message (given below when available) raises an " +
   "unresolved complaint, error, or trust issue, and the line pitches, nudges, or changes the subject " +
   "instead of serving it. " +
+  "(9) inventing availability — naming a time, an opening hour, or a bookable slot the register did " +
+  "not provide this turn. " +
   "AGAINST THE HOUSE RULES: also veto if the line asserts a price, figure, count, product, guarantee, " +
   "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
   "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. If " +
@@ -4831,7 +5313,12 @@ async function handleChatPost(req: Request): Promise<Response> {
   // make the model re-greet ("what brings you back today?") on every reply.
   const isOpening = isOpener ||
     !validated.messages.some((m) => m.role === "assistant");
-  const customerLine = customer ? await customerBlock(customer, isOpening) : null;
+  const customerLine0 = customer ? await customerBlock(customer, isOpening) : null;
+  // Calendar context (APPOINTMENTS.md): authoritative HOURS + the visitor's
+  // next booking, so "are you open?" is answered from data and a booked guest
+  // is served, not re-sold. Empty string when the calendar is off.
+  const bookingCtx = await bookingContextBlock(data.config, customer, validated.sessionKey);
+  const customerLine = [customerLine0, bookingCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
   // Live goal status from the last evaluation, so the prompt shows which goals
   // are still open and the concierge actively drives them.
   let goalStatus: Record<string, { status?: string; note?: string }> | null = null;
@@ -5341,6 +5828,13 @@ async function handleChatPost(req: Request): Promise<Response> {
                 remember_customer: "Noting the client book…",
                 resolve_admin_note: "Attending to the house's note…",
                 cancel_order: "Striking the entry…",
+                get_available_times: "Consulting the calendar…",
+                book_appointment: "Inking the appointment…",
+                get_my_appointments: "Finding your bookings…",
+                reschedule_appointment: "Moving the appointment…",
+                update_appointment: "Amending the booking…",
+                cancel_appointment: "Releasing the time…",
+                request_callback: "Noting the callback…",
               } as Record<string, string>)[block.name] ?? "Consulting the register…";
               send({ s: label });
               // submit_inquiry is the inquiry-mode conversion event — stamp it with
@@ -5359,6 +5853,17 @@ async function handleChatPost(req: Request): Promise<Response> {
                 }
                 if (toolInput.turns === undefined) toolInput.turns = userTurns;
                 if (toolInput.origin === undefined) toolInput.origin = "tool";
+              }
+              // booking tools get the live session + the visitor's detected
+              // timezone — the model's own args never carry these
+              if (BOOKING_TOOL_NAMES.has(block.name)) {
+                toolInput = { ...toolInput };
+                if (validated.sessionKey && toolInput.session_key === undefined) {
+                  toolInput.session_key = validated.sessionKey;
+                }
+                if (typeof wctx.tz === "string" && toolInput.visitor_tz === undefined) {
+                  toolInput.visitor_tz = wctx.tz;
+                }
               }
               const out = await runRegisterTool(
                 block.name, toolInput, customer, cid,

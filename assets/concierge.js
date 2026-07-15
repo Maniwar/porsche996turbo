@@ -3296,6 +3296,9 @@
       messages.push({ role: turns[i].role, content: turns[i].content });
     }
     var ctx = freshState();
+    /* the visitor's clock (APPOINTMENTS.md §2): the register formats every
+       bookable time in BOTH zones; the model never converts times itself */
+    try { ctx.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch (eTz) { /* ignore */ }
     if (pendingNudge) { ctx.nudge = pendingNudge; pendingNudge = null; }
     if (pendingOpener) { ctx.opener = pendingOpener; pendingOpener = null; }
     if (pendingWrapup) { ctx.wrapup = 1; pendingWrapup = false; }
