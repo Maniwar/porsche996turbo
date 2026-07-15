@@ -6425,12 +6425,30 @@ async function loadCustomers(more) {
       }
     });
   } catch (e) { /* the merge is additive — orders still render without it */ }
+  // Inquiry leads belong in the book too — on an inquiry-mode site they ARE
+  // the pipeline. Merged by email; a contact who later signs in or orders
+  // simply gains standing (the earlier merges own the key).
+  try {
+    const ires = await sb.from('concierge_inquiries')
+      .select('email,name,kind,created_at')
+      .not('email', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    (ires.data || []).forEach(function (inq) {
+      const key = (inq.email || 'unknown').toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, { email: inq.email, name: inq.name || '', user_id: null, orders: [], latest: inq.created_at, lead: true });
+      } else if (!byKey.get(key).name && inq.name) {
+        byKey.get(key).name = inq.name;
+      }
+    });
+  } catch (e) { /* additive — sites without the table simply skip it */ }
   state.customers = [...byKey.values()].map(function (c) {
     const active = c.orders.filter(function (o) { return o.status !== 'cancelled' && o.status !== 'returned'; }).length;
     return {
       email: c.email, name: c.name || '—', user_id: c.user_id || null, orders: c.orders,
       notes: notesByKey.get((c.email || 'unknown').toLowerCase()) || [],
-      count: active, tier: c.orders.length ? tierFor(Math.max(1, active)) : 'Signed in',
+      count: active, tier: c.orders.length ? tierFor(Math.max(1, active)) : (c.lead ? 'Inquiry' : 'Signed in'),
       ltv: active * PRICE, latest: c.orders.length ? c.orders[0].placed_at : c.latest
     };
   }).sort(function (a, b) {
