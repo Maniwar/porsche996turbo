@@ -1409,6 +1409,12 @@
     .sound-embed-wrap.rv-repeat { transform:translateY(20px) scale(0.95); transition:opacity 1s ease, transform 1s ease; }
     .cfx-badge.rv-repeat:nth-child(2) { transition-delay:0.15s; }
     .cfx-badge.rv-repeat:nth-child(3) { transition-delay:0.30s; }
+    /* ── CONCIERGE ↔ NAV COEXISTENCE ──
+       The concierge overlays outrank page chrome (by design), so give the
+       fixed nav its strip back: panel and scrim start below it, keeping the
+       music toggle and Inquire reachable while the panel is open. */
+    @media (min-width:900px) { .cx-panel { top: 62px !important; } }
+    .cx-scrim { top: 62px !important; }
   </style>
 </head>
 <body>
@@ -2940,6 +2946,10 @@ let gestureUnlocked = false;
 function gestureStart(e) {
   if (gestureUnlocked) return;
   if (audioBtn.contains(e.target)) return;
+  /* The concierge is a conversation, not a gesture on the car page — opening
+     it, typing in it, or tapping its chips must never start the soundtrack
+     (and must not burn the unlock: a later real page click still counts). */
+  if (e.target && e.target.closest && e.target.closest('.cx-panel,.cx-launch,.cx-scrim,.cx-chip,.cx-outreach')) return;
   if (!bgAudio.paused) { gestureUnlocked = true; return; }
   gestureUnlocked = true;
   startMusic();
