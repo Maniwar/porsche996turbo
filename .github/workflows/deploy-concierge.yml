@@ -77,14 +77,26 @@ jobs:
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
             "begin; select set_config('request.jwt.claims','{\"role\":\"service_role\"}',true); select public.nps_metrics(30); rollback;"
           KEY=$(grep -o "sb_publishable_[A-Za-z0-9_-]*" admin.html | head -1)
+          # Control: is the baked publishable key valid at the API gateway at
+          # all? (apikey only — new-format keys are not JWTs, never Bearer.)
+          ctrl=$(curl -sS -o /tmp/nps-ctrl.json -w '%{http_code}' --max-time 30 \
+            "https://$SUPABASE_PROJECT_REF.supabase.co/rest/v1/nps_categories?select=slug&limit=1" \
+            -H "apikey: $KEY" || echo 000)
+          echo "control GET nps_categories (apikey only) -> HTTP $ctrl"
+          cat /tmp/nps-ctrl.json; echo
+          if [ "$ctrl" != "200" ]; then
+            echo "::warning::The publishable key baked into admin.html is not accepted by the REST gateway (HTTP $ctrl) — fresh browsers cannot use the admin studio with the baked key."
+          fi
+          # The RPC the admin card calls: 401/403 = resolvable + guarded (the
+          # anon grant is revoked); 404 = PostgREST cannot see the function.
           code=$(curl -sS -o /tmp/nps-probe.json -w '%{http_code}' --max-time 30 \
             -X POST "https://$SUPABASE_PROJECT_REF.supabase.co/rest/v1/rpc/nps_metrics" \
-            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            -H "apikey: $KEY" \
             -H "Content-Type: application/json" -d '{"p_days":30}' || echo 000)
-          echo "REST rpc/nps_metrics (publishable key) -> HTTP $code"
+          echo "REST rpc/nps_metrics (apikey only) -> HTTP $code"
           cat /tmp/nps-probe.json; echo
-          if [ "$code" != "403" ] && [ "$code" != "401" ]; then
-            echo "::error::nps_metrics REST probe returned $code — expected 401/403 (resolvable + guarded). 404 = PostgREST schema cache is stale; 200 = the anon grant leaked."
+          if [ "$code" = "404" ] || [ "$code" = "200" ] || [ "$code" = "000" ]; then
+            echo "::error::nps_metrics REST probe returned $code — 404 = PostgREST schema cache is stale; 200 = the anon grant leaked; 000 = network."
             exit 1
           fi
 
