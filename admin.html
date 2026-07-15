@@ -8669,10 +8669,19 @@ function npsSegBadge(seg, score) {
 async function renderNpsCard() {
   const card = $('nps-card');
   if (!card) return;
+  // Fail VISIBLY: a hidden card is indistinguishable from "not deployed", so
+  // any failure renders the card with the reason instead of display:none.
+  const npsFail = function (msg) {
+    card.style.display = '';
+    const th2 = $('nps-themes');
+    if (th2) th2.textContent = 'NPS unavailable — ' + msg;
+    console.warn('[concierge-admin] nps_metrics: ' + msg);
+  };
   const days = (state.cvRange === undefined || state.cvRange === null) ? 30 : (state.cvRange || 3650);
   try {
     const r = await sb.rpc('nps_metrics', { p_days: days });
-    if (r.error || !r.data) { card.style.display = 'none'; return; }
+    if (r.error) { npsFail(r.error.message || JSON.stringify(r.error)); return; }
+    if (!r.data) { npsFail('empty response from nps_metrics()'); return; }
     const m = r.data;
     card.style.display = '';
     $('nps-score').textContent = (m.nps === null || m.nps === undefined) ? '—' : String(m.nps);
@@ -8815,7 +8824,7 @@ async function renderNpsCard() {
       line.appendChild(el('span', 'micro', fmtWhen(row.created_at)));
       rec.appendChild(line);
     });
-  } catch (e) { card.style.display = 'none'; }
+  } catch (e) { npsFail((e && e.message) || String(e)); }
 }
 
 async function loadConversion() {

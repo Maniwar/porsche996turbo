@@ -1701,3 +1701,10 @@ begin
   insert into public.concierge_config (key, value, updated_at)
     values ('_pilot_forms_enabled_v1', 'true'::jsonb, now());
 end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- PostgREST schema-cache reload — new tables/functions (e.g. nps_metrics) are
+-- callable over REST immediately, even if the DDL event trigger missed a beat.
+-- (idempotent — a NOTIFY is always safe.)
+-- ─────────────────────────────────────────────────────────────────────────────
+notify pgrst, 'reload schema';

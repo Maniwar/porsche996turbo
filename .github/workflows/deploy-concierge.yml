@@ -59,14 +59,34 @@ jobs:
       # Canonical schema: apply the idempotent supabase/setup.sql on every deploy.
       # Requires a SUPABASE_DB_URL secret — the Session pooler connection string
       # (IPv4, so it works from GitHub runners; the direct db.<ref> host is
-      # IPv6-only). Non-blocking so a bad URL never halts the function deploy;
-      # ON_ERROR_STOP surfaces any real SQL error in the log.
+      # IPv6-only). Blocking: a schema error must fail the deploy, not hide —
+      # continue-on-error here once masked failures behind a green run.
       - name: Apply setup.sql (canonical schema)
         if: env.SUPABASE_DB_URL != ''
-        continue-on-error: true
         run: |
           command -v psql >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; }
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase/setup.sql
+
+      # Prove the admin RPCs are actually callable after the schema apply —
+      # both in the database (the function body executes) and over REST (the
+      # exact path admin.html uses). 403 for the publishable key means the
+      # function is resolvable AND guarded; 404 means PostgREST cannot see it.
+      - name: Verify admin RPC live (nps_metrics)
+        if: env.SUPABASE_DB_URL != ''
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+            "begin; select set_config('request.jwt.claims','{\"role\":\"service_role\"}',true); select public.nps_metrics(30); rollback;"
+          KEY=$(grep -o "sb_publishable_[A-Za-z0-9_-]*" admin.html | head -1)
+          code=$(curl -sS -o /tmp/nps-probe.json -w '%{http_code}' --max-time 30 \
+            -X POST "https://$SUPABASE_PROJECT_REF.supabase.co/rest/v1/rpc/nps_metrics" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/json" -d '{"p_days":30}' || echo 000)
+          echo "REST rpc/nps_metrics (publishable key) -> HTTP $code"
+          cat /tmp/nps-probe.json; echo
+          if [ "$code" != "403" ] && [ "$code" != "401" ]; then
+            echo "::error::nps_metrics REST probe returned $code — expected 401/403 (resolvable + guarded). 404 = PostgREST schema cache is stale; 200 = the anon grant leaked."
+            exit 1
+          fi
 
       - name: Set allowed origins
         run: supabase secrets set ALLOWED_ORIGINS="https://maniwar.github.io"
