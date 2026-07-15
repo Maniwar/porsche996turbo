@@ -309,3 +309,141 @@ export function renderLearningDigest(
     "aren't; treat a small n as a weak signal, never a rule. Silence after a move is " +
     "itself a signal — if a move keeps getting ignored, a lighter touch (or holding) may beat repeating it.";
 }
+
+// ── NPS — survey trigger, score math, and the customer brief ─────────────────
+// Pure so the survey TRIGGER and the SCORE CALCULATION are unit-tested
+// (beats_test.ts) — the DB reads/writes, the LLM categorisation, and the beat
+// wiring live in index.ts. See NPS.md. The design point: the survey is a beat
+// (fire once, at a natural close, gated), and the closed loop reuses the same
+// coach/judge/digest machinery as the sales coach.
+
+export type NpsSegment = "promoter" | "passive" | "detractor";
+
+/** Standard NPS banding: 9–10 promoter, 7–8 passive, 0–6 detractor. */
+export function npsSegment(score: number): NpsSegment {
+  if (score >= 9) return "promoter";
+  if (score >= 7) return "passive";
+  return "detractor";
+}
+
+/**
+ * The Net Promoter Score: %promoters − %detractors on a −100..100 scale,
+ * rounded. Passives count in the denominator but NEVER the numerator — that is
+ * the whole point of the metric. Returns null for an empty set: no responses is
+ * not a score of zero, and the difference must stay visible (honest about
+ * absence, like renderLearningDigest). Out-of-range scores are ignored.
+ */
+export function npsScore(scores: number[]): number | null {
+  const valid = scores.filter((s) => Number.isFinite(s) && s >= 0 && s <= 10);
+  if (valid.length === 0) return null;
+  let prom = 0, det = 0;
+  for (const s of valid) {
+    const seg = npsSegment(s);
+    if (seg === "promoter") prom++;
+    else if (seg === "detractor") det++;
+  }
+  return Math.round(((prom - det) / valid.length) * 100);
+}
+
+export interface NpsTriggerState {
+  enabled: boolean;
+  concluded: boolean;              // a natural end reached (order placed / goal met / wrap-up / "that's all")
+  alreadySurveyedSession: boolean; // an nps_responses row / offer already exists for this conversation
+  sessionDurationMs: number;
+  minDurationMs: number;
+  lastSurveyedAtMs: number | null; // this customer's most recent submission (any session)
+  cooldownMs: number;
+  nowMs: number;
+}
+
+/**
+ * Whether to offer the NPS survey now. A pure gate with the same discipline as
+ * proposalGate: fire ONCE, only at a natural close, only for a session worth
+ * rating, and never inside the per-customer cooldown. Returns a reason either
+ * way so the decision is auditable.
+ */
+export function npsTriggerGate(s: NpsTriggerState): { ask: boolean; reason: string } {
+  if (!s.enabled) return { ask: false, reason: "nps survey disabled" };
+  if (s.alreadySurveyedSession) return { ask: false, reason: "already offered this session" };
+  if (!s.concluded) return { ask: false, reason: "session not at a natural close" };
+  if (s.sessionDurationMs < Math.max(s.minDurationMs, 0)) {
+    return { ask: false, reason: "session too short to be worth rating" };
+  }
+  if (s.lastSurveyedAtMs != null && s.cooldownMs > 0 &&
+      s.nowMs - s.lastSurveyedAtMs < s.cooldownMs) {
+    return { ask: false, reason: "within the per-customer cooldown" };
+  }
+  return { ask: true, reason: "session concluded and eligible" };
+}
+
+export interface NpsCategoryHit { slug: string; confidence?: number; }
+export interface NpsHistoryItem {
+  score: number;
+  categories?: NpsCategoryHit[];
+  submittedAtMs?: number;
+}
+
+/**
+ * The actionable half — DETRACTOR REASONS: tally the themes behind
+ * less-than-promoter scores (detractors AND passives), most frequent first.
+ * This is the "why are they unhappy" signal the coach brief and the dashboards
+ * lean on; promoter mentions are excluded so praise never dilutes the concerns.
+ */
+export function detractorThemes(history: NpsHistoryItem[]): Array<{ slug: string; n: number }> {
+  const counts = new Map<string, number>();
+  for (const h of history) {
+    if (!h || !Array.isArray(h.categories)) continue;
+    if (npsSegment(h.score) === "promoter") continue; // only the concerning ones
+    for (const c of h.categories) {
+      if (!c || typeof c.slug !== "string" || !c.slug) continue;
+      counts.set(c.slug, (counts.get(c.slug) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([slug, n]) => ({ slug, n }))
+    .sort((a, b) => b.n - a.n || a.slug.localeCompare(b.slug));
+}
+
+/**
+ * The private, judge-guarded NPS brief the concierge/coach sees for ONE
+ * customer (their own history). Leads with segment + trend, then the recurring
+ * concerns to address, then a forward-looking play. Empty when the history is
+ * too thin to be honest (mirrors renderLearningDigest). Carries the
+ * never-quote discipline: the score itself must never be echoed back at the
+ * customer — the reach-out judge vetoes scorekeeping, and this is the
+ * source-side guard that pairs with it.
+ */
+export function renderCustomerNps(history: NpsHistoryItem[], minResponses = 1): string {
+  const clean = (Array.isArray(history) ? history : [])
+    .filter((h) => h && Number.isFinite(h.score) && h.score >= 0 && h.score <= 10);
+  if (clean.length < Math.max(minResponses, 1)) return "";
+  const ordered = [...clean].sort((a, b) => (a.submittedAtMs ?? 0) - (b.submittedAtMs ?? 0));
+  const latest = ordered[ordered.length - 1];
+  const prior = ordered.length >= 2 ? ordered[ordered.length - 2] : null;
+  const seg = npsSegment(latest.score);
+  const rolling = npsScore(ordered.map((h) => h.score));
+  let trend = "steady";
+  if (prior) {
+    if (latest.score > prior.score) trend = "improving";
+    else if (latest.score < prior.score) trend = "declining";
+  }
+  const themes = detractorThemes(ordered).slice(0, 3);
+  const lines: string[] = [
+    "[NPS — this customer's OWN feedback history. Private: shape your approach with it, " +
+    "but NEVER quote a past score, rating, or survey back at them.]",
+    `standing: ${seg.toUpperCase()} · latest ${latest.score}/10 (${trend})` +
+      (rolling != null && ordered.length > 1 ? ` · rolling NPS ${rolling} over ${ordered.length}` : ""),
+  ];
+  if (themes.length) {
+    lines.push("recurring concerns: " +
+      themes.map((t) => `${t.slug}${t.n > 1 ? ` (${t.n}×)` : ""}`).join(", "));
+  }
+  if (seg === "detractor") {
+    lines.push("play it forward: rebuild trust — address the concern proactively, don't defend the score.");
+  } else if (seg === "passive") {
+    lines.push("play it forward: one genuine improvement on the concern could move them to a promoter.");
+  } else {
+    lines.push("play it forward: a happy patron — a light, well-timed referral or companion invitation is welcome.");
+  }
+  return "\n\n" + lines.join("\n");
+}

@@ -13,6 +13,11 @@ import {
   type LearningDigest,
   PLACEHOLDER_ADDR,
   renderLearningDigest,
+  npsSegment,
+  npsScore,
+  npsTriggerGate,
+  detractorThemes,
+  renderCustomerNps,
   proposalGate,
   proposalRestHoursFrom,
   type SalesLedger,
@@ -274,4 +279,67 @@ Deno.test("digest caps at six buckets and tolerates missing fields", () => {
   assertEq(shown, 6, "at most six buckets are shown");
   const sparse = renderLearningDigest(digest({ buckets: [{ n: 10 } as never] }), 8);
   assert(sparse.includes("? on a ?: 0% replied (n=10)"), "missing move/beat/rate degrade to placeholders: " + sparse);
+});
+
+
+// ── NPS — segments, score math, the survey trigger, detractor reasons, brief ──
+const DAY = 24 * HOUR;
+
+Deno.test("npsSegment bands 0-6 / 7-8 / 9-10 correctly", () => {
+  for (const s of [0, 3, 6]) assertEq(npsSegment(s), "detractor", `score ${s}`);
+  for (const s of [7, 8]) assertEq(npsSegment(s), "passive", `score ${s}`);
+  for (const s of [9, 10]) assertEq(npsSegment(s), "promoter", `score ${s}`);
+});
+
+Deno.test("npsScore = %promoters − %detractors; passives ignored in the numerator", () => {
+  assertEq(npsScore([10, 10, 9, 7, 0]), 40, "3 prom, 1 det, 1 pass over 5 ⇒ (3-1)/5*100");
+  assertEq(npsScore([9, 9, 9, 9]), 100, "all promoters ⇒ 100");
+  assertEq(npsScore([0, 1, 2]), -100, "all detractors ⇒ -100");
+  assertEq(npsScore([7, 8, 7]), 0, "all passives ⇒ 0 (there ARE responses), not null");
+  assertEq(npsScore([]), null, "no responses ⇒ null, never 0");
+  assertEq(npsScore([10, 99, -1, 5]), 0, "out-of-range dropped: 1 prom, 1 det over 2 ⇒ 0");
+});
+
+Deno.test("npsTriggerGate fires once, only at a natural close, past the cooldown", () => {
+  const base = {
+    enabled: true, concluded: true, alreadySurveyedSession: false,
+    sessionDurationMs: 5 * 60000, minDurationMs: 60000,
+    lastSurveyedAtMs: null as number | null, cooldownMs: 7 * DAY, nowMs: NOW,
+  };
+  assert(npsTriggerGate(base).ask, "an eligible concluded session offers the survey");
+  assert(!npsTriggerGate({ ...base, enabled: false }).ask, "disabled ⇒ no");
+  assert(!npsTriggerGate({ ...base, alreadySurveyedSession: true }).ask, "already offered ⇒ no (fire once)");
+  assert(!npsTriggerGate({ ...base, concluded: false }).ask, "mid-session ⇒ no");
+  assert(!npsTriggerGate({ ...base, sessionDurationMs: 5000 }).ask, "too short ⇒ no");
+  assert(!npsTriggerGate({ ...base, lastSurveyedAtMs: NOW - 1 * HOUR }).ask, "within cooldown ⇒ no");
+  assert(npsTriggerGate({ ...base, lastSurveyedAtMs: NOW - 8 * DAY }).ask, "past cooldown ⇒ yes");
+});
+
+Deno.test("detractorThemes tallies only sub-promoter concerns, most frequent first", () => {
+  const t = detractorThemes([
+    { score: 3, categories: [{ slug: "scheduling" }, { slug: "communication" }] },
+    { score: 6, categories: [{ slug: "scheduling" }] },
+    { score: 8, categories: [{ slug: "value" }] },        // passive counts — it's a concern
+    { score: 10, categories: [{ slug: "scheduling" }] },  // promoter mention EXCLUDED
+  ]);
+  assertEq(t[0].slug, "scheduling", "scheduling is the top concern");
+  assertEq(t[0].n, 2, "counted from the detractor+passive, NOT the promoter mention");
+  assert(t.some((x) => x.slug === "value"), "a passive's concern is included");
+  assert(!t.some((x) => x.n === 1 && x.slug === "scheduling"), "the promoter mention did not inflate the count");
+});
+
+Deno.test("renderCustomerNps: detractor brief carries themes + never-quote guard; thin data ⇒ empty", () => {
+  assertEq(renderCustomerNps([]), "", "no history ⇒ empty");
+  assertEq(renderCustomerNps([{ score: 4 }], 2), "", "below the min-responses floor ⇒ empty");
+  const det = renderCustomerNps([
+    { score: 7, categories: [{ slug: "scheduling" }], submittedAtMs: NOW - 2 * DAY },
+    { score: 3, categories: [{ slug: "scheduling" }], submittedAtMs: NOW },
+  ]);
+  assert(det.includes("DETRACTOR"), "leads with the current segment");
+  assert(/declining/.test(det), "trend detected (7 → 3)");
+  assert(/scheduling/.test(det), "surfaces the recurring concern");
+  assert(/never quote/i.test(det), "carries the never-quote-the-score discipline (pairs with the judge)");
+  assert(/rebuild trust/i.test(det), "forward-looking play for a detractor");
+  const promo = renderCustomerNps([{ score: 10, submittedAtMs: NOW }]);
+  assert(/PROMOTER/.test(promo) && /referral/i.test(promo), "a promoter brief invites a referral");
 });

@@ -917,6 +917,127 @@ begin
 end $$;
 revoke execute on function public.beat_learning_digest(int, int, int) from public, anon, authenticated;
 
+-- ─── NPS — closed-loop feedback capture ──────────────────────────────────────
+-- The survey is a beat (see NPS.md + beats.ts npsTriggerGate); this is its data
+-- model + the dashboard/aggregate calculation. Deliberately dormant until the
+-- REQUEST_NPS beat + submit_nps tool are wired — the tables and the math ship
+-- first so the design is testable and the schema is canonical.
+--
+-- One row per submitted rating. customer_id is nullable (anonymous ratings are
+-- allowed, like inquiries); coach_id names whoever/whatever ran the session
+-- (the concierge instance, or a human agent). segment is DERIVED, never stored
+-- loose. categories is [{slug, confidence}] set by the LLM classifier (or a
+-- human via re-categorisation).
+create table if not exists public.nps_responses (
+  id              bigint generated always as identity primary key,
+  conversation_id uuid references public.concierge_conversations(id) on delete set null,
+  customer_id     uuid,
+  coach_id        text,
+  score           smallint not null check (score between 0 and 10),
+  segment         text generated always as (
+                    case when score >= 9 then 'promoter'
+                         when score >= 7 then 'passive'
+                         else 'detractor' end) stored,
+  reason_text     text,
+  categories      jsonb not null default '[]'::jsonb,
+  category_source text not null default 'llm' check (category_source in ('llm','human')),
+  response_time_seconds int,
+  survey_version  text,
+  created_at      timestamptz not null default now());
+create index if not exists nps_responses_customer_idx on public.nps_responses (customer_id, created_at desc);
+create index if not exists nps_responses_created_idx  on public.nps_responses (created_at desc);
+alter table public.nps_responses enable row level security;
+-- Admin-read only; writes go through the service role / the submit_nps tool.
+-- Customers do NOT read their own NPS (out of scope) — and the concierge never
+-- quotes a score back regardless (the reach-out judge + renderCustomerNps guard).
+drop policy if exists nps_responses_admin_read on public.nps_responses;
+create policy nps_responses_admin_read on public.nps_responses
+  for select using (public.is_concierge_admin());
+
+-- Admin-managed classification vocabulary. detractor_focus flags the actionable
+-- "why unhappy" themes the coach + dashboards emphasise. prompt_hint steers the
+-- LLM classifier (the same config-over-code pattern as goals/hooks).
+create table if not exists public.nps_categories (
+  slug            text primary key,
+  label           text not null,
+  prompt_hint     text not null default '',
+  detractor_focus boolean not null default false,
+  enabled         boolean not null default true,
+  sort            int not null default 100);
+alter table public.nps_categories enable row level security;
+drop policy if exists nps_categories_admin_all on public.nps_categories;
+create policy nps_categories_admin_all on public.nps_categories
+  for all using (public.is_concierge_admin()) with check (public.is_concierge_admin());
+
+-- Seed a detractor-forward starter vocabulary (only when empty — never clobbers
+-- an operator's edits).
+insert into public.nps_categories (slug, label, prompt_hint, detractor_focus, sort) values
+  ('scheduling',    'Scheduling & availability',   'booking difficulty, timing, flexibility, delays, waiting', true,  10),
+  ('communication', 'Communication & responsiveness','slow or unclear replies, not kept informed, felt ignored', true,  20),
+  ('value',         'Value & price',                'felt too expensive, unclear worth, cost concerns',        true,  30),
+  ('expectations',  'Expectations mismatch',        'over-promised / under-delivered, surprised, misled',      true,  40),
+  ('outcome',       'Outcome & results',            'did or did not get the result they wanted',               true,  50),
+  ('guidance',      'Expertise & guidance',         'quality of advice, competence, helpfulness',              true,  60),
+  ('experience',    'Overall experience & warmth',  'felt cared for vs. rushed / impersonal',                  false, 70),
+  ('product',       'Product & selection',          'the item itself, range, quality',                         false, 80),
+  ('praise',        'General praise',               'loved it, enthusiastic, no specific issue',               false, 90),
+  ('other',         'Other / unclear',              'does not fit any category above',                         false, 999)
+on conflict (slug) do nothing;
+
+-- The dashboard + aggregate calculation (mirrors the pure npsScore in beats.ts):
+-- overall NPS (%promoters − %detractors), the segment split, and the theme
+-- frequencies — with the DETRACTOR themes broken out, since that is the
+-- actionable signal. Optionally scoped to one coach. Live-computed over a
+-- window (indexed); cache with concierge_insights if it ever gets hot.
+create or replace function public.nps_metrics(p_days int default 30, p_coach text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_days int := greatest(coalesce(p_days, 30), 1);
+  v jsonb;
+begin
+  with resp as (
+    select r.score, r.segment, r.categories
+    from public.nps_responses r
+    where r.created_at > now() - make_interval(days => v_days)
+      and (p_coach is null or r.coach_id = p_coach)
+  ),
+  seg as (
+    select count(*) filter (where segment = 'promoter')  as prom,
+           count(*) filter (where segment = 'passive')   as pass,
+           count(*) filter (where segment = 'detractor') as det,
+           count(*) as n
+    from resp
+  ),
+  cats as (
+    select c->>'slug' as slug,
+           count(*) as n,
+           count(*) filter (where segment = 'detractor') as det_n
+    from resp, lateral jsonb_array_elements(coalesce(categories, '[]'::jsonb)) c
+    where nullif(c->>'slug', '') is not null
+    group by 1
+  )
+  select jsonb_build_object(
+    'window_days', v_days,
+    'coach', p_coach,
+    'responses',  (select n from seg),
+    'nps', case when (select n from seg) > 0
+                then round(((select prom from seg) - (select det from seg))::numeric
+                           / (select n from seg) * 100)
+                else null end,
+    'promoters',  (select prom from seg),
+    'passives',   (select pass from seg),
+    'detractors', (select det from seg),
+    'themes', coalesce((
+      select jsonb_agg(jsonb_build_object('slug', slug, 'n', n) order by n desc, slug)
+      from cats), '[]'::jsonb),
+    'detractor_themes', coalesce((
+      select jsonb_agg(jsonb_build_object('slug', slug, 'n', det_n) order by det_n desc, slug)
+      from cats where det_n > 0), '[]'::jsonb)
+  ) into v;
+  return v;
+end $$;
+revoke execute on function public.nps_metrics(int, text) from public, anon, authenticated;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. SEED DATA (admins, config, KB, SOPs, forms, goals) — safe to re-run
 -- ─────────────────────────────────────────────────────────────────────────────
