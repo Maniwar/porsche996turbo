@@ -2132,7 +2132,10 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <p class="note">The closed rating loop (<span class="mono">NPS.md</span>): the concierge asks <b>once</b> at a
         natural close (a pure, unit-tested gate), the score and reason are captured deterministically, the reason is
         categorized against the vocabulary below, and each customer's history quietly grounds the coach — never quoted
-        back at the shopper. QA traffic (<span class="mono">qa-</span> sessions) never counts toward any number here.</p>
+        back at the shopper. QA traffic (<span class="mono">qa-</span> sessions) never counts toward any number here.
+        There’s deliberately <b>no survey tool</b> the bot can call — only a customer’s tap writes or revises a rating.
+        The survey’s knobs (question, timing, cooldown, rating change window) live under <b>Engagement → House rules</b>;
+        its wording is the <b>closing-survey SOP</b>.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
         <span class="micro">Range</span>
         <span id="nps-range" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
@@ -2215,6 +2218,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       </div>
       <p class="note" style="max-width:720px;">Everything the concierge can <em>do</em> for a signed-in patron lives here. There are two kinds, and they're added in two different ways:</p>
       <p class="note" style="max-width:720px;">• <strong>Model tools</strong> run code on our side — read the register, cancel, re-send a confirmation, log a mending request. The bot decides when to call them. You control which are switched on and how they're instructed; <strong>creating a brand-new model tool needs a developer</strong> (it has to run real server logic — see <code>TOOLS.md</code>).<br>• <strong>Form tools</strong> hand the patron a little form in the chat and write the result to an order. These are pure configuration — <strong>you can create, edit, and remove them right here</strong>, no deploy.</p>
+      <p class="note" style="max-width:720px;">Looking for the satisfaction survey? <strong>There is no survey tool, by design</strong> — the bot can never write or change a rating; only the customer’s tap does, through tested code. Configure the survey (question, timing, cooldown, rating change window) under <strong>Engagement → House rules</strong>, its wording in the <strong>closing-survey SOP</strong>, and read results on the <strong>NPS</strong> tab.</p>
 
       <section class="card">
         <div class="card-head">
