@@ -1816,7 +1816,7 @@ function scheduleGoalEval(
 // just leaves the note open for next time; it can never produce a wrong reply.
 const RESOLVE_TOOL = REGISTER_TOOLS.find((t) => t.name === "resolve_admin_note");
 
-// ── The meter — usage logging for every model call (COSTS.md) ────────────────
+// ── The meter — usage logging for every model call (COST.md) ────────────────
 // Every request to the model gets a ledger row: purpose, model, tokens, and —
 // where the call belongs to a conversation — which one. QA traffic ("qa-"
 // session keys: CI smoke + the eval deck) is flagged at write time so dev
