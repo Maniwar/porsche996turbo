@@ -16,6 +16,7 @@ import {
   npsSegment,
   npsScore,
   npsResponseRate,
+  npsAnalystCorpus,
   npsTriggerGate,
   detractorThemes,
   renderCustomerNps,
@@ -320,6 +321,25 @@ Deno.test("npsResponseRate = responses ÷ offers; null when nothing offered, nev
   assertEq(npsResponseRate(0, 2), null, "responses without offers still null when offers=0");
   assertEq(npsResponseRate(2, 3), 150, "more responses than offers is shown, not hidden (window-edge anomaly)");
   assertEq(npsResponseRate(3, -1), 0, "negative response count clamps to 0");
+});
+
+Deno.test("npsAnalystCorpus: detractors lead, honesty floor, caps hold", () => {
+  const items = [
+    { score: 10, reason: "beautiful craft", when: "2026-07-01" },
+    { score: 2, reason: "booking took three tries", categories: [{ slug: "scheduling" }], transcript: ["visitor: this keeps failing", "concierge: let me help"] },
+    { score: 7, reason: "fine but slow replies" },
+    { score: 9, reason: null },
+  ];
+  const out = npsAnalystCorpus(items);
+  assert(out.startsWith("SESSION 1 — 2/10 (detractor)"), "detractor leads the corpus");
+  assert(out.includes('"booking took three tries"'), "the customer's own words are the evidence");
+  assert(out.includes("categories: scheduling"), "categories ride along");
+  assert(out.includes("visitor: this keeps failing"), "transcript excerpts included");
+  assert(out.includes("(none given)"), "a missing reason is stated, never invented");
+  assertEq(npsAnalystCorpus(items.slice(0, 2)), "", "fewer than 3 responses ⇒ '' — no report on thin data");
+  const capped = npsAnalystCorpus(items, { maxSessions: 3 });
+  assert(!capped.includes("SESSION 4"), "session cap holds");
+  assertEq(npsAnalystCorpus([{ score: 99 }, { score: -2 }, { score: NaN }] as never), "", "junk scores dropped, floor applies");
 });
 
 Deno.test("npsTriggerGate fires once, only at a natural close, past the cooldown", () => {

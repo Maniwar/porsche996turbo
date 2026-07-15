@@ -37,6 +37,7 @@ import {
   hasPendingAsk,
   type LearningDigest,
   type NpsHistoryItem,
+  npsAnalystCorpus,
   npsTriggerGate,
   PLACEHOLDER_ADDR,
   proposalRestHoursFrom,
@@ -3274,6 +3275,127 @@ async function handleInsightsGet(req: Request): Promise<Response> {
   });
 }
 
+// ── GET ?npsreport=1 — the LLM satisfaction analyst (NPS.md) ─────────────────
+// Conversational analytics, on demand: the model reads REAL rated sessions —
+// score, the customer's own reason, transcript excerpts — and writes an
+// ACTIONABLE report: what is creating detractors, what promoters praise, and
+// ranked fixes, every claim tied to quoted evidence. The corpus builder
+// (npsAnalystCorpus, unit-tested) leads with detractors, caps the size, and
+// refuses to run on thin data. Cached in concierge_insights (kind
+// 'nps_report') so the default GET never spends a model call; ?fresh=1
+// regenerates over ?days=. Admin-only, and the report is instructed to carry
+// no names or emails — quotes and counts only.
+async function handleNpsReportGet(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const url = new URL(req.url);
+  const days = Math.min(Math.max(parseInt(url.searchParams.get("days") || "90", 10) || 90, 1), 3650);
+  const fresh = url.searchParams.get("fresh") === "1";
+  if (!fresh) {
+    const rows = await pgSelect<{ payload: Record<string, unknown>; computed_at: string }>(
+      "concierge_insights?select=payload,computed_at&kind=eq.nps_report&limit=1",
+    );
+    if (rows && rows[0]) {
+      return jsonResponse(req, 200, { ...rows[0].payload, computed_at: rows[0].computed_at, cached: true });
+    }
+    return jsonResponse(req, 200, { report: null, cached: true });
+  }
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  if (!apiKey) return jsonError(req, 503, "Model key not configured.");
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const resp = await pgSelect<{
+    conversation_id: string | null;
+    score: number;
+    segment: string;
+    reason_text: string | null;
+    categories: { slug?: string }[] | null;
+    created_at: string;
+  }>(
+    `nps_responses?select=conversation_id,score,segment,reason_text,categories,created_at` +
+      `&created_at=gt.${encodeURIComponent(since)}&order=created_at.desc&limit=60`,
+  ) ?? [];
+  // Transcript excerpts for the highest-signal sessions (detractors first).
+  const rank: Record<string, number> = { detractor: 0, passive: 1, promoter: 2 };
+  const withConvo = resp.filter((r) => r.conversation_id)
+    .sort((a, b) => (rank[a.segment] ?? 3) - (rank[b.segment] ?? 3))
+    .slice(0, 16);
+  const transcripts = new Map<string, string[]>();
+  await Promise.all(withConvo.map(async (r) => {
+    const ms = await pgSelect<{ role: string; content: string }>(
+      `concierge_messages?select=role,content&conversation_id=eq.${encodeURIComponent(r.conversation_id!)}` +
+        `&order=created_at.desc&limit=12`,
+    );
+    if (ms) {
+      transcripts.set(
+        r.conversation_id!,
+        ms.reverse().map((m) => (m.role === "user" ? "visitor: " : "concierge: ") + String(m.content ?? "").slice(0, 240)),
+      );
+    }
+  }));
+  const corpus = npsAnalystCorpus(resp.map((r) => ({
+    score: r.score,
+    segment: r.segment,
+    reason: r.reason_text,
+    categories: (r.categories ?? []).filter((c) => c && typeof c.slug === "string") as { slug: string }[],
+    transcript: r.conversation_id ? transcripts.get(r.conversation_id) : undefined,
+    when: r.created_at.slice(0, 10),
+  })));
+  if (!corpus) {
+    return jsonResponse(req, 200, {
+      report: null, responses: resp.length, days, cached: false,
+      note: "Not enough rated sessions in the window for an honest report (at least 3 needed).",
+    });
+  }
+  let report = "";
+  try {
+    const data = await loadConciergeData();
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      signal: AbortSignal.timeout(60000),
+      body: JSON.stringify({
+        model: resolveModel(data),
+        max_tokens: 1500,
+        temperature: 0.2,
+        system:
+          "You are the satisfaction analyst for a small, honest house. You are given REAL rated " +
+          "sessions — the score, the customer's own reason, and transcript excerpts. Write an " +
+          "ACTIONABLE report for the operator with exactly these sections:\n" +
+          "WHAT IS CREATING DETRACTORS — the top drivers, each with a short quoted phrase as " +
+          "evidence and the session numbers showing it.\n" +
+          "WHAT PROMOTERS PRAISE — what to protect and amplify, same evidence discipline.\n" +
+          "DO NEXT — at most three concrete fixes ranked by expected impact, each tied to its evidence.\n" +
+          "WATCH — emerging signals (single mentions worth tracking).\n" +
+          "Rules: every claim quotes a short phrase from a session and names the session number; " +
+          "state counts plainly and keep small samples tentative ('2 of 7 detractors…'); when a " +
+          "section has no support in the data, write 'Insufficient evidence.' and nothing more; " +
+          "never invent, never extrapolate beyond the sessions given; never include a name or " +
+          "email. Plain prose and short dashes for bullets — no markdown headers, no preamble.",
+        messages: [{
+          role: "user",
+          content: `WINDOW: last ${days} days · ${resp.length} rated session(s) total; the pack below ` +
+            `leads with detractors.\n\n${corpus}`,
+        }],
+      }),
+    });
+    if (!res.ok) return jsonError(req, 502, "The analyst model call failed (HTTP " + res.status + ").");
+    const j = await res.json() as { content?: Array<{ type: string; text?: string }> };
+    report = (j.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
+  } catch {
+    return jsonError(req, 502, "The analyst model call failed.");
+  }
+  if (!report) return jsonError(req, 502, "The analyst returned an empty report.");
+  const payload = { report, days, responses: resp.length };
+  // Upsert the cache row (kind is the primary key; service role bypasses RLS).
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/concierge_insights?on_conflict=kind`, {
+      method: "POST",
+      headers: { ...PG_HEADERS, "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify({ kind: "nps_report", payload, computed_at: new Date().toISOString() }),
+    });
+  } catch { /* cache is best-effort — the report still returns */ }
+  return jsonResponse(req, 200, { ...payload, cached: false, computed_at: new Date().toISOString() });
+}
+
 // ── GET ?defaults=1 — the built-in BASE texts, for the admin Tuning "Base" boxes ─
 // So the operator can load the built-in default into the editor and tweak it (the
 // server falls back to these same texts whenever the corresponding *_base config
@@ -4645,6 +4767,79 @@ async function handleChatPost(req: Request): Promise<Response> {
     }
   } catch { /* the survey never breaks the chat */ }
 
+  // ── The natural-close survey ask (NPS.md §3): "that's all" IS the moment.
+  // The wrap-up chip posts context.wrapup=1 and typed farewells match the
+  // phrase list, so the ask rides the goodbye reply itself. The beat path
+  // cannot carry this case — the wrap-up silences future beats, so a survey
+  // that waits for the next beat never fires. Same pure gate (offer once,
+  // long-enough session, past cooldown); anonymous sessions are eligible too
+  // (no identity ⇒ no cooldown to check; the once-per-conversation rule still
+  // binds). The offer is audited like any beat so the response rate is honest.
+  try {
+    const wctx = (validated.context && typeof validated.context === "object")
+      ? validated.context as Record<string, unknown> : {};
+    const ratingTurn = !!wctx.nps || wctx.nps_reason === 1 || wctx.nps_reason === true;
+    const lastUserW = [...validated.messages].reverse().find((m) => m.role === "user");
+    const lastTextW = lastUserW && typeof lastUserW.content === "string" ? lastUserW.content : "";
+    const saidDone = /\b(that'?s (all|it)( for now)?|all done|i'?m (all )?done( for now)?|nothing else|no more questions)\b/i
+      .test(lastTextW);
+    const wantsWrap = wctx.wrapup === 1 || wctx.wrapup === true || saidDone;
+    const npsCfgW = npsConfigFrom(data.config);
+    if (npsCfgW.enabled && wantsWrap && !ratingTurn) {
+      const cidW = await conversationPromise;
+      if (cidW) {
+        const [askedRows, convRows, custRows] = await Promise.all([
+          pgSelect<{ id: number }>(
+            `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(cidW)}&limit=1`,
+          ),
+          pgSelect<{ created_at: string }>(
+            `concierge_conversations?select=created_at&id=eq.${encodeURIComponent(cidW)}&limit=1`,
+          ),
+          customer?.id
+            ? pgSelect<{ created_at: string }>(
+              `nps_responses?select=created_at&customer_id=eq.${encodeURIComponent(customer.id)}` +
+                `&order=created_at.desc&limit=1`,
+            )
+            : Promise.resolve(null),
+        ]);
+        // The offer must be once per SESSION, not once per conversation row —
+        // count prior offers in this conversation as asked too.
+        const offeredRows = await pgSelect<{ id: number }>(
+          `concierge_actions?select=id&conversation_id=eq.${encodeURIComponent(cidW)}` +
+            `&action=eq.beat_action&payload-%3E%3Eaction=eq.REQUEST_NPS&limit=1`,
+        );
+        const createdMsW = convRows && convRows[0] ? Date.parse(convRows[0].created_at) : NaN;
+        const gate = npsTriggerGate({
+          enabled: true,
+          concluded: true, // they just said so — the definition of a natural close
+          alreadySurveyedSession: !!((askedRows && askedRows.length) || (offeredRows && offeredRows.length)),
+          sessionDurationMs: Number.isFinite(createdMsW) ? Date.now() - createdMsW : 0,
+          minDurationMs: npsCfgW.minMs,
+          lastSurveyedAtMs: (custRows && custRows[0]) ? (Date.parse(custRows[0].created_at) || null) : null,
+          cooldownMs: npsCfgW.cooldownMs,
+          nowMs: Date.now(),
+        });
+        if (gate.ask) {
+          system.push({
+            type: "text",
+            text: "\n\n[CLOSING SURVEY — they are wrapping up, which is the ONE moment the house asks for " +
+              "a rating. Say your warm goodbye line first, then ask exactly this — “" + npsCfgW.question +
+              "” — and put the token {{nps}} ALONE on its own line after it. One ask, zero pressure: if " +
+              "they leave without answering, it is never mentioned again.]",
+          });
+          if (!(validated.sessionKey || "").startsWith("qa-")) {
+            pgInsert("concierge_actions", {
+              conversation_id: cidW, user_id: customer?.id ?? null, email: customer?.email ?? null,
+              action: "beat_action", serial: null,
+              payload: { action: "REQUEST_NPS", via: "wrapup", npsGate: gate },
+              result: "REQUEST_NPS",
+            });
+          }
+        }
+      }
+    }
+  } catch { /* the survey never breaks the goodbye */ }
+
   // ── Semantic cache — anonymous, single-turn questions only ────────────────
   // Multi-turn answers depend on conversation context; signed-in answers on
   // the register. Neither may be cached or served from cache.
@@ -5826,6 +6021,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("insights")) {
     return await handleInsightsGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("npsreport")) {
+    return await handleNpsReportGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("preview")) {
     return await handlePreviewGet(req);

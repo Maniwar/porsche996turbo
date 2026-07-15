@@ -135,6 +135,8 @@
   }
   var entryMode = 'typed';      /* how the current exchange was initiated */
   var pendingNpsScore = null;   /* a tapped survey score, sent as context.nps on the next POST */
+  var pendingWrapup = false;    /* the "That's all" chip sends a REAL goodbye turn (context.wrapup) */
+  var wrapupClosePending = false; /* the close beacon waits for the goodbye reply (finishTurn) */
   var npsAwaitReason = false;   /* the next typed message is the survey's "why" (context.nps_reason) */
   var lastSkip = '';            /* why the last proactive beat did NOT fire — surfaced
                                    by PorscheConcierge.status() so "the bot is
@@ -2739,6 +2741,18 @@
     setQuiet(true);
     clearNudge();
     orDismissAll();
+    /* The goodbye is a REAL turn when there was a conversation worth rating
+       (NPS.md): the server decides whether this close earns the one-time
+       {{nps}} ask on the reply, and the close beacon waits for that reply
+       (finishTurn) so a tapped score attaches to THIS conversation. Sessions
+       with nothing said keep the instant local goodbye; walk-aways still
+       close on pagehide. */
+    if (hasRealExchange() && !isDemo()) {
+      pendingWrapup = true;
+      wrapupClosePending = true;
+      sendMessage("That's all for now.");
+      return;
+    }
     doWrapup('close');
     addSysLine('A pleasure. 2003 Porsche 911 Turbo is here whenever you return — your number will be waiting.');
     if (panelOpen) {
@@ -2980,13 +2994,21 @@
       addFeedback(shell.turn, shell.mid);
     }
     setStreaming(false);
+    /* When the reply carries the {{nps}} scale the conversation must STAY
+       open, so the tapped score and the "why" attach to it — the wrap records
+       later (pagehide auto-beacon) or not at all if they keep talking. */
+    var askedNps = !!(content && content.indexOf('{{nps}}') !== -1);
+    if (wrapupClosePending) {
+      wrapupClosePending = false;
+      if (!askedNps && !snoozed) { doWrapup('close'); }
+    }
     if (snoozed) {
       /* the send-off in the reply IS the goodbye — no extra system line */
       setQuiet(true);
       orDismissAll();
-      doWrapup('quiet');
+      if (!askedNps) { doWrapup('quiet'); }
       noteSkip('snooze: the bot wound the visit down on the patron\'s cue — quiet for the configured window');
-    } else {
+    } else if (!askedNps) {
       scheduleNudge();
     }
     updateWrapPill();
@@ -3226,6 +3248,7 @@
     var ctx = freshState();
     if (pendingNudge) { ctx.nudge = pendingNudge; pendingNudge = null; }
     if (pendingOpener) { ctx.opener = pendingOpener; pendingOpener = null; }
+    if (pendingWrapup) { ctx.wrapup = 1; pendingWrapup = false; }
     /* survey plumbing (NPS.md): a tapped score rides THIS post; the very next
        real user message (never a nudge/opener) carries the reason flag so the
        server attaches the free-text "why" to the open row */

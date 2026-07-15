@@ -389,6 +389,57 @@ export function npsTriggerGate(s: NpsTriggerState): { ask: boolean; reason: stri
 }
 
 export interface NpsCategoryHit { slug: string; confidence?: number; }
+
+export interface NpsAnalystItem {
+  score: number;
+  segment?: string;              // derived from the score when absent
+  reason?: string | null;        // the customer's own words
+  categories?: NpsCategoryHit[];
+  transcript?: string[];         // pre-formatted "visitor:/concierge:" lines
+  when?: string;                 // ISO date (day precision is enough)
+}
+
+/**
+ * The analyst's evidence pack — REAL rated sessions rendered for the report
+ * writer (the ?npsreport=1 conversational-analytics endpoint). Detractors
+ * lead (they carry the actionable signal), then passives, then promoters.
+ * Hard caps on sessions and characters keep the model call bounded, and the
+ * honesty floor returns '' below minResponses — a report on two data points
+ * is an invention, not an analysis.
+ */
+export function npsAnalystCorpus(
+  items: NpsAnalystItem[],
+  opts?: { maxSessions?: number; maxChars?: number; minResponses?: number },
+): string {
+  const o = { maxSessions: 24, maxChars: 24000, minResponses: 3, ...(opts ?? {}) };
+  const valid = (items ?? []).filter((i) => i && Number.isFinite(i.score) && i.score >= 0 && i.score <= 10);
+  if (valid.length < o.minResponses) return "";
+  const rank: Record<string, number> = { detractor: 0, passive: 1, promoter: 2 };
+  const segOf = (i: NpsAnalystItem) =>
+    (i.segment && rank[i.segment] !== undefined) ? i.segment : npsSegment(i.score);
+  const sorted = [...valid].sort((a, b) => rank[segOf(a)] - rank[segOf(b)]);
+  const parts: string[] = [];
+  let used = 0, n = 0;
+  for (const it of sorted) {
+    if (n >= o.maxSessions) break;
+    const cats = (it.categories ?? []).map((c) => c && c.slug).filter(Boolean).join(", ");
+    const lines = [
+      `SESSION ${n + 1} — ${it.score}/10 (${segOf(it)})${it.when ? " · " + it.when : ""}`,
+      it.reason
+        ? `their reason: "${String(it.reason).slice(0, 300)}"`
+        : "their reason: (none given)",
+      cats ? `categories: ${cats}` : "",
+      ...(it.transcript ?? []).slice(0, 12).map((l) => "  " + String(l).slice(0, 240)),
+    ].filter(Boolean);
+    const block = lines.join("\n");
+    if (used + block.length > o.maxChars) break;
+    parts.push(block);
+    used += block.length;
+    n++;
+  }
+  if (n < o.minResponses) return "";
+  return parts.join("\n\n");
+}
 export interface NpsHistoryItem {
   score: number;
   categories?: NpsCategoryHit[];

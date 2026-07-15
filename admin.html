@@ -2181,6 +2181,16 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         </div>
         <div id="nps-cats"></div>
       </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>Analyst report</h3>
+          <span class="micro">Conversational analytics: the model reads the rated sessions — scores, the customers' own reasons, transcript excerpts — and writes an actionable report (detractor drivers → promoter strengths → ranked fixes), every claim tied to quoted evidence. Refuses to run on fewer than 3 responses.</span>
+          <button id="nps-report-btn" class="btn ghost" type="button" style="margin-left:auto;padding:4px 12px;">Generate fresh</button>
+        </div>
+        <div id="nps-report-meta" class="micro" style="margin-bottom:8px;"></div>
+        <div id="nps-report" style="white-space:pre-wrap;line-height:1.6;font-size:.82rem;"></div>
+      </section>
     </div>
     <div id="panel-website" class="panel">
       <div class="panel-head">
@@ -9075,12 +9085,42 @@ function npsGranRow() {
     holder.appendChild(c);
   });
 }
+/* The analyst report (?npsreport=1): the cached copy loads free on every tab
+   visit; "Generate fresh" is the deliberate model spend, windowed to the
+   picked range. */
+async function loadNpsReport(fresh) {
+  const out = $('nps-report'), meta = $('nps-report-meta'), btn = $('nps-report-btn');
+  if (!out || !meta) return;
+  if (btn && !btn._bound) {
+    btn._bound = true;
+    btn.addEventListener('click', function () { loadNpsReport(true); });
+  }
+  try {
+    if (fresh && btn) { btn.disabled = true; btn.textContent = 'Reading sessions…'; }
+    const days = (state.npsRange === undefined || state.npsRange === null) ? 90 : (state.npsRange || 3650);
+    const j = await adminGet('?npsreport=1' + (fresh ? '&fresh=1&days=' + days : ''));
+    if (j && j.report) {
+      out.textContent = j.report;
+      meta.textContent = (j.responses !== undefined ? j.responses + ' rated session(s) · last ' + j.days + ' days' : '') +
+        (j.computed_at ? ' · generated ' + fmtWhen(j.computed_at) : '');
+    } else {
+      out.textContent = '';
+      meta.textContent = (j && j.note) ? j.note
+        : 'No report yet — "Generate fresh" reads the rated sessions and writes one.';
+    }
+  } catch (e) {
+    meta.textContent = 'Report unavailable — ' + e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate fresh'; }
+  }
+}
 async function loadNps() {
   npsRangeRow();
   npsGranRow();
   state.npsOfferDays = null;  // offers refresh on every tab load
   await loadNpsCats();
   renderNpsCard();
+  loadNpsReport(false);
 }
 
 async function loadConversion() {

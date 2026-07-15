@@ -1733,6 +1733,21 @@ begin
 end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- The closing-survey etiquette — an admin-editable SOP. The deterministic gate
+-- that DECIDES when to ask (once, at a natural close, past cooldown) lives in
+-- code and is unit-tested; this SOP owns HOW the ask sounds and is seeded once
+-- (operator edits are never overwritten).
+-- ─────────────────────────────────────────────────────────────────────────────
+insert into public.concierge_sops (slug, title, content_md, sort_order) values
+('closing-survey', 'Closing survey — etiquette', $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
+1. Say the warm goodbye first; the rating ask rides it, it never replaces it.
+2. Ask the configured question once, lightly, then put {{nps}} alone on its own line. Never list the numbers in words, never explain the scale, never pressure.
+3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
+4. Receive the reason graciously: a problem gets acknowledged plainly with what the house can do forward; praise gets a light thank-you.
+5. After that, scores and surveys are never mentioned again — not this visit, not the next. If they ignore the ask entirely, let it go with grace.$sop$, 12)
+on conflict (slug) do nothing;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- NPS hygiene: QA traffic (the "qa-" session keys used by CI smoke and the
 -- eval deck) must never count as a customer rating. The function skips these
 -- writes going forward; this janitor removes any that ever slipped in, so the
