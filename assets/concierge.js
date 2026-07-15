@@ -138,6 +138,7 @@
   var pendingWrapup = false;    /* the "That's all" chip sends a REAL goodbye turn (context.wrapup) */
   var wrapupClosePending = false; /* the close beacon waits for the goodbye reply (finishTurn) */
   var pendingNpsReasonClose = false; /* the reason receipt ENDS the visit (NPS.md) */
+  var mdRenderTs = null;        /* ts of the history message being re-rendered (null = live) */
   var npsAwaitReason = false;   /* the next typed message is the survey's "why" (context.nps_reason) */
   var lastSkip = '';            /* why the last proactive beat did NOT fire — surfaced
                                    by PorscheConcierge.status() so "the bot is
@@ -1305,6 +1306,15 @@
          context.nps={score}, so the server records it deterministically and
          the model only supplies the warm follow-up. */
       if (trimmed.toLowerCase() === '{{nps}}') {
+        if (mdRenderTs != null) {
+          var answeredLater = false;
+          for (var hnI = 0; hnI < history.length; hnI++) {
+            var hnM = history[hnI];
+            if (hnM && hnM.role === 'user' && /^\s*(?:10|\d)\/10\s*$/.test(String(hnM.content || '')) &&
+                (hnM.ts || 0) >= mdRenderTs) { answeredLater = true; break; }
+          }
+          if (answeredLater) { i++; continue; }
+        }
         flushPara();
         var nrow = el('div', 'cx-replies cx-npsrow cx-fade-in');
         nrow.setAttribute('role', 'group');
@@ -1318,9 +1328,8 @@
               nb.setAttribute('aria-label', 'Rate ' + scoreVal + ' out of 10');
               nb.addEventListener('click', function () {
                 if (streaming) { return; }
-                rowEl.classList.add('cx-replies-used');
-                var nbs = rowEl.querySelectorAll('button');
-                for (var nbi = 0; nbi < nbs.length; nbi++) { nbs[nbi].disabled = true; }
+                /* the choice is made — the scale leaves the screen entirely */
+                if (rowEl.parentNode) { rowEl.parentNode.removeChild(rowEl); }
                 pendingNpsScore = scoreVal;
                 sendMessage(scoreVal + '/10');
               });
@@ -2353,7 +2362,9 @@
         msgsEl.appendChild(el('div', 'cx-turn cx-turn-user', t.content));
       } else {
         var turn = el('div', 'cx-turn cx-turn-assistant');
+        mdRenderTs = t.ts || 0;
         var rendered = mdRender(t.content);
+        mdRenderTs = null;
         /* a legacy plumbing-only line already persisted before the blank-bubble
            guard existed would re-render as an empty bubble forever — skip it */
         if (!((rendered.textContent || '').replace(/\s+/g, '')) &&

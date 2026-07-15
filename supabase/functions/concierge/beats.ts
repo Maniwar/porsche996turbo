@@ -388,6 +388,25 @@ export function npsTriggerGate(s: NpsTriggerState): { ask: boolean; reason: stri
   return { ask: true, reason: "session concluded and eligible" };
 }
 
+/**
+ * What a tapped score should DO (NPS.md — "changing a rating"): revise this
+ * conversation's own row, revise the customer's recent row (a tap INSIDE the
+ * cooldown can only be a correction — the gate never offers there), or insert
+ * a fresh response. Under this rule a duplicate rating from one person inside
+ * the cooldown is structurally impossible.
+ */
+export function npsCaptureAction(s: {
+  hasConversationRow: boolean;
+  lastCustomerRowAgeMs: number | null; // null = anonymous, or no prior row
+  cooldownMs: number;
+}): "revise-conversation" | "revise-recent" | "insert" {
+  if (s.hasConversationRow) return "revise-conversation";
+  if (s.lastCustomerRowAgeMs != null && s.cooldownMs > 0 && s.lastCustomerRowAgeMs < s.cooldownMs) {
+    return "revise-recent";
+  }
+  return "insert";
+}
+
 export interface NpsCategoryHit { slug: string; confidence?: number; }
 
 export interface NpsAnalystItem {

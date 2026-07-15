@@ -38,6 +38,8 @@ import {
   type LearningDigest,
   type NpsHistoryItem,
   npsAnalystCorpus,
+  npsCaptureAction,
+  npsSegment,
   npsTriggerGate,
   PLACEHOLDER_ADDR,
   proposalRestHoursFrom,
@@ -3193,20 +3195,56 @@ async function captureNpsScore(
   customer: { id: string; email: string | null } | null,
   score: number,
   coachId: string,
+  cooldownMs = 30 * 86400000,
 ): Promise<void> {
   if (!cid || !Number.isFinite(score) || score < 0 || score > 10) return;
   try {
-    const existing = await pgSelect<{ id: number }>(
-      `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(cid)}&limit=1`,
-    );
-    if (existing && existing.length > 0) return; // once per session
-    await pgInsert("nps_responses", {
-      conversation_id: cid,
-      customer_id: customer?.id ?? null,
-      coach_id: coachId,
-      score: Math.round(score),
-      survey_version: "v1",
+    // Revise or insert? (npsCaptureAction, unit-tested — NPS.md "changing a
+    // rating"): this conversation's own row is always the revision target, and
+    // a tap INSIDE the cooldown can only be a correction of the customer's
+    // recent row — the gate never offers there, so a duplicate rating from one
+    // person inside the cooldown is structurally impossible.
+    const [convRows, custRows] = await Promise.all([
+      pgSelect<{ id: number; score: number; created_at: string }>(
+        `nps_responses?select=id,score,created_at&conversation_id=eq.${encodeURIComponent(cid)}&limit=1`,
+      ),
+      customer?.id
+        ? pgSelect<{ id: number; score: number; created_at: string }>(
+          `nps_responses?select=id,score,created_at&customer_id=eq.${encodeURIComponent(customer.id)}` +
+            `&order=created_at.desc&limit=1`,
+        )
+        : Promise.resolve(null),
+    ]);
+    const convRow = convRows && convRows[0];
+    const custRow = custRows && custRows[0];
+    const action = npsCaptureAction({
+      hasConversationRow: !!convRow,
+      lastCustomerRowAgeMs: custRow ? Math.max(0, Date.now() - (Date.parse(custRow.created_at) || 0)) : null,
+      cooldownMs,
     });
+    if (action === "insert") {
+      await pgInsert("nps_responses", {
+        conversation_id: cid,
+        customer_id: customer?.id ?? null,
+        coach_id: coachId,
+        score: Math.round(score),
+        survey_version: "v1",
+      });
+      return;
+    }
+    const target = (action === "revise-conversation" ? convRow : custRow)!;
+    const next = Math.round(score);
+    if (next === target.score) return; // the same number is not a revision
+    const patch: Record<string, unknown> = { score: next, revised_at: new Date().toISOString() };
+    // A revision that CHANGES SEGMENT makes the old reason stale evidence —
+    // clear it (and its categories) so the follow-up "why" re-attaches; a
+    // same-segment nudge (10 → 9) keeps the reason it still describes.
+    if (npsSegment(next) !== npsSegment(target.score)) {
+      patch.reason_text = null;
+      patch.categories = [];
+      patch.category_source = null;
+    }
+    await pgPatch(`nps_responses?id=eq.${target.id}`, patch);
   } catch { /* capture is best-effort — the chat never breaks over a survey */ }
 }
 
@@ -3215,13 +3253,16 @@ async function captureNpsScore(
 async function attachNpsReason(cid: string | null, reason: string, apiKey: string): Promise<void> {
   if (!cid || !reason || !reason.trim()) return;
   try {
-    const rows = await pgSelect<{ id: number; created_at: string }>(
-      `nps_responses?select=id,created_at&conversation_id=eq.${encodeURIComponent(cid)}` +
+    const rows = await pgSelect<{ id: number; created_at: string; revised_at: string | null }>(
+      `nps_responses?select=id,created_at,revised_at&conversation_id=eq.${encodeURIComponent(cid)}` +
       `&reason_text=is.null&order=created_at.desc&limit=1`,
     );
     const row = rows && rows[0];
     if (!row) return;
-    if (Date.now() - (Date.parse(row.created_at) || 0) > 15 * 60000) return; // stale — don't misattach
+    // Fresh = scored OR revised within the window (a segment-changing revision
+    // clears the old reason, and its "why" arrives relative to the revision).
+    const fresh = (t: string | null) => !!t && Date.now() - (Date.parse(t) || 0) <= 15 * 60000;
+    if (!fresh(row.created_at) && !fresh(row.revised_at)) return; // stale — don't misattach
     const text = reason.trim().slice(0, 2000);
     await pgPatch(`nps_responses?id=eq.${row.id}`, { reason_text: text });
     categorizeNpsReason(apiKey, row.id, text).catch(() => { /* async */ });
@@ -4788,8 +4829,9 @@ async function handleChatPost(req: Request): Promise<Response> {
           "nothing else. Never repeat or evaluate the number, and never mention scores again after this.]",
       });
       if (!npsQaSession) {
+        const cooldownForCapture = npsConfigFrom(data.config).cooldownMs;
         conversationPromise.then((cid) =>
-          captureNpsScore(cid, customer, npsScoreIn, model)
+          captureNpsScore(cid, customer, npsScoreIn, model, cooldownForCapture)
         ).catch(() => { /* capture is best-effort */ });
       }
     } else if (npsReasonIn) {
@@ -4897,6 +4939,50 @@ async function handleChatPost(req: Request): Promise<Response> {
       }
     }
   } catch { /* the survey never breaks the goodbye */ }
+
+  // ── Rating corrections (NPS.md — "changing a rating"): "I need to change my
+  // score" is honored, deterministically. One gracious line, the scale again —
+  // and the new tap REVISES the existing row (captureNpsScore), never a second
+  // response. Without this the model either refuses (wrong) or improvises a
+  // "what number instead?" that nothing records (worse).
+  try {
+    const wctxC = (validated.context && typeof validated.context === "object")
+      ? validated.context as Record<string, unknown> : {};
+    const ratingTurnC = !!wctxC.nps || wctxC.nps_reason === 1 || wctxC.nps_reason === true;
+    const lastUserC = [...validated.messages].reverse().find((m) => m.role === "user");
+    const lastTextC = lastUserC && typeof lastUserC.content === "string" ? lastUserC.content : "";
+    const wantsRevise =
+      /\b(change|revise|update|redo|correct|fix)\b.{0,40}\b(rating|score|survey|nps|number)\b|\b(rating|score|survey|nps)\b.{0,50}\b(wrong|mistake|accident|meant)\b/i
+        .test(lastTextC);
+    const npsCfgC = npsConfigFrom(data.config);
+    if (npsCfgC.enabled && wantsRevise && !ratingTurnC) {
+      const cidC = await conversationPromise;
+      const [convC, custC] = await Promise.all([
+        cidC
+          ? pgSelect<{ id: number }>(
+            `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(cidC)}&limit=1`,
+          )
+          : Promise.resolve(null),
+        customer?.id
+          ? pgSelect<{ created_at: string }>(
+            `nps_responses?select=created_at&customer_id=eq.${encodeURIComponent(customer.id)}` +
+              `&order=created_at.desc&limit=1`,
+          )
+          : Promise.resolve(null),
+      ]);
+      const recentC = !!(custC && custC[0] && npsCfgC.cooldownMs > 0 &&
+        (Date.now() - (Date.parse(custC[0].created_at) || 0)) < npsCfgC.cooldownMs);
+      if ((convC && convC.length) || recentC) {
+        system.push({
+          type: "text",
+          text: "\n\n[SURVEY REVISION — they want to change the rating they gave. Of course they may: say " +
+            "ONE gracious line (no apology tour, no explanation of systems), then put the token {{nps}} " +
+            "ALONE on its own line. Their new tap replaces the old score. Never argue with a correction, " +
+            "and never quote the old number back at them.]",
+        });
+      }
+    }
+  } catch { /* corrections never break the chat */ }
 
   // ── Semantic cache — anonymous, single-turn questions only ────────────────
   // Multi-turn answers depend on conversation context; signed-in answers on

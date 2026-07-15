@@ -946,6 +946,9 @@ create table if not exists public.nps_responses (
   created_at      timestamptz not null default now());
 create index if not exists nps_responses_customer_idx on public.nps_responses (customer_id, created_at desc);
 create index if not exists nps_responses_created_idx  on public.nps_responses (created_at desc);
+-- A customer may correct their own rating (NPS.md "changing a rating") — the
+-- row is REVISED in place, never duplicated; this stamp is the audit trail.
+alter table public.nps_responses add column if not exists revised_at timestamptz;
 alter table public.nps_responses enable row level security;
 -- Admin-read only; writes go through the service role / the submit_nps tool.
 -- Customers do NOT read their own NPS (out of scope) — and the concierge never
@@ -1744,7 +1747,8 @@ insert into public.concierge_sops (slug, title, content_md, sort_order) values
 2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
-5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.$sop$, 12)
+5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
+6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$, 12)
 on conflict (slug) do nothing;
 
 -- v1 → v2 (invitation phrasing + the reason ends the visit): advance rows the
@@ -1754,13 +1758,29 @@ update public.concierge_sops set content_md = $sop$When the register instructs y
 2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
-5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.$sop$, updated_at = now()
+5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
+6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$, updated_at = now()
   where slug = 'closing-survey' and content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
 1. Say the warm goodbye first; the rating ask rides it, it never replaces it.
 2. Ask the configured question once, lightly, then put {{nps}} alone on its own line. Never list the numbers in words, never explain the scale, never pressure.
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. Receive the reason graciously: a problem gets acknowledged plainly with what the house can do forward; praise gets a light thank-you.
 5. After that, scores and surveys are never mentioned again — not this visit, not the next. If they ignore the ask entirely, let it go with grace.$sop$;
+
+-- v2 → v3 (corrections welcome): advance untouched rows only.
+update public.concierge_sops set content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
+1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
+2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
+3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
+4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
+5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
+6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$, updated_at = now()
+  where slug = 'closing-survey' and content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
+1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
+2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
+3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
+4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
+5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.$sop$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- NPS hygiene: QA traffic (the "qa-" session keys used by CI smoke and the

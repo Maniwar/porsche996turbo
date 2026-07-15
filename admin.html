@@ -8761,7 +8761,7 @@ const cvFmtPct = function (v) { return (Math.round(v * 10) / 10) + '%'; };
 async function loadNpsMaps() {
   try {
     const r = await sb.from('nps_responses')
-      .select('id,conversation_id,coach_id,score,segment,reason_text,categories,created_at,concierge_conversations(user_email)')
+      .select('id,conversation_id,coach_id,score,segment,reason_text,categories,created_at,revised_at,concierge_conversations(user_email)')
       .order('created_at', { ascending: false }).limit(2000);
     if (r.error) return;
     const byConvo = {}, byEmail = {};
@@ -9016,7 +9016,7 @@ async function renderNpsCard() {
         });
         line.appendChild(fix);
       }
-      line.appendChild(el('span', 'micro', fmtWhen(row.created_at)));
+      line.appendChild(el('span', 'micro', fmtWhen(row.created_at) + (row.revised_at ? ' · revised' : '')));
       rec.appendChild(line);
     });
   } catch (e) { npsFail((e && e.message) || String(e)); }
