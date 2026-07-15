@@ -2328,7 +2328,12 @@ const SUPABASE_ANON_KEY = (storedConnKey() || window.PORSCHE_ADMIN_KEY || 'sb_pu
    literal placeholder cannot clobber this comparison. */
 const KEY_PLACEHOLDER = ['__ANON', '_KEY__'].join('');
 
-const STARTER_KEYS = ['hero', 'section-3', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers', 'default'];
+/* Keys MUST match the page's live section ids (the state bridge's SECTIONS
+   list in index.html) — the widget looks a trio up by the id the bridge
+   publishes, so a starter saved under any other key never shows. 'default'
+   is the fallback trio. (Was: 'section-3'/'intSection' — stale adoption ids
+   whose trios never displayed.) */
+const STARTER_KEYS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers', 'default'];
 
 let sb = null;
 let adminPromise = null;
@@ -4638,6 +4643,16 @@ async function saveClientbook() {
    and presses Save. This is the fix for a freshly-adopted site whose per-section
    starters ship blank — one click grounds a full set in the live knowledge base. */
 async function genStarters() {
+  // Know the goal BEFORE spending a model call: which slots are actually empty.
+  const emptyBySection = {};
+  let emptyTotal = 0;
+  STARTER_KEYS.forEach(function (key) {
+    for (let i = 0; i < 3; i++) {
+      const inp = $('st-' + key + '-' + i);
+      if (inp && !inp.value.trim()) { emptyBySection[key] = (emptyBySection[key] || 0) + 1; emptyTotal++; }
+    }
+  });
+  if (!emptyTotal) { toast('Every slot is already filled — clear a slot to redraft it', true); return; }
   let d;
   try { d = await adminPost('?genstarters=1', { sections: STARTER_KEYS }); }
   catch (e) { fail('Draft starters', e); return; }
@@ -4653,7 +4668,13 @@ async function genStarters() {
       }
     }
   });
-  if (!filled) { toast('No new starters drafted — every slot is already filled, or the knowledge base is empty', true); return; }
+  if (!filled) {
+    // The honest diagnosis, not a shrug: name the sections that got nothing.
+    const missed = Object.keys(emptyBySection).filter(function (k) { return !Array.isArray(map[k]) || !map[k].length; });
+    toast('The model drafted nothing for: ' + (missed.join(', ') || 'the empty sections') +
+      ' — check those sections exist in the journey and the knowledge base covers them', true);
+    return;
+  }
   toast('Drafted ' + filled + ' starter' + (filled === 1 ? '' : 's') + ' (' + (d.model || 'model') + ') — review and Save');
 }
 

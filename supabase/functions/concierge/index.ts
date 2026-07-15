@@ -4121,7 +4121,9 @@ async function handleGenStartersPost(req: Request): Promise<Response> {
   const rawKeys = Array.isArray(body.sections) ? body.sections : [];
   const keys: string[] = [];
   for (const k of rawKeys) {
-    if (typeof k === "string" && /^[a-z0-9_-]{1,64}$/.test(k) && keys.indexOf(k) === -1) keys.push(k);
+    // Case-insensitive: real DOM section ids are often camelCase ("intSection");
+    // rejecting them silently drafted nothing for those sections.
+    if (typeof k === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(k) && keys.indexOf(k) === -1) keys.push(k);
     if (keys.length >= 40) break;
   }
   if (keys.length === 0) return jsonError(req, 400, "No valid section keys supplied.");
@@ -4134,7 +4136,10 @@ async function handleGenStartersPost(req: Request): Promise<Response> {
   const model = resolveModel(data);
   // Turn each slug into a human hint from the heading it was derived from
   // ("the-mezger-sound" -> "the mezger sound") so the writer knows the topic.
-  const deslug = (k: string) => k === "default" ? "the fallback shown when no section is active" : k.replace(/[-_]+/g, " ").trim();
+  const deslug = (k: string) =>
+    k === "default"
+      ? "the fallback shown when no section is active"
+      : k.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").toLowerCase().trim();
   const sectionsBlock = keys.map((k) => `- key "${k}" — section about: ${deslug(k)}`).join("\n");
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
