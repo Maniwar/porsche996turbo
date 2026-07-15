@@ -605,6 +605,26 @@ async function myOrders(
 // are opening-beat instructions — printing them mid-conversation makes the model re-greet
 // every turn (the current live conversation is never `lastConvo`, so the banner would
 // otherwise be byte-identical on every turn).
+// ── Deterministic PII guard (sec-20-407) ─────────────────────────────────────
+// Contact details that live in the house's RECORDS (client-book notes,
+// directives, recalled conversations) must never even REACH the model's
+// context: an instruction can be ignored under pressure; a redaction cannot.
+// Phone-like digit runs (7–15 digits with common separators) and emails become
+// an opaque marker. ISO dates survive (note prefixes are dates). Deliberately
+// NOT applied to the KB/config — published numbers (a voice line, the house
+// email) are meant to be shared; records are not.
+function maskContacts(s: string): string {
+  if (!s) return s;
+  return s
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[contact on file]")
+    .replace(/\+?\d[\d\s().\-]{5,}\d/g, (m) => {
+      const digits = m.replace(/\D/g, "");
+      if (digits.length < 7 || digits.length > 15) return m;
+      if (/^\d{4}-\d{2}-\d{2}/.test(m.trim())) return m; // a date, not a phone
+      return "[contact on file]";
+    });
+}
+
 async function customerBlock(customer: Customer, opening = true): Promise<string> {
   const safeEmail = customer.email?.replace(/["\\,()]/g, "");
   const noteFilter = safeEmail
@@ -719,10 +739,13 @@ async function customerBlock(customer: Customer, opening = true): Promise<string
   // that also states it (Recognition) is toggleable, and a live line once cited
   // the book to the patron's face ("The client book notes you prefer…").
   if (book) {
+    book = maskContacts(book);
     book += "  ·  BOOK DISCIPLINE: this book is invisible. Never name it, never cite notes or " +
       "records as your source, and never describe the patron's own habits, preferences, or " +
       "communication style back to them — a style note changes HOW you speak, it is never " +
-      "something you SAY. Memory shows up only as better service.";
+      "something you SAY. Contact details from any record — theirs or anyone's — are never " +
+      "spoken in chat; connecting happens through the forms and published channels. Memory " +
+      "shows up only as better service.";
   }
 
   // First name (from their most recent order) — for warm, natural address.
@@ -768,7 +791,7 @@ async function customerBlock(customer: Customer, opening = true): Promise<string
   // can be checked off with resolve_admin_note once carried out.
   let directiveLine = "";
   if (directives && directives.length > 0) {
-    const list = directives.map((n) => `(#${n.id}) ${n.note}`).join("  ·  ");
+    const list = directives.map((n) => `(#${n.id}) ${maskContacts(n.note)}`).join("  ·  ");
     const many = directives.length > 1;
     // On the opening beat, a proper directive leads the visit ("on your very first
     // line"). Mid-conversation that framing would make the model re-open every turn —
@@ -1209,7 +1232,9 @@ async function runRegisterTool(
         if (msgs && msgs.length > 0) {
           prior.push({
             when: String(c.created_at).slice(0, 10),
-            turns: msgs.reverse().map((m) => `${m.role === "user" ? "Patron" : "You"}: ${m.content}`),
+            turns: msgs.reverse().map((m) =>
+              maskContacts(`${m.role === "user" ? "Patron" : "You"}: ${m.content}`)
+            ),
           });
         }
       }
@@ -1217,7 +1242,7 @@ async function runRegisterTool(
     await logAction(cid, customer, "recall_context", null, null,
       `${notes?.length ?? 0} notes, ${prior.length} prior conversations`);
     const tagged = (k: string) => (notes ?? []).filter((n) => (n.kind || "fact") === k)
-      .map((n) => `${String(n.created_at).slice(0, 10)}: ${n.note}`);
+      .map((n) => `${String(n.created_at).slice(0, 10)}: ${maskContacts(n.note)}`);
     return JSON.stringify({
       client_book: {
         did_for_them: tagged("event"),
@@ -2813,7 +2838,13 @@ const BEAT_JUDGE_CRITERION =
   "(5) broken output — cut off mid-sentence, raw JSON or code, gibberish, visibly duplicated text; " +
   "(6) inventorying the shopper — reciting their own stored data back at them in aggregate " +
   "('you're furnishing five rooms across two cities'): one remembered detail worn lightly is service, " +
-  "a tally of their life is surveillance. " +
+  "a tally of their life is surveillance; " +
+  "(7) reading records aloud — it quotes a phone number, email address, or street address from the " +
+  "house's records (the shopper's own or anyone else's); published channels the house rules name are " +
+  "fine, stored contact details never are; " +
+  "(8) selling past a problem — the shopper's latest message (given below when available) raises an " +
+  "unresolved complaint, error, or trust issue, and the line pitches, nudges, or changes the subject " +
+  "instead of serving it. " +
   "AGAINST THE HOUSE RULES: also veto if the line asserts a price, figure, count, product, guarantee, " +
   "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
   "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. If " +
@@ -2839,6 +2870,7 @@ async function judgeBeatLine(
   line: string,
   kind: string,
   houseRules = "",
+  recentUser = "",
 ): Promise<{ veto: boolean; reason: string }> {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2877,6 +2909,10 @@ async function judgeBeatLine(
           role: "user",
           content: "CRITERION:\n" + BEAT_JUDGE_CRITERION +
             (houseRules ? "\n\nHOUSE RULES (authoritative for this house):\n" + houseRules : "") +
+            (recentUser
+              ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
+                recentUser.slice(0, 400)
+              : "") +
             "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + line,
         }],
       }),
@@ -4998,7 +5034,14 @@ async function handleChatPost(req: Request): Promise<Response> {
             const jcfg = (await loadConciergeData()).config;
             const oj = jcfg?.outreach as Record<string, unknown> | undefined;
             if (oj?.beatJudge !== false) {
-              const v = await judgeBeatLine(apiKey, text, isNudge ? "nudge" : "opener", houseHonestyRules(jcfg));
+              const lastUserJ = [...validated.messages].reverse().find((m) => m.role === "user");
+              const v = await judgeBeatLine(
+                apiKey,
+                text,
+                isNudge ? "nudge" : "opener",
+                houseHonestyRules(jcfg),
+                (lastUserJ && typeof lastUserJ.content === "string") ? maskContacts(lastUserJ.content) : "",
+              );
               if (v.veto) vetoReason = v.reason || "vetoed by the reach-out judge";
             }
           } catch { /* fail-open */ }

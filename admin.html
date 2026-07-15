@@ -6407,13 +6407,31 @@ async function loadCustomers(more) {
     if (!c.name && o.name) c.name = o.name;
     if (!c.user_id && o.user_id) c.user_id = o.user_id;
   });
+  // Signed-in patrons WITHOUT an order (inquiry-mode visitors, browsers who
+  // signed in for recognition) belong in this book too: they carry house notes
+  // and conversations, and a patron the operator cannot see is a patron the
+  // operator cannot serve. Merged from the customers table as order-less rows.
+  try {
+    const cres = await sb.from('customers')
+      .select('id,email,name,created_at')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    (cres.data || []).forEach(function (cu) {
+      const key = (cu.email || cu.id || 'unknown').toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, { email: cu.email || '—', name: cu.name || '', user_id: cu.id || null, orders: [], latest: cu.created_at });
+      } else if (!byKey.get(key).user_id && cu.id) {
+        byKey.get(key).user_id = cu.id;
+      }
+    });
+  } catch (e) { /* the merge is additive — orders still render without it */ }
   state.customers = [...byKey.values()].map(function (c) {
     const active = c.orders.filter(function (o) { return o.status !== 'cancelled' && o.status !== 'returned'; }).length;
     return {
       email: c.email, name: c.name || '—', user_id: c.user_id || null, orders: c.orders,
       notes: notesByKey.get((c.email || 'unknown').toLowerCase()) || [],
-      count: active, tier: tierFor(Math.max(1, active)),
-      ltv: active * PRICE, latest: c.orders[0].placed_at
+      count: active, tier: c.orders.length ? tierFor(Math.max(1, active)) : 'Signed in',
+      ltv: active * PRICE, latest: c.orders.length ? c.orders[0].placed_at : c.latest
     };
   }).sort(function (a, b) {
     return b.count - a.count || new Date(b.latest) - new Date(a.latest);
