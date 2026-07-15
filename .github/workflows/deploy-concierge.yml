@@ -76,6 +76,8 @@ jobs:
         run: |
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
             "begin; select set_config('request.jwt.claims','{\"role\":\"service_role\"}',true); select public.nps_metrics(30); rollback;"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c \
+            "begin; select set_config('request.jwt.claims','{\"role\":\"service_role\"}',true); select public.llm_cost_metrics(30); rollback;"
           KEY=$(grep -o "sb_publishable_[A-Za-z0-9_-]*" admin.html | head -1)
           # Control: is the baked publishable key valid at the API gateway at
           # all? (apikey only — new-format keys are not JWTs, never Bearer.)

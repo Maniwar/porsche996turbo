@@ -819,7 +819,7 @@ create or replace function public.prune_high_write(p_days int default 180)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   cutoff   timestamptz := now() - make_interval(days => greatest(coalesce(p_days, 180), 1));
-  c_convos bigint; c_actions bigint; c_email bigint; c_rate bigint; c_events bigint;
+  c_convos bigint; c_actions bigint; c_email bigint; c_rate bigint; c_events bigint; c_llm bigint;
 begin
   delete from public.concierge_conversations where created_at < cutoff;
   get diagnostics c_convos = row_count;
@@ -829,11 +829,14 @@ begin
   get diagnostics c_email = row_count;
   delete from public.site_events where created_at < cutoff;
   get diagnostics c_events = row_count;
+  delete from public.concierge_llm_usage where created_at < cutoff;
+  get diagnostics c_llm = row_count;
   delete from public.rate_limits where window_start < now() - interval '2 hours';
   get diagnostics c_rate = row_count;
   return jsonb_build_object('cutoff', cutoff, 'conversations_deleted', c_convos,
     'actions_deleted', c_actions, 'email_log_deleted', c_email,
-    'site_events_deleted', c_events, 'rate_limits_deleted', c_rate);
+    'site_events_deleted', c_events, 'rate_limits_deleted', c_rate,
+    'llm_usage_deleted', c_llm);
 end $$;
 revoke execute on function public.prune_high_write(int) from public, anon, authenticated;
 -- Nightly with pg_cron (enable the extension first), uncomment:
@@ -1083,6 +1086,102 @@ begin
 end $$;
 grant execute on function public.nps_metrics(int, text) to authenticated;
 revoke execute on function public.nps_metrics(int, text) from public, anon;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The meter — every model call the concierge makes, logged with its purpose.
+-- Answers "what does a conversation cost, and where is the money going?"
+-- Written only by the edge function (service role; RLS with no policies keeps
+-- everyone else out). Admins read AGGREGATES via llm_cost_metrics — never rows.
+-- QA traffic (the "qa-" sessions CI and the eval deck use) is flagged at write
+-- time so dev spend never masquerades as customer spend.
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists public.concierge_llm_usage (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  purpose text not null,
+  model text not null default '',
+  input_tokens int not null default 0,
+  output_tokens int not null default 0,
+  cache_read_tokens int not null default 0,
+  cache_write_tokens int not null default 0,
+  conversation_id uuid references public.concierge_conversations(id) on delete set null,
+  qa boolean not null default false
+);
+create index if not exists concierge_llm_usage_created_idx
+  on public.concierge_llm_usage (created_at desc);
+create index if not exists concierge_llm_usage_convo_idx
+  on public.concierge_llm_usage (conversation_id) where conversation_id is not null;
+alter table public.concierge_llm_usage enable row level security;
+
+create or replace function public.llm_cost_metrics(p_days int default 30)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_days int := greatest(coalesce(p_days, 30), 1);
+  v jsonb;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  with u as (
+    select * from public.concierge_llm_usage
+    where created_at > now() - make_interval(days => v_days)
+  )
+  select jsonb_build_object(
+    'window_days', v_days,
+    'calls', (select count(*) from u),
+    'by_purpose', coalesce((select jsonb_agg(jsonb_build_object(
+        'purpose', purpose, 'model', model, 'calls', calls,
+        'input_tokens', in_t, 'output_tokens', out_t,
+        'cache_read_tokens', cr_t, 'cache_write_tokens', cw_t,
+        'qa_calls', qa_calls, 'qa_input_tokens', qa_in, 'qa_output_tokens', qa_out,
+        'qa_cache_read_tokens', qa_cr, 'qa_cache_write_tokens', qa_cw)
+        order by in_t + out_t desc)
+      from (
+        select purpose, model, count(*) as calls,
+               coalesce(sum(input_tokens), 0)       as in_t,
+               coalesce(sum(output_tokens), 0)      as out_t,
+               coalesce(sum(cache_read_tokens), 0)  as cr_t,
+               coalesce(sum(cache_write_tokens), 0) as cw_t,
+               count(*) filter (where qa) as qa_calls,
+               coalesce(sum(input_tokens)  filter (where qa), 0) as qa_in,
+               coalesce(sum(output_tokens) filter (where qa), 0) as qa_out,
+               coalesce(sum(cache_read_tokens)  filter (where qa), 0) as qa_cr,
+               coalesce(sum(cache_write_tokens) filter (where qa), 0) as qa_cw
+        from u group by purpose, model) g), '[]'::jsonb),
+    'attributed', coalesce((select jsonb_agg(jsonb_build_object(
+        'model', model, 'qa', qa, 'input_tokens', it, 'output_tokens', ot,
+        'cache_read_tokens', crt, 'cache_write_tokens', cwt))
+      from (
+        select model, qa,
+               coalesce(sum(input_tokens), 0)       as it,
+               coalesce(sum(output_tokens), 0)      as ot,
+               coalesce(sum(cache_read_tokens), 0)  as crt,
+               coalesce(sum(cache_write_tokens), 0) as cwt
+        from u where conversation_id is not null group by model, qa) a), '[]'::jsonb),
+    'conversations', jsonb_build_object(
+      'customer_n', (select count(distinct conversation_id) from u
+                     where conversation_id is not null and not qa),
+      'qa_n',       (select count(distinct conversation_id) from u
+                     where conversation_id is not null and qa)),
+    'daily', coalesce((select jsonb_agg(jsonb_build_object(
+        'd', d, 'input_tokens', in_t, 'output_tokens', out_t,
+        'cache_read_tokens', cr_t,
+        'qa_input_tokens', qa_in, 'qa_output_tokens', qa_out) order by d)
+      from (
+        select date_trunc('day', created_at)::date as d,
+               coalesce(sum(input_tokens), 0)      as in_t,
+               coalesce(sum(output_tokens), 0)     as out_t,
+               coalesce(sum(cache_read_tokens), 0) as cr_t,
+               coalesce(sum(input_tokens)  filter (where qa), 0) as qa_in,
+               coalesce(sum(output_tokens) filter (where qa), 0) as qa_out
+        from u group by 1) dd), '[]'::jsonb)
+  ) into v;
+  return v;
+end $$;
+grant execute on function public.llm_cost_metrics(int) to authenticated;
+revoke execute on function public.llm_cost_metrics(int) from public, anon;
+
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. SEED DATA (admins, config, KB, SOPs, forms, goals) — safe to re-run

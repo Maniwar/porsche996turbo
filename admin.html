@@ -2121,6 +2121,38 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         unassisted, so attributed figures are a floor, not a ceiling. Funnel events begin at their ship date —
         earlier history shows zeros. Cancelled orders are excluded from revenue but keep their attribution.
         Full definitions: <span class="mono">ATTRIBUTION.md</span>.</p>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>Model spend</h3>
+          <span class="micro">every model call, metered at the source</span>
+        </div>
+        <p class="note">Where the money goes: the engine logs <b>every</b> model call with its purpose — main replies,
+          register tool rounds, proactive beats, the judge and coach, NPS work, housekeeping. QA traffic
+          (<span class="mono">qa-</span> sessions: CI smoke and the eval deck that runs on <em>every deploy</em>) is
+          metered separately, so dev spend never reads as customer spend — it is the usual culprit when a day spikes.
+          Dollar figures are estimates from the editable prices below; the ledger stores tokens, not dollars. Data
+          accrues from the day this shipped — earlier spend is invisible here. Full detail:
+          <span class="mono">COSTS.md</span>.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+          <span class="micro">Range</span>
+          <div id="cost-range" class="ord-chips" style="margin-bottom:0;"></div>
+          <button id="cost-refresh" class="btn ghost" type="button" style="margin-left:auto;">Refresh</button>
+        </div>
+        <div class="metrics">
+          <div class="stat"><span class="micro">Customer spend<span class="info-badge" title="Estimated cost of all non-QA calls in the range, priced by the table below (cache reads at 10% of the input rate, cache writes at 125%).">i</span></span><div class="val" id="cost-cust">—</div></div>
+          <div class="stat"><span class="micro">Per conversation<span class="info-badge" title="Customer spend on conversation-attributed calls (main replies + register tool rounds) ÷ distinct customer conversations that made model calls in the range.">i</span></span><div class="val" id="cost-convo">—</div></div>
+          <div class="stat"><span class="micro">QA / dev spend<span class="info-badge" title="qa- sessions only: CI smoke plus the eval deck on every deploy. Heavy shipping days show up here, not in customer spend.">i</span></span><div class="val" id="cost-qa">—</div></div>
+          <div class="stat"><span class="micro">Calls</span><div class="val" id="cost-calls">—</div></div>
+        </div>
+        <div style="margin-top:14px;">
+          <div class="micro" style="margin-bottom:6px;">Tokens per day — customer vs QA/dev (input + output)</div>
+          <div id="cost-chart"></div>
+        </div>
+        <div id="cost-purposes" style="margin-top:14px;"></div>
+        <div id="cost-prices" style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;"></div>
+        <div id="cost-note" class="micro" style="margin-top:8px;"></div>
+      </section>
     </div>
 
     <!-- ============ TAB 7 : WEBSITE (storefront CMS) ============ -->
@@ -2699,6 +2731,7 @@ function wireStatic() {
   const initialTab = (location.hash || '').slice(1);
   if (TAB_NAMES.indexOf(initialTab) >= 0 && initialTab !== 'tuning') activateTab(initialTab, true);
   $('cv-refresh').addEventListener('click', function () { loadConversion(); });
+  if ($('cost-refresh')) $('cost-refresh').addEventListener('click', function () { loadCost(); });
   $('cv-wkstart').addEventListener('change', function () {
     const v = parseInt($('cv-wkstart').value, 10);
     state.weekStart = v === 1 ? 1 : 0;
@@ -2858,7 +2891,7 @@ function activateTab(name, fromHistory) {
   if (!fromHistory && location.hash !== '#' + name) {
     try { history.pushState({ tab: name }, '', '#' + name); } catch (eH) { /* ignore */ }
   }
-  if (name === 'conversion') loadConversion();
+  if (name === 'conversion') { loadConversion(); loadCost(); }
   if (name === 'nps') loadNps();
   if (name === 'tuning') autoGrowAll('#panel-tuning .tsub.on');
   if (name === 'knowledge') autoGrowAll('#kb-list');
@@ -9196,6 +9229,159 @@ async function loadNps() {
   await loadNpsCats();
   renderNpsCard();
   loadNpsReport(false);
+}
+
+
+/* ── Model spend (the meter) — llm_cost_metrics() + editable prices ──────────
+   Fail-visible like the NPS card: any error lands in #cost-note, never a
+   silent blank. Prices live in this browser (cx_llm_prices) because the
+   ledger stores tokens; dollars are always an estimate, labeled as such. */
+const COST_RANGES = [[7, '7d'], [30, '30d'], [90, '90d'], [365, '1y']];
+const LLM_PRICE_DEF = { haiku: [1, 5], sonnet: [3, 15], opus: [5, 25], other: [3, 15] };
+function llmPrices() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('cx_llm_prices') || '{}');
+    const out = {};
+    Object.keys(LLM_PRICE_DEF).forEach(function (k) {
+      const s = saved[k];
+      out[k] = (Array.isArray(s) && s.length === 2 && isFinite(s[0]) && isFinite(s[1]))
+        ? [Number(s[0]), Number(s[1])] : LLM_PRICE_DEF[k].slice();
+    });
+    return out;
+  } catch (e) { return JSON.parse(JSON.stringify(LLM_PRICE_DEF)); }
+}
+function llmTier(model) {
+  const m = String(model || '').toLowerCase();
+  if (m.indexOf('haiku') !== -1) return 'haiku';
+  if (m.indexOf('sonnet') !== -1) return 'sonnet';
+  if (m.indexOf('opus') !== -1) return 'opus';
+  return 'other';
+}
+/* $ for a token bundle: in/out at the tier price, cache read 10% of input,
+   cache write 125% of input — the standard prompt-caching price shape. */
+function llmCostOf(model, inT, outT, crT, cwT, P) {
+  const p = P[llmTier(model)] || P.other;
+  return ((inT || 0) * p[0] + (outT || 0) * p[1] + (crT || 0) * p[0] * 0.1 + (cwT || 0) * p[0] * 1.25) / 1e6;
+}
+function costFmt(v) {
+  if (!isFinite(v)) return '—';
+  return '$' + (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v >= 0.1 ? v.toFixed(2) : v.toFixed(3));
+}
+function renderCost(m) {
+  const P = llmPrices();
+  let cust = 0, qa = 0;
+  (m.by_purpose || []).forEach(function (r) {
+    const qCost = llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P);
+    const tCost = llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P);
+    qa += qCost; cust += (tCost - qCost);
+  });
+  let attribCust = 0;
+  (m.attributed || []).forEach(function (a) {
+    if (!a.qa) attribCust += llmCostOf(a.model, a.input_tokens, a.output_tokens, a.cache_read_tokens, a.cache_write_tokens, P);
+  });
+  const convoN = (m.conversations && m.conversations.customer_n) || 0;
+  $('cost-cust').textContent = costFmt(cust);
+  $('cost-qa').textContent = costFmt(qa);
+  $('cost-calls').textContent = String(m.calls || 0);
+  $('cost-convo').textContent = convoN ? costFmt(attribCust / convoN) : '—';
+
+  /* daily tokens, customer vs QA */
+  const days = m.daily || [];
+  cvChart($('cost-chart'), {
+    labels: days.map(function (d) { return String(d.d).slice(5); }), gran: 'day',
+    fmt: function (v) { return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(v); },
+    aria: 'Model tokens per day, customer vs QA',
+    series: [
+      { name: 'Customer tokens', color: CV_EMPH,
+        values: days.map(function (d) { return (d.input_tokens - d.qa_input_tokens) + (d.output_tokens - d.qa_output_tokens); }) },
+      { name: 'QA / dev tokens', color: CV_CTX,
+        values: days.map(function (d) { return d.qa_input_tokens + d.qa_output_tokens; }) }
+    ],
+    tipNote: function (i) { const d = days[i]; return 'in ' + d.input_tokens + ' · out ' + d.output_tokens + ' · cache-read ' + d.cache_read_tokens; }
+  });
+
+  /* by-purpose table, costliest first */
+  const holder = $('cost-purposes');
+  holder.textContent = '';
+  const rows = (m.by_purpose || []).map(function (r) {
+    return { r: r, cost: llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P) };
+  }).sort(function (a, b) { return b.cost - a.cost; });
+  if (rows.length) {
+    const tbl = document.createElement('table');
+    tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:.82rem;';
+    tbl.innerHTML = '<thead><tr>' +
+      '<th style="text-align:left;padding:4px 8px;">Purpose</th><th style="text-align:left;padding:4px 8px;">Model</th>' +
+      '<th style="text-align:right;padding:4px 8px;">Calls</th><th style="text-align:right;padding:4px 8px;">In</th>' +
+      '<th style="text-align:right;padding:4px 8px;">Out</th><th style="text-align:right;padding:4px 8px;">Cache r/w</th>' +
+      '<th style="text-align:right;padding:4px 8px;">Est. $</th><th style="text-align:right;padding:4px 8px;">QA share</th></tr></thead>';
+    const tb = document.createElement('tbody');
+    rows.forEach(function (x) {
+      const r = x.r;
+      const qaShare = x.cost > 0 ? Math.round(100 * llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P) / x.cost) : 0;
+      const tr = document.createElement('tr');
+      tr.style.cssText = 'border-top:1px solid rgba(128,128,128,.18);';
+      const cells = [r.purpose, llmTier(r.model), String(r.calls), String(r.input_tokens), String(r.output_tokens),
+        r.cache_read_tokens + '/' + r.cache_write_tokens, costFmt(x.cost), qaShare + '%'];
+      cells.forEach(function (c, i) {
+        const td = document.createElement('td');
+        td.style.cssText = 'padding:4px 8px;text-align:' + (i < 2 ? 'left' : 'right') + ';';
+        if (i >= 2) td.className = 'mono';
+        td.textContent = c;
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb);
+    holder.appendChild(tbl);
+  } else {
+    holder.appendChild(el('div', 'empty micro', 'No metered calls in this range yet — the ledger fills as the concierge works.'));
+  }
+
+  /* editable prices */
+  const pr = $('cost-prices');
+  pr.textContent = '';
+  pr.appendChild(el('span', 'micro', 'Prices, $ per million tokens (in / out):'));
+  ['haiku', 'sonnet', 'opus'].forEach(function (tier) {
+    const wrap = el('span', 'micro');
+    wrap.appendChild(document.createTextNode(tier + ' '));
+    [0, 1].forEach(function (idx) {
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.step = '0.01'; inp.min = '0';
+      inp.style.cssText = 'width:64px;margin-left:4px;';
+      inp.value = String(P[tier][idx]);
+      inp.addEventListener('change', function () {
+        const cur = llmPrices();
+        cur[tier][idx] = Math.max(0, Number(inp.value) || 0);
+        try { localStorage.setItem('cx_llm_prices', JSON.stringify(cur)); } catch (e) { /* ignore */ }
+        if (state.costData) renderCost(state.costData);
+      });
+      wrap.appendChild(inp);
+    });
+    pr.appendChild(wrap);
+  });
+  $('cost-note').textContent = '';
+}
+async function loadCost() {
+  const holder = $('cost-range');
+  holder.textContent = '';
+  const cur = state.costRange === undefined ? 30 : state.costRange;
+  COST_RANGES.forEach(function (r) {
+    const c = el('button', 'ord-chip' + (cur === r[0] ? ' on' : ''), r[1]);
+    c.type = 'button';
+    c.addEventListener('click', function () { state.costRange = r[0]; loadCost(); });
+    holder.appendChild(c);
+  });
+  try {
+    const r = await sb.rpc('llm_cost_metrics', { p_days: cur });
+    if (r.error) throw new Error(r.error.message || JSON.stringify(r.error));
+    if (!r.data) throw new Error('empty response from llm_cost_metrics()');
+    state.costData = r.data;
+    renderCost(r.data);
+  } catch (e) {
+    $('cost-note').textContent = 'Model spend unavailable — ' + (e && e.message ? e.message : String(e)) +
+      '. If the schema was just updated, redeploy applied it; otherwise check the connection key.';
+    console.warn('[concierge-admin] llm_cost_metrics: ' + (e && e.message ? e.message : e));
+  }
 }
 
 async function loadConversion() {

@@ -1816,6 +1816,61 @@ function scheduleGoalEval(
 // just leaves the note open for next time; it can never produce a wrong reply.
 const RESOLVE_TOOL = REGISTER_TOOLS.find((t) => t.name === "resolve_admin_note");
 
+// ── The meter — usage logging for every model call (COSTS.md) ────────────────
+// Every request to the model gets a ledger row: purpose, model, tokens, and —
+// where the call belongs to a conversation — which one. QA traffic ("qa-"
+// session keys: CI smoke + the eval deck) is flagged at write time so dev
+// spend never masquerades as customer spend. Metering must never break
+// serving: every failure path swallows.
+function logLlmUsage(
+  purpose: string,
+  model: string,
+  usage: unknown,
+  ctx?: { conversationId?: string | null; sessionKey?: string | null },
+): void {
+  try {
+    // deno-lint-ignore no-explicit-any
+    const u = (usage ?? {}) as any;
+    const inTok = Math.max(0, Number(u.input_tokens) || 0);
+    const outTok = Math.max(0, Number(u.output_tokens) || 0);
+    const cacheR = Math.max(0, Number(u.cache_read_input_tokens) || 0);
+    const cacheW = Math.max(0, Number(u.cache_creation_input_tokens) || 0);
+    if (!inTok && !outTok && !cacheR && !cacheW) return;
+    pgInsert("concierge_llm_usage", {
+      purpose,
+      model: String(model || "").slice(0, 80),
+      input_tokens: inTok,
+      output_tokens: outTok,
+      cache_read_tokens: cacheR,
+      cache_write_tokens: cacheW,
+      conversation_id: ctx?.conversationId || null,
+      qa: (ctx?.sessionKey || "").startsWith("qa-"),
+    }).catch(() => {});
+  } catch { /* the meter never blocks the message */ }
+}
+
+// Drop-in for fetch(api.anthropic.com/v1/messages): same Response back, usage
+// logged from a clone so the caller's read of the body is untouched. The
+// streaming chat request logs from its own SSE events instead.
+function llmFetch(
+  purpose: string,
+  init: RequestInit,
+  ctx?: { conversationId?: string | null; sessionKey?: string | null },
+): Promise<Response> {
+  return fetch("https://api.anthropic.com/v1/messages", init).then((res) => {
+    try {
+      if (res.ok && (res.headers.get("content-type") || "").includes("json")) {
+        res.clone().json().then(
+          // deno-lint-ignore no-explicit-any
+          (j: any) => logLlmUsage(purpose, j?.model || "", j?.usage, ctx),
+          () => {},
+        );
+      }
+    } catch { /* the meter never blocks the message */ }
+    return res;
+  });
+}
+
 async function reconcileDirectives(
   cid: string | null,
   customer: Customer,
@@ -1860,7 +1915,7 @@ async function reconcileDirectives(
       "(\"always…\", \"every visit…\", an ongoing courtesy) is NOT a one-time task — leave those open. " +
       "If a one-time task has not yet been done, do nothing for it. Only resolve; never write a reply.\n\n" +
       "OPEN HOUSE INSTRUCTIONS:\n" + list;
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("directives", {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -1966,7 +2021,7 @@ async function consolidateClientBook(
       "freezes a snapshot that goes stale. Reference an order only as durable relationship context (e.g. 'buying the " +
       "car for the east-facing office'), never as a ledger of serials/status. Output ONLY the " +
       "summary prose — no headers, no preamble.";
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("clientbook", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -2068,7 +2123,7 @@ async function evaluateGoals(
       "words) so it can be found in the text; use \"\" when the status is unmet or nothing supports it. Respond " +
       "ONLY with a JSON object mapping each goal slug to {\"status\":\"met|partial|unmet\",\"note\":\"...\",\"quote\":\"...\"}, " +
       "plus a key \"_stage\" set to the stage word. No prose.";
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("goals", {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -2875,7 +2930,7 @@ async function judgeBeatLine(
   recentUser = "",
 ): Promise<{ veto: boolean; reason: string }> {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("judge", {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -2983,7 +3038,7 @@ async function coachBeatLine(
       : (typeof baseSystem === "string" && baseSystem
         ? baseSystem + "\n\n" + task
         : task);
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("coach", {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -3140,7 +3195,7 @@ async function categorizeNpsReason(apiKey: string, responseId: number, reason: s
     if (!cats || cats.length === 0) return;
     const slugs = cats.map((c) => c.slug);
     const menu = cats.map((c) => `- ${c.slug}: ${c.label}${c.prompt_hint ? " — " + c.prompt_hint : ""}`).join("\n");
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("nps-categorize", {
       method: "POST",
       headers: {
         "x-api-key": apiKey,
@@ -3429,7 +3484,7 @@ async function handleNpsReportGet(req: Request): Promise<Response> {
   let report = "";
   try {
     const data = await loadConciergeData();
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("nps-report", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       signal: AbortSignal.timeout(60000),
@@ -3609,7 +3664,7 @@ async function handlePromptReviewPost(req: Request): Promise<Response> {
     `--- TARGET ${t.id}\npurpose: ${t.purpose}\nformat: ${t.format}\ncurrent value:\n${t.current}`,
   ).join("\n\n").slice(0, 24000);
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("prompt-review", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -3793,7 +3848,7 @@ async function handleJudgePost(req: Request): Promise<Response> {
   if (!criterion || !transcript) return jsonError(req, 400, "criterion and transcript are required.");
   const model = Deno.env.get("EVAL_JUDGE_MODEL") || "claude-haiku-4-5-20251001";
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("eval-judge", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -3865,7 +3920,7 @@ async function handleLintPost(req: Request): Promise<Response> {
   if (!apiKey) return jsonResponse(req, 200, { findings: [], error: "no API key — lint skipped" });
   const model = Deno.env.get("EVAL_JUDGE_MODEL") || "claude-haiku-4-5-20251001";
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("lint", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -4187,7 +4242,7 @@ async function handleGenStartersPost(req: Request): Promise<Response> {
       : k.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ").toLowerCase().trim();
   const sectionsBlock = keys.map((k) => `- key "${k}" — section about: ${deslug(k)}`).join("\n");
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("starters", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -5125,6 +5180,7 @@ async function handleChatPost(req: Request): Promise<Response> {
           if (res.ok) {
             // deno-lint-ignore no-explicit-any
             const msg = await res.json() as any;
+            logLlmUsage("beat", msg.model || model, msg.usage, { sessionKey: validated.sessionKey });
             const blocks = Array.isArray(msg.content) ? msg.content : [];
             // deno-lint-ignore no-explicit-any
             const tu = blocks.find((b: any) => b.type === "tool_use" && b.name === "beat_line");
@@ -5254,6 +5310,8 @@ async function handleChatPost(req: Request): Promise<Response> {
             }
             // deno-lint-ignore no-explicit-any
             const msg = await res.json() as any;
+            logLlmUsage("chat-tools", msg.model || model, msg.usage,
+              { conversationId: cid, sessionKey: validated.sessionKey });
             const blocks = Array.isArray(msg.content) ? msg.content : [];
             const textOut = blocks
               .filter((b: { type: string }) => b.type === "text")
@@ -5399,6 +5457,8 @@ async function handleChatPost(req: Request): Promise<Response> {
   const reader = upstream.body.getReader();
   const decoder = new TextDecoder();
   let assistantText = "";
+  let usageModel = "";
+  let usageIn = 0, usageOut = 0, usageCacheR = 0, usageCacheW = 0;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -5423,7 +5483,15 @@ async function handleChatPost(req: Request): Promise<Response> {
                   assistantText += evt.delta.text;
                   controller.enqueue(sseFrame({ t: evt.delta.text }));
                 }
-                // Other event types (message_start/stop, ping, ...) ignored.
+                else if (evt.type === "message_start") {
+                  usageModel = String(evt.message?.model || "");
+                  usageIn += Number(evt.message?.usage?.input_tokens) || 0;
+                  usageCacheR += Number(evt.message?.usage?.cache_read_input_tokens) || 0;
+                  usageCacheW += Number(evt.message?.usage?.cache_creation_input_tokens) || 0;
+                } else if (evt.type === "message_delta" && evt.usage) {
+                  usageOut = Number(evt.usage.output_tokens) || usageOut;
+                }
+                // Other event types (message_stop, ping, ...) ignored.
               } catch { /* ignore unparseable event payloads */ }
             }
           }
@@ -5434,6 +5502,12 @@ async function handleChatPost(req: Request): Promise<Response> {
       } finally {
         // Log the assistant turn BEFORE [DONE], then emit the meta event.
         // Logging failures never break the stream — [DONE] is always sent.
+        try {
+          logLlmUsage("chat", usageModel || model, {
+            input_tokens: usageIn, output_tokens: usageOut,
+            cache_read_input_tokens: usageCacheR, cache_creation_input_tokens: usageCacheW,
+          }, { conversationId: await conversationPromise, sessionKey: validated.sessionKey });
+        } catch { /* the meter never blocks the stream */ }
         let meta: string | null = null;
         try {
           const cid = await conversationPromise;
@@ -5614,7 +5688,7 @@ async function writeClientBookNote(
       "FACT: <the durable fact or event to remember, or SKIP>\n" +
       "REFLECTION: <how to serve them better next time, or SKIP>";
     const reflectOn = data.config?.clientbook_reflect !== false; // admin opt-out
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("notes", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
@@ -5988,7 +6062,7 @@ async function handleReengage(req: Request): Promise<Response> {
       }
     } catch { /* coach is advisory; never blocks the bubble */ }
     const started = Date.now();
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await llmFetch("reengage", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
