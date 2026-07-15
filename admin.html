@@ -197,7 +197,11 @@
   nav.tabs{
     display:flex; gap:4px; padding:0 32px;
     border-bottom:1px solid var(--hairline-dim);
-    overflow-x:auto;
+    flex-wrap:wrap;
+    /* The register has many pages now — the tab rail stays pinned while the
+       page scrolls, and wraps instead of hiding tabs off-screen. */
+    position:sticky; top:0; z-index:60;
+    background:var(--bg-1);
   }
   nav.tabs button{
     font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
@@ -947,6 +951,7 @@
     <button class="tab" data-tab="conversations" role="tab">Conversations</button>
     <button class="tab" data-tab="conversion" role="tab">Conversion</button>
     <button class="tab" data-tab="nps" role="tab">NPS</button>
+    <button class="tab" data-tab="spend" role="tab">Spend</button>
     <button class="tab" data-tab="actions" role="tab">Actions</button>
     <button class="tab" data-tab="website" role="tab">Website</button>
     <button class="tab" data-tab="tools" role="tab">Tools</button>
@@ -2122,40 +2127,67 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         earlier history shows zeros. Cancelled orders are excluded from revenue but keep their attribution.
         Full definitions: <span class="mono">ATTRIBUTION.md</span>.</p>
 
-      <section class="card">
-        <div class="card-head">
-          <h3>Model spend</h3>
-          <span class="micro">every model call, metered at the source</span>
-        </div>
-        <p class="note">Where the money goes: the engine logs <b>every</b> model call with its purpose — main replies,
-          register tool rounds, proactive beats, the judge and coach, NPS work, housekeeping. QA traffic
-          (<span class="mono">qa-</span> sessions: CI smoke and the eval deck that runs on <em>every deploy</em>) is
-          metered separately, so dev spend never reads as customer spend — it is the usual culprit when a day spikes.
-          Dollar figures are estimates from the editable prices below; the ledger stores tokens, not dollars. Data
-          accrues from the day this shipped — earlier spend is invisible here. Full detail:
-          <span class="mono">COSTS.md</span>.</p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-          <span class="micro">Range</span>
-          <div id="cost-range" class="ord-chips" style="margin-bottom:0;"></div>
-          <button id="cost-refresh" class="btn ghost" type="button" style="margin-left:auto;">Refresh</button>
-        </div>
-        <div class="metrics">
-          <div class="stat"><span class="micro">Customer spend<span class="info-badge" title="Estimated cost of all non-QA calls in the range, priced by the table below (cache reads at 10% of the input rate, cache writes at 125%).">i</span></span><div class="val" id="cost-cust">—</div></div>
-          <div class="stat"><span class="micro">Per conversation<span class="info-badge" title="Customer spend on conversation-attributed calls (main replies + register tool rounds) ÷ distinct customer conversations that made model calls in the range.">i</span></span><div class="val" id="cost-convo">—</div></div>
-          <div class="stat"><span class="micro">QA / dev spend<span class="info-badge" title="qa- sessions only: CI smoke plus the eval deck on every deploy. Heavy shipping days show up here, not in customer spend.">i</span></span><div class="val" id="cost-qa">—</div></div>
-          <div class="stat"><span class="micro">Calls</span><div class="val" id="cost-calls">—</div></div>
-        </div>
-        <div style="margin-top:14px;">
-          <div class="micro" style="margin-bottom:6px;">Tokens per day — customer vs QA/dev (input + output)</div>
-          <div id="cost-chart"></div>
-        </div>
-        <div id="cost-purposes" style="margin-top:14px;"></div>
-        <div id="cost-prices" style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;"></div>
-        <div id="cost-note" class="micro" style="margin-top:8px;"></div>
-      </section>
     </div>
 
     <!-- ============ TAB 7 : WEBSITE (storefront CMS) ============ -->
+    <div id="panel-spend" class="panel">
+      <div class="panel-head">
+        <span class="micro">API consumption</span>
+        <h2>Spend</h2>
+      </div>
+      <p class="note">Every model call the concierge makes is metered at the source with a purpose
+        (<span class="mono">COSTS.md</span>). Deploy testing (<span class="mono">qa-</span> sessions: CI smoke + the
+        eval deck on <em>every deploy</em>) is metered separately — it is the usual culprit when a day spikes.
+        Dollars are <b>estimates</b> from the editable prices at the bottom; the ledger stores tokens, so a price
+        edit reprices all history. The ledger begins at its ship date — older spend is invisible here.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+        <span class="micro">Range</span>
+        <div id="sp-range" class="ord-chips" style="margin-bottom:0;"></div>
+        <button id="sp-refresh" class="btn ghost" type="button" style="margin-left:auto;">Refresh</button>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <span class="micro">View by</span>
+        <div id="sp-gran" class="ord-chips" style="margin-bottom:0;"></div>
+      </div>
+      <div class="metrics">
+        <div class="stat"><span class="micro">Customer spend<span class="info-badge" title="Estimated cost of serving real visitors in the range — every non-QA call, priced by the table below (cache reads at 10% of the input rate, writes at 125%).">i</span></span><div class="val" id="sp-cust">—</div><div class="cv-delta" id="sp-cust-d"></div></div>
+        <div class="stat"><span class="micro">Per conversation<span class="info-badge" title="Customer spend on conversation-attributed calls (replies + register tool rounds) ÷ distinct customer conversations with model calls in the range. Overhead purposes are shown below, not smeared in — this is a floor.">i</span></span><div class="val" id="sp-convo">—</div></div>
+        <div class="stat"><span class="micro">Per reply<span class="info-badge" title="Customer reply cost (chat + register tool rounds) ÷ customer main replies in the range.">i</span></span><div class="val" id="sp-reply">—</div></div>
+        <div class="stat"><span class="micro">Testing &amp; deploys<span class="info-badge" title="qa- sessions only: CI smoke plus the eval deck each deploy, plus the eval grader. Heavy shipping days land here, not in customer spend.">i</span></span><div class="val" id="sp-qa">—</div><div class="cv-delta" id="sp-qa-d"></div></div>
+        <div class="stat"><span class="micro">Cache savings<span class="info-badge" title="What the range's cache reads would have cost at the full input rate, minus the 10% cache rate actually modeled. Prompt caching is why long system prompts stay affordable.">i</span></span><div class="val" id="sp-cache">—</div></div>
+        <div class="stat"><span class="micro">Monthly pace<span class="info-badge" title="Total estimated spend (customer + testing) ÷ days that actually have data in the range × 30. A pace, not a promise.">i</span></span><div class="val" id="sp-pace">—</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:14px;">
+        <div><div class="micro" style="margin-bottom:6px;">Est. spend over time</div><div id="sp-chart-spend"></div></div>
+        <div><div class="micro" style="margin-bottom:6px;">Model calls over time</div><div id="sp-chart-calls"></div></div>
+        <div><div class="micro" style="margin-bottom:6px;">Tokens over time (in vs out)</div><div id="sp-chart-tokens"></div></div>
+        <div><div class="micro" style="margin-bottom:6px;">Cache hit rate (input served from cache)</div><div id="sp-chart-cache"></div></div>
+      </div>
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head">
+          <h3>Where the money goes</h3>
+          <span class="micro">by service, customer spend — testing shown apart</span>
+        </div>
+        <div id="sp-services"></div>
+      </section>
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head">
+          <h3>By model</h3>
+          <span class="micro">customer + testing, priced per tier</span>
+        </div>
+        <div id="sp-models"></div>
+      </section>
+      <section class="card" style="margin-top:14px;">
+        <div class="card-head">
+          <h3>Every purpose</h3>
+          <span class="micro">the full ledger vocabulary, costliest first</span>
+        </div>
+        <div id="sp-purposes"></div>
+        <div id="sp-prices" style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;"></div>
+        <div id="sp-note" class="micro" style="margin-top:8px;"></div>
+      </section>
+    </div>
+
     <div id="panel-nps" class="panel">
       <div class="panel-head">
         <span class="micro">The satisfaction loop</span>
@@ -2731,7 +2763,7 @@ function wireStatic() {
   const initialTab = (location.hash || '').slice(1);
   if (TAB_NAMES.indexOf(initialTab) >= 0 && initialTab !== 'tuning') activateTab(initialTab, true);
   $('cv-refresh').addEventListener('click', function () { loadConversion(); });
-  if ($('cost-refresh')) $('cost-refresh').addEventListener('click', function () { loadCost(); });
+  if ($('sp-refresh')) $('sp-refresh').addEventListener('click', function () { loadSpend(); });
   $('cv-wkstart').addEventListener('change', function () {
     const v = parseInt($('cv-wkstart').value, 10);
     state.weekStart = v === 1 ? 1 : 0;
@@ -2877,7 +2909,7 @@ async function doSignOut() {
   route();
 }
 
-const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'nps', 'actions', 'website', 'tools', 'evals', 'edition'];
+const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'nps', 'spend', 'actions', 'website', 'tools', 'evals', 'edition'];
 function activateTab(name, fromHistory) {
   document.querySelectorAll('nav.tabs .tab').forEach(function (b) {
     b.classList.toggle('on', b.dataset.tab === name);
@@ -2891,7 +2923,8 @@ function activateTab(name, fromHistory) {
   if (!fromHistory && location.hash !== '#' + name) {
     try { history.pushState({ tab: name }, '', '#' + name); } catch (eH) { /* ignore */ }
   }
-  if (name === 'conversion') { loadConversion(); loadCost(); }
+  if (name === 'conversion') loadConversion();
+  if (name === 'spend') loadSpend();
   if (name === 'nps') loadNps();
   if (name === 'tuning') autoGrowAll('#panel-tuning .tsub.on');
   if (name === 'knowledge') autoGrowAll('#kb-list');
@@ -9232,11 +9265,12 @@ async function loadNps() {
 }
 
 
-/* ── Model spend (the meter) — llm_cost_metrics() + editable prices ──────────
-   Fail-visible like the NPS card: any error lands in #cost-note, never a
-   silent blank. Prices live in this browser (cx_llm_prices) because the
-   ledger stores tokens; dollars are always an estimate, labeled as such. */
-const COST_RANGES = [[7, '7d'], [30, '30d'], [90, '90d'], [365, '1y']];
+/* ── Spend — the API-consumption dashboard (llm_cost_metrics, COSTS.md) ──────
+   Merchant-first: what is the bill doing, what does one customer cost, where
+   does the money go (in service language), which models, and what did caching
+   save. Fail-visible: any error lands in #sp-note, never a silent blank. */
+const SP_RANGES = [[7, '7d'], [30, '30d'], [90, '90d'], [365, '1y']];
+const SP_GRANS = [['day', 'Day'], ['week', 'Week'], ['month', 'Month']];
 const LLM_PRICE_DEF = { haiku: [1, 5], sonnet: [3, 15], opus: [5, 25], other: [3, 15] };
 function llmPrices() {
   try {
@@ -9257,8 +9291,8 @@ function llmTier(model) {
   if (m.indexOf('opus') !== -1) return 'opus';
   return 'other';
 }
-/* $ for a token bundle: in/out at the tier price, cache read 10% of input,
-   cache write 125% of input — the standard prompt-caching price shape. */
+/* $ for a token bundle: in/out at tier price, cache read 10% of input, cache
+   write 125% — the standard prompt-caching price shape. */
 function llmCostOf(model, inT, outT, crT, cwT, P) {
   const p = P[llmTier(model)] || P.other;
   return ((inT || 0) * p[0] + (outT || 0) * p[1] + (crT || 0) * p[0] * 0.1 + (cwT || 0) * p[0] * 1.25) / 1e6;
@@ -9267,41 +9301,186 @@ function costFmt(v) {
   if (!isFinite(v)) return '—';
   return '$' + (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v >= 0.1 ? v.toFixed(2) : v.toFixed(3));
 }
-function renderCost(m) {
+function spTokFmt(v) { return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(Math.round(v)); }
+/* Purposes → the language a merchant budgets in. QA spend goes to Testing
+   regardless of purpose; eval-judge is testing even when run by hand. */
+const SP_SERVICES = [
+  ['Serving customers', ['chat', 'chat-tools']],
+  ['Proactive selling', ['beat', 'reengage', 'coach', 'judge']],
+  ['Satisfaction (NPS)', ['nps-categorize', 'nps-report']],
+  ['Studio & housekeeping', ['starters', 'lint', 'prompt-review', 'directives', 'clientbook', 'notes', 'goals']]
+];
+function spServiceOf(purpose) {
+  for (let i = 0; i < SP_SERVICES.length; i++) {
+    if (SP_SERVICES[i][1].indexOf(purpose) !== -1) return SP_SERVICES[i][0];
+  }
+  return purpose === 'eval-judge' ? 'Testing & deploys' : 'Studio & housekeeping';
+}
+/* horizontal bar rows: label ─ bar ─ value */
+function spBars(mount, rows, total) {
+  mount.textContent = '';
+  if (!rows.length || total <= 0) {
+    mount.appendChild(el('div', 'empty micro', 'Nothing metered in this range yet.'));
+    return;
+  }
+  rows.forEach(function (r) {
+    const line = el('div', null);
+    line.style.cssText = 'display:flex;align-items:center;gap:10px;margin:6px 0;';
+    const lab = el('span', 'micro', r[0]);
+    lab.style.cssText = 'flex:0 0 180px;';
+    const barWrap = el('div', null);
+    barWrap.style.cssText = 'flex:1 1 auto;height:8px;border-radius:4px;background:rgba(128,128,128,.14);overflow:hidden;';
+    const bar = el('div', null);
+    bar.style.cssText = 'height:100%;border-radius:4px;background:' + (r[3] || CV_EMPH) + ';width:' +
+      Math.max(1, Math.round(100 * r[1] / total)) + '%;';
+    barWrap.appendChild(bar);
+    const val = el('span', 'micro mono', costFmt(r[1]) + ' · ' + Math.round(100 * r[1] / total) + '%' + (r[2] ? ' · ' + r[2] : ''));
+    val.style.cssText = 'flex:0 0 auto;';
+    line.appendChild(lab); line.appendChild(barWrap); line.appendChild(val);
+    mount.appendChild(line);
+  });
+}
+/* daily-by-model rows → ordered time buckets for the chosen granularity */
+function spBucketize(days, gran) {
+  const keys = [], map = {};
+  days.forEach(function (r) {
+    let k = String(r.d);
+    if (gran === 'week') {
+      const dt = new Date(k + 'T00:00:00Z');
+      const dow = (dt.getUTCDay() + 6) % 7;            /* Monday start */
+      dt.setUTCDate(dt.getUTCDate() - dow);
+      k = dt.toISOString().slice(0, 10);
+    } else if (gran === 'month') { k = k.slice(0, 7); }
+    if (!map[k]) { map[k] = []; keys.push(k); }
+    map[k].push(r);
+  });
+  keys.sort();
+  return { keys: keys, rows: keys.map(function (k) { return map[k]; }) };
+}
+function spSum(rows, P) {
+  let cust = 0, qa = 0, calls = 0, qaCalls = 0, inT = 0, outT = 0, crT = 0;
+  rows.forEach(function (r) {
+    const q = llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P);
+    const t = llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P);
+    qa += q; cust += (t - q);
+    calls += (r.calls || 0); qaCalls += (r.qa_calls || 0);
+    inT += (r.input_tokens || 0); outT += (r.output_tokens || 0); crT += (r.cache_read_tokens || 0);
+  });
+  return { cust: cust, qa: qa, calls: calls, qaCalls: qaCalls, inT: inT, outT: outT, crT: crT };
+}
+function spDelta(elId, cur, prev, label) {
+  const node = $(elId);
+  if (!node) return;
+  if (!isFinite(prev) || prev <= 0) { node.textContent = ''; return; }
+  const pct = Math.round(100 * (cur - prev) / prev);
+  node.textContent = (pct >= 0 ? '▲ +' : '▼ ') + pct + '% vs prior ' + label;
+}
+function renderSpend(m, prevDays) {
   const P = llmPrices();
-  let cust = 0, qa = 0;
+  /* headline sums from by_purpose (exact, window-wide) */
+  let cust = 0, qa = 0, cacheSave = 0, chatCost = 0, chatCalls = 0;
   (m.by_purpose || []).forEach(function (r) {
-    const qCost = llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P);
-    const tCost = llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P);
-    qa += qCost; cust += (tCost - qCost);
+    const q = llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P);
+    const t = llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P);
+    const c = t - q;
+    qa += q;
+    if (r.purpose === 'eval-judge') { qa += c; } else { cust += c; }
+    const p = P[llmTier(r.model)] || P.other;
+    cacheSave += (r.cache_read_tokens || 0) * p[0] * 0.9 / 1e6;
+    if (r.purpose === 'chat' || r.purpose === 'chat-tools') {
+      chatCost += c;
+      if (r.purpose === 'chat') { chatCalls += (r.calls || 0) - (r.qa_calls || 0); }
+    }
   });
   let attribCust = 0;
   (m.attributed || []).forEach(function (a) {
     if (!a.qa) attribCust += llmCostOf(a.model, a.input_tokens, a.output_tokens, a.cache_read_tokens, a.cache_write_tokens, P);
   });
   const convoN = (m.conversations && m.conversations.customer_n) || 0;
-  $('cost-cust').textContent = costFmt(cust);
-  $('cost-qa').textContent = costFmt(qa);
-  $('cost-calls').textContent = String(m.calls || 0);
-  $('cost-convo').textContent = convoN ? costFmt(attribCust / convoN) : '—';
-
-  /* daily tokens, customer vs QA */
   const days = m.daily || [];
-  cvChart($('cost-chart'), {
-    labels: days.map(function (d) { return String(d.d).slice(5); }), gran: 'day',
-    fmt: function (v) { return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(v); },
-    aria: 'Model tokens per day, customer vs QA',
+  const daysCovered = {};
+  days.forEach(function (r) { daysCovered[r.d] = 1; });
+  const nCovered = Object.keys(daysCovered).length;
+
+  $('sp-cust').textContent = costFmt(cust);
+  $('sp-qa').textContent = costFmt(qa);
+  $('sp-convo').textContent = convoN ? costFmt(attribCust / convoN) : '—';
+  $('sp-reply').textContent = chatCalls ? costFmt(chatCost / chatCalls) : '—';
+  $('sp-cache').textContent = costFmt(cacheSave);
+  $('sp-pace').textContent = nCovered ? costFmt((cust + qa) / nCovered * 30) + '/mo' : '—';
+
+  /* deltas vs the prior window (from the doubled fetch) */
+  if (prevDays) {
+    const prev = spSum(prevDays, P);
+    spDelta('sp-cust-d', cust, prev.cust, m.window_days + 'd');
+    spDelta('sp-qa-d', qa, prev.qa, m.window_days + 'd');
+  } else { $('sp-cust-d').textContent = ''; $('sp-qa-d').textContent = ''; }
+
+  /* time series at the chosen granularity, priced exactly per model */
+  const gran = state.spGran || 'day';
+  const bk = spBucketize(days, gran);
+  const per = bk.rows.map(function (rows) { return spSum(rows, P); });
+  const labels = bk.keys.map(function (k) { return gran === 'month' ? k : k.slice(5); });
+  cvChart($('sp-chart-spend'), {
+    labels: labels, gran: gran, fmt: costFmt, aria: 'Estimated spend over time',
     series: [
-      { name: 'Customer tokens', color: CV_EMPH,
-        values: days.map(function (d) { return (d.input_tokens - d.qa_input_tokens) + (d.output_tokens - d.qa_output_tokens); }) },
-      { name: 'QA / dev tokens', color: CV_CTX,
-        values: days.map(function (d) { return d.qa_input_tokens + d.qa_output_tokens; }) }
+      { name: 'Customer', color: CV_EMPH, values: per.map(function (s) { return s.cust; }) },
+      { name: 'Testing & deploys', color: CV_CTX, values: per.map(function (s) { return s.qa; }) }
+    ]
+  });
+  cvChart($('sp-chart-calls'), {
+    labels: labels, gran: gran, fmt: spTokFmt, aria: 'Model calls over time',
+    series: [
+      { name: 'Customer calls', color: CV_EMPH, values: per.map(function (s) { return s.calls - s.qaCalls; }) },
+      { name: 'Testing calls', color: CV_CTX, values: per.map(function (s) { return s.qaCalls; }) }
+    ]
+  });
+  cvChart($('sp-chart-tokens'), {
+    labels: labels, gran: gran, fmt: spTokFmt, aria: 'Tokens over time',
+    series: [
+      { name: 'Input (uncached)', color: CV_CTX, values: per.map(function (s) { return s.inT; }) },
+      { name: 'Output', color: CV_EMPH, values: per.map(function (s) { return s.outT; }) }
     ],
-    tipNote: function (i) { const d = days[i]; return 'in ' + d.input_tokens + ' · out ' + d.output_tokens + ' · cache-read ' + d.cache_read_tokens; }
+    tipNote: function (i) { return 'cache-read ' + spTokFmt(per[i].crT); }
+  });
+  cvChart($('sp-chart-cache'), {
+    labels: labels, gran: gran, fmt: function (v) { return v + '%'; }, aria: 'Cache hit rate over time',
+    series: [{ name: 'Cache hit rate', color: CV_EMPH, values: per.map(function (s) {
+      const denom = s.inT + s.crT;
+      return denom ? Math.round(100 * s.crT / denom) : 0;
+    }) }]
   });
 
-  /* by-purpose table, costliest first */
-  const holder = $('cost-purposes');
+  /* where the money goes — customer spend by service; testing apart */
+  const svc = {};
+  (m.by_purpose || []).forEach(function (r) {
+    const q = llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P);
+    const c = llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P) - q;
+    const name = spServiceOf(r.purpose);
+    if (name === 'Testing & deploys') { svc['Testing & deploys'] = (svc['Testing & deploys'] || 0) + c; }
+    else { svc[name] = (svc[name] || 0) + c; }
+    svc['Testing & deploys'] = (svc['Testing & deploys'] || 0) + q;
+  });
+  const svcRows = Object.keys(svc).map(function (k) {
+    return [k, svc[k], '', k === 'Testing & deploys' ? CV_CTX : CV_EMPH];
+  }).sort(function (a, b) { return b[1] - a[1]; }).filter(function (r) { return r[1] > 0; });
+  spBars($('sp-services'), svcRows, cust + qa);
+
+  /* by model tier */
+  const tiers = {};
+  (m.by_purpose || []).forEach(function (r) {
+    const t = llmTier(r.model);
+    const c = llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P);
+    if (!tiers[t]) tiers[t] = { cost: 0, calls: 0 };
+    tiers[t].cost += c; tiers[t].calls += (r.calls || 0);
+  });
+  const tierRows = Object.keys(tiers).map(function (k) {
+    return [k, tiers[k].cost, tiers[k].calls + ' calls', CV_EMPH];
+  }).sort(function (a, b) { return b[1] - a[1]; }).filter(function (r) { return r[1] > 0; });
+  spBars($('sp-models'), tierRows, cust + qa);
+
+  /* the full purpose table, costliest first */
+  const holder = $('sp-purposes');
   holder.textContent = '';
   const rows = (m.by_purpose || []).map(function (r) {
     return { r: r, cost: llmCostOf(r.model, r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens, P) };
@@ -9310,22 +9489,24 @@ function renderCost(m) {
     const tbl = document.createElement('table');
     tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:.82rem;';
     tbl.innerHTML = '<thead><tr>' +
-      '<th style="text-align:left;padding:4px 8px;">Purpose</th><th style="text-align:left;padding:4px 8px;">Model</th>' +
+      '<th style="text-align:left;padding:4px 8px;">Purpose</th><th style="text-align:left;padding:4px 8px;">Service</th>' +
+      '<th style="text-align:left;padding:4px 8px;">Model</th>' +
       '<th style="text-align:right;padding:4px 8px;">Calls</th><th style="text-align:right;padding:4px 8px;">In</th>' +
       '<th style="text-align:right;padding:4px 8px;">Out</th><th style="text-align:right;padding:4px 8px;">Cache r/w</th>' +
-      '<th style="text-align:right;padding:4px 8px;">Est. $</th><th style="text-align:right;padding:4px 8px;">QA share</th></tr></thead>';
+      '<th style="text-align:right;padding:4px 8px;">Est. $</th><th style="text-align:right;padding:4px 8px;">Testing share</th></tr></thead>';
     const tb = document.createElement('tbody');
     rows.forEach(function (x) {
       const r = x.r;
       const qaShare = x.cost > 0 ? Math.round(100 * llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P) / x.cost) : 0;
       const tr = document.createElement('tr');
       tr.style.cssText = 'border-top:1px solid rgba(128,128,128,.18);';
-      const cells = [r.purpose, llmTier(r.model), String(r.calls), String(r.input_tokens), String(r.output_tokens),
-        r.cache_read_tokens + '/' + r.cache_write_tokens, costFmt(x.cost), qaShare + '%'];
+      const cells = [r.purpose, spServiceOf(r.purpose), llmTier(r.model), spTokFmt(r.calls), spTokFmt(r.input_tokens),
+        spTokFmt(r.output_tokens), spTokFmt(r.cache_read_tokens) + '/' + spTokFmt(r.cache_write_tokens),
+        costFmt(x.cost), qaShare + '%'];
       cells.forEach(function (c, i) {
         const td = document.createElement('td');
-        td.style.cssText = 'padding:4px 8px;text-align:' + (i < 2 ? 'left' : 'right') + ';';
-        if (i >= 2) td.className = 'mono';
+        td.style.cssText = 'padding:4px 8px;text-align:' + (i < 3 ? 'left' : 'right') + ';';
+        if (i >= 3) td.className = 'mono';
         td.textContent = c;
         tr.appendChild(td);
       });
@@ -9338,7 +9519,7 @@ function renderCost(m) {
   }
 
   /* editable prices */
-  const pr = $('cost-prices');
+  const pr = $('sp-prices');
   pr.textContent = '';
   pr.appendChild(el('span', 'micro', 'Prices, $ per million tokens (in / out):'));
   ['haiku', 'sonnet', 'opus'].forEach(function (tier) {
@@ -9350,35 +9531,51 @@ function renderCost(m) {
       inp.style.cssText = 'width:64px;margin-left:4px;';
       inp.value = String(P[tier][idx]);
       inp.addEventListener('change', function () {
-        const cur = llmPrices();
-        cur[tier][idx] = Math.max(0, Number(inp.value) || 0);
-        try { localStorage.setItem('cx_llm_prices', JSON.stringify(cur)); } catch (e) { /* ignore */ }
-        if (state.costData) renderCost(state.costData);
+        const curP = llmPrices();
+        curP[tier][idx] = Math.max(0, Number(inp.value) || 0);
+        try { localStorage.setItem('cx_llm_prices', JSON.stringify(curP)); } catch (e) { /* ignore */ }
+        if (state.spData) renderSpend(state.spData, state.spPrevDays);
       });
       wrap.appendChild(inp);
     });
     pr.appendChild(wrap);
   });
-  $('cost-note').textContent = '';
+  $('sp-note').textContent = '';
 }
-async function loadCost() {
-  const holder = $('cost-range');
-  holder.textContent = '';
-  const cur = state.costRange === undefined ? 30 : state.costRange;
-  COST_RANGES.forEach(function (r) {
-    const c = el('button', 'ord-chip' + (cur === r[0] ? ' on' : ''), r[1]);
-    c.type = 'button';
-    c.addEventListener('click', function () { state.costRange = r[0]; loadCost(); });
-    holder.appendChild(c);
-  });
+async function loadSpend() {
+  const cur = state.spRange === undefined ? 30 : state.spRange;
+  const mkChips = function (holderId, items, key, def) {
+    const holder = $(holderId);
+    holder.textContent = '';
+    const val = state[key] === undefined ? def : state[key];
+    items.forEach(function (r) {
+      const c = el('button', 'ord-chip' + (val === r[0] ? ' on' : ''), r[1]);
+      c.type = 'button';
+      c.addEventListener('click', function () { state[key] = r[0]; loadSpend(); });
+      holder.appendChild(c);
+    });
+  };
+  mkChips('sp-range', SP_RANGES, 'spRange', 30);
+  mkChips('sp-gran', SP_GRANS, 'spGran', 'day');
   try {
+    /* two calls: the window itself, and the doubled window for prior-period
+       deltas (daily rows only) — headline aggregates always match the range */
     const r = await sb.rpc('llm_cost_metrics', { p_days: cur });
     if (r.error) throw new Error(r.error.message || JSON.stringify(r.error));
     if (!r.data) throw new Error('empty response from llm_cost_metrics()');
-    state.costData = r.data;
-    renderCost(r.data);
+    let prevDays = null;
+    try {
+      const r2 = await sb.rpc('llm_cost_metrics', { p_days: Math.min(cur * 2, 730) });
+      if (r2.data && r2.data.daily) {
+        const cutoff = new Date(Date.now() - cur * 86400000).toISOString().slice(0, 10);
+        prevDays = r2.data.daily.filter(function (d) { return String(d.d) < cutoff; });
+      }
+    } catch (e2) { /* deltas are optional */ }
+    state.spData = r.data;
+    state.spPrevDays = prevDays;
+    renderSpend(r.data, prevDays);
   } catch (e) {
-    $('cost-note').textContent = 'Model spend unavailable — ' + (e && e.message ? e.message : String(e)) +
+    $('sp-note').textContent = 'Spend unavailable — ' + (e && e.message ? e.message : String(e)) +
       '. If the schema was just updated, redeploy applied it; otherwise check the connection key.';
     console.warn('[concierge-admin] llm_cost_metrics: ' + (e && e.message ? e.message : e));
   }

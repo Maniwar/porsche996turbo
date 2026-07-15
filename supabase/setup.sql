@@ -1165,17 +1165,23 @@ begin
       'qa_n',       (select count(distinct conversation_id) from u
                      where conversation_id is not null and qa)),
     'daily', coalesce((select jsonb_agg(jsonb_build_object(
-        'd', d, 'input_tokens', in_t, 'output_tokens', out_t,
-        'cache_read_tokens', cr_t,
-        'qa_input_tokens', qa_in, 'qa_output_tokens', qa_out) order by d)
+        'd', d, 'model', model, 'calls', calls, 'qa_calls', qa_calls,
+        'input_tokens', in_t, 'output_tokens', out_t,
+        'cache_read_tokens', cr_t, 'cache_write_tokens', cw_t,
+        'qa_input_tokens', qa_in, 'qa_output_tokens', qa_out,
+        'qa_cache_read_tokens', qa_cr, 'qa_cache_write_tokens', qa_cw) order by d)
       from (
-        select date_trunc('day', created_at)::date as d,
-               coalesce(sum(input_tokens), 0)      as in_t,
-               coalesce(sum(output_tokens), 0)     as out_t,
-               coalesce(sum(cache_read_tokens), 0) as cr_t,
+        select date_trunc('day', created_at)::date as d, model,
+               count(*) as calls, count(*) filter (where qa) as qa_calls,
+               coalesce(sum(input_tokens), 0)       as in_t,
+               coalesce(sum(output_tokens), 0)      as out_t,
+               coalesce(sum(cache_read_tokens), 0)  as cr_t,
+               coalesce(sum(cache_write_tokens), 0) as cw_t,
                coalesce(sum(input_tokens)  filter (where qa), 0) as qa_in,
-               coalesce(sum(output_tokens) filter (where qa), 0) as qa_out
-        from u group by 1) dd), '[]'::jsonb)
+               coalesce(sum(output_tokens) filter (where qa), 0) as qa_out,
+               coalesce(sum(cache_read_tokens)  filter (where qa), 0) as qa_cr,
+               coalesce(sum(cache_write_tokens) filter (where qa), 0) as qa_cw
+        from u group by 1, 2) dd), '[]'::jsonb)
   ) into v;
   return v;
 end $$;
