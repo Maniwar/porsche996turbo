@@ -3091,16 +3091,18 @@ async function beatLearningBlock(
 // context.nps={score}, and the NEXT turn carries context.nps_reason=1 so the
 // reason attaches to the open row. Categorisation is async and fail-open.
 function npsConfigFrom(config: Record<string, unknown> | null | undefined): {
-  enabled: boolean; minMs: number; cooldownMs: number; question: string;
+  enabled: boolean; minMs: number; cooldownMs: number; reviseMs: number; question: string;
 } {
   const oc = config?.outreach as Record<string, unknown> | undefined;
   const n = (oc?.nps && typeof oc.nps === "object") ? oc.nps as Record<string, unknown> : {};
   const minMin = typeof n.minMinutes === "number" && n.minMinutes >= 0 ? n.minMinutes : 3;
   const coolDays = typeof n.cooldownDays === "number" && n.cooldownDays >= 0 ? n.cooldownDays : 30;
+  const reviseDays = typeof n.reviseDays === "number" && n.reviseDays >= 0 ? n.reviseDays : 3;
   return {
     enabled: n.enabled !== false, // absent = ON, the house pattern
     minMs: Math.round(minMin * 60000),
     cooldownMs: Math.round(coolDays * 86400000),
+    reviseMs: Math.round(reviseDays * 86400000), // 0 = ratings are final
     question: (typeof n.question === "string" && n.question.trim())
       ? n.question.trim().slice(0, 300)
       : "Before you go — how likely are you to recommend us to a friend, 0 to 10?",
@@ -3196,14 +3198,14 @@ async function captureNpsScore(
   score: number,
   coachId: string,
   cooldownMs = 30 * 86400000,
+  reviseMs = 3 * 86400000,
 ): Promise<void> {
   if (!cid || !Number.isFinite(score) || score < 0 || score > 10) return;
   try {
-    // Revise or insert? (npsCaptureAction, unit-tested — NPS.md "changing a
-    // rating"): this conversation's own row is always the revision target, and
-    // a tap INSIDE the cooldown can only be a correction of the customer's
-    // recent row — the gate never offers there, so a duplicate rating from one
-    // person inside the cooldown is structurally impossible.
+    // Revise, insert, or IGNORE? (npsCaptureAction, unit-tested — NPS.md
+    // "changing a rating"): revisions are honored only inside the
+    // admin-configurable window; a tap inside the cooldown but past the
+    // window writes nothing, so duplicates stay structurally impossible.
     const [convRows, custRows] = await Promise.all([
       pgSelect<{ id: number; score: number; created_at: string }>(
         `nps_responses?select=id,score,created_at&conversation_id=eq.${encodeURIComponent(cid)}&limit=1`,
@@ -3218,10 +3220,12 @@ async function captureNpsScore(
     const convRow = convRows && convRows[0];
     const custRow = custRows && custRows[0];
     const action = npsCaptureAction({
-      hasConversationRow: !!convRow,
+      conversationRowAgeMs: convRow ? Math.max(0, Date.now() - (Date.parse(convRow.created_at) || 0)) : null,
       lastCustomerRowAgeMs: custRow ? Math.max(0, Date.now() - (Date.parse(custRow.created_at) || 0)) : null,
       cooldownMs,
+      reviseMs,
     });
+    if (action === "ignore") return; // the rating is final — the tap writes nothing
     if (action === "insert") {
       await pgInsert("nps_responses", {
         conversation_id: cid,
@@ -4829,9 +4833,9 @@ async function handleChatPost(req: Request): Promise<Response> {
           "nothing else. Never repeat or evaluate the number, and never mention scores again after this.]",
       });
       if (!npsQaSession) {
-        const cooldownForCapture = npsConfigFrom(data.config).cooldownMs;
+        const npsCfgCap = npsConfigFrom(data.config);
         conversationPromise.then((cid) =>
-          captureNpsScore(cid, customer, npsScoreIn, model, cooldownForCapture)
+          captureNpsScore(cid, customer, npsScoreIn, model, npsCfgCap.cooldownMs, npsCfgCap.reviseMs)
         ).catch(() => { /* capture is best-effort */ });
       }
     } else if (npsReasonIn) {
@@ -4959,8 +4963,8 @@ async function handleChatPost(req: Request): Promise<Response> {
       const cidC = await conversationPromise;
       const [convC, custC] = await Promise.all([
         cidC
-          ? pgSelect<{ id: number }>(
-            `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(cidC)}&limit=1`,
+          ? pgSelect<{ id: number; created_at: string }>(
+            `nps_responses?select=id,created_at&conversation_id=eq.${encodeURIComponent(cidC)}&limit=1`,
           )
           : Promise.resolve(null),
         customer?.id
@@ -4970,15 +4974,32 @@ async function handleChatPost(req: Request): Promise<Response> {
           )
           : Promise.resolve(null),
       ]);
-      const recentC = !!(custC && custC[0] && npsCfgC.cooldownMs > 0 &&
-        (Date.now() - (Date.parse(custC[0].created_at) || 0)) < npsCfgC.cooldownMs);
-      if ((convC && convC.length) || recentC) {
+      const ageC = (t?: string) => t ? Math.max(0, Date.now() - (Date.parse(t) || 0)) : null;
+      const convAge = convC && convC[0] ? ageC(convC[0].created_at) : null;
+      const custAge = custC && custC[0] ? ageC(custC[0].created_at) : null;
+      // The SAME unit-tested decision the capture path uses, so the offer to
+      // revise and the actual write can never disagree.
+      const actionC = npsCaptureAction({
+        conversationRowAgeMs: convAge,
+        lastCustomerRowAgeMs: custAge,
+        cooldownMs: npsCfgC.cooldownMs,
+        reviseMs: npsCfgC.reviseMs,
+      });
+      if (actionC === "revise-conversation" || actionC === "revise-recent") {
         system.push({
           type: "text",
-          text: "\n\n[SURVEY REVISION — they want to change the rating they gave. Of course they may: say " +
-            "ONE gracious line (no apology tour, no explanation of systems), then put the token {{nps}} " +
-            "ALONE on its own line. Their new tap replaces the old score. Never argue with a correction, " +
-            "and never quote the old number back at them.]",
+          text: "\n\n[SURVEY REVISION — they want to change the rating they gave, and the change window is " +
+            "still open. Of course they may: say ONE gracious line (no apology tour, no explanation of " +
+            "systems), then put the token {{nps}} ALONE on its own line. Their new tap replaces the old " +
+            "score. Never argue with a correction, and never quote the old number back at them.]",
+        });
+      } else if (convAge != null || custAge != null) {
+        system.push({
+          type: "text",
+          text: "\n\n[SURVEY REVISION — they want to change a rating, but the change window has passed and " +
+            "the recorded rating stands. Say so kindly in ONE line (no system talk, no exact policies), " +
+            "and invite their feedback directly — what they tell you can absolutely still be acted on, it " +
+            "just won't change the recorded number. Never re-present the scale.]",
         });
       }
     }

@@ -343,18 +343,22 @@ Deno.test("npsAnalystCorpus: detractors lead, honesty floor, caps hold", () => {
   assertEq(npsAnalystCorpus([{ score: 99 }, { score: -2 }, { score: NaN }] as never), "", "junk scores dropped, floor applies");
 });
 
-Deno.test("npsCaptureAction: corrections revise, never duplicate", () => {
-  const DAY30 = 30 * 86400000;
-  assertEq(npsCaptureAction({ hasConversationRow: true, lastCustomerRowAgeMs: null, cooldownMs: DAY30 }),
-    "revise-conversation", "a row on THIS conversation is always the revision target");
-  assertEq(npsCaptureAction({ hasConversationRow: false, lastCustomerRowAgeMs: 19 * 60000, cooldownMs: DAY30 }),
-    "revise-recent", "a tap inside the cooldown can only be a correction — revise the recent row");
-  assertEq(npsCaptureAction({ hasConversationRow: false, lastCustomerRowAgeMs: DAY30 + 1, cooldownMs: DAY30 }),
+Deno.test("npsCaptureAction: corrections revise inside the window, never duplicate, else final", () => {
+  const DAY = 86400000, DAY30 = 30 * DAY, DAY3 = 3 * DAY;
+  assertEq(npsCaptureAction({ conversationRowAgeMs: 19 * 60000, lastCustomerRowAgeMs: null, cooldownMs: DAY30, reviseMs: DAY3 }),
+    "revise-conversation", "this conversation's fresh row is the revision target");
+  assertEq(npsCaptureAction({ conversationRowAgeMs: DAY3 + 1, lastCustomerRowAgeMs: null, cooldownMs: DAY30, reviseMs: DAY3 }),
+    "ignore", "past the revision window the rating is FINAL — the tap writes nothing");
+  assertEq(npsCaptureAction({ conversationRowAgeMs: null, lastCustomerRowAgeMs: 2 * DAY, cooldownMs: DAY30, reviseMs: DAY3 }),
+    "revise-recent", "a new conversation inside the window corrects the recent row");
+  assertEq(npsCaptureAction({ conversationRowAgeMs: null, lastCustomerRowAgeMs: 10 * DAY, cooldownMs: DAY30, reviseMs: DAY3 }),
+    "ignore", "inside the cooldown but past the window: no correction, no duplicate — nothing");
+  assertEq(npsCaptureAction({ conversationRowAgeMs: null, lastCustomerRowAgeMs: DAY30 + 1, cooldownMs: DAY30, reviseMs: DAY3 }),
     "insert", "past the cooldown a tap is a legitimately new response");
-  assertEq(npsCaptureAction({ hasConversationRow: false, lastCustomerRowAgeMs: null, cooldownMs: DAY30 }),
+  assertEq(npsCaptureAction({ conversationRowAgeMs: null, lastCustomerRowAgeMs: null, cooldownMs: DAY30, reviseMs: DAY3 }),
     "insert", "anonymous with no conversation row ⇒ fresh response");
-  assertEq(npsCaptureAction({ hasConversationRow: false, lastCustomerRowAgeMs: 60000, cooldownMs: 0 }),
-    "insert", "cooldown disabled (0) ⇒ recency never forces a revision");
+  assertEq(npsCaptureAction({ conversationRowAgeMs: 60000, lastCustomerRowAgeMs: null, cooldownMs: DAY30, reviseMs: 0 }),
+    "ignore", "reviseDays 0 ⇒ ratings are final the moment they're given");
 });
 
 Deno.test("npsTriggerGate fires once, only at a natural close, past the cooldown", () => {

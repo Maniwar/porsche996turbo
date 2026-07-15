@@ -390,19 +390,25 @@ export function npsTriggerGate(s: NpsTriggerState): { ask: boolean; reason: stri
 
 /**
  * What a tapped score should DO (NPS.md — "changing a rating"): revise this
- * conversation's own row, revise the customer's recent row (a tap INSIDE the
- * cooldown can only be a correction — the gate never offers there), or insert
- * a fresh response. Under this rule a duplicate rating from one person inside
- * the cooldown is structurally impossible.
+ * conversation's own row, revise the customer's recent row, insert a fresh
+ * response — or IGNORE the tap. Revisions are only honored inside the
+ * admin-configurable window (`outreach.nps.reviseDays`, 0 = ratings are
+ * final); a tap inside the cooldown but past the window writes nothing — it
+ * can be neither a correction (window over) nor a new response (the gate
+ * never offers inside the cooldown), so a duplicate rating from one person
+ * is structurally impossible.
  */
 export function npsCaptureAction(s: {
-  hasConversationRow: boolean;
+  conversationRowAgeMs: number | null; // null = no row on this conversation
   lastCustomerRowAgeMs: number | null; // null = anonymous, or no prior row
   cooldownMs: number;
-}): "revise-conversation" | "revise-recent" | "insert" {
-  if (s.hasConversationRow) return "revise-conversation";
+  reviseMs: number;                    // 0 = ratings are final once given
+}): "revise-conversation" | "revise-recent" | "insert" | "ignore" {
+  if (s.conversationRowAgeMs != null) {
+    return (s.reviseMs > 0 && s.conversationRowAgeMs < s.reviseMs) ? "revise-conversation" : "ignore";
+  }
   if (s.lastCustomerRowAgeMs != null && s.cooldownMs > 0 && s.lastCustomerRowAgeMs < s.cooldownMs) {
-    return "revise-recent";
+    return (s.reviseMs > 0 && s.lastCustomerRowAgeMs < s.reviseMs) ? "revise-recent" : "ignore";
   }
   return "insert";
 }

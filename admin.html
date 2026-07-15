@@ -1473,6 +1473,8 @@
                 <input type="number" id="cfg-nps-min" class="mono-field" data-unit="min" min="0" step="1" placeholder="3"></div>
               <div><label class="micro" for="cfg-nps-cool">Don't re-survey the same patron for (days) <span class="info-badge" title="Over-prompting lowers both response rate and trust. 30 days is a sane default.">i</span></label>
                 <input type="number" id="cfg-nps-cool" class="mono-field" data-unit="days" min="0" step="1" placeholder="30"></div>
+              <div><label class="micro" for="cfg-nps-revise">Rating change window (days) <span class="info-badge" title="How long a customer may change a rating they gave — the concierge re-presents the scale and the row is corrected in place (stamped 'revised'; the dashboard restates the original bucket with the corrected score). After the window the rating is final and the concierge declines kindly. 0 = ratings are final immediately. Default 3.">i</span></label>
+                <input type="number" id="cfg-nps-revise" class="mono-field" data-unit="days" min="0" step="1" placeholder="3"></div>
             </div>
             <div style="margin-top:10px;">
               <label class="micro" for="cfg-nps-q">The rating question (one line)</label>
@@ -3539,6 +3541,7 @@ async function loadConfig() {
   if ($('cfg-nps-on'))   $('cfg-nps-on').checked = onps.enabled !== false; // default: asked
   if ($('cfg-nps-min'))  $('cfg-nps-min').value  = (typeof onps.minMinutes  === 'number') ? onps.minMinutes  : '';
   if ($('cfg-nps-cool')) $('cfg-nps-cool').value = (typeof onps.cooldownDays === 'number') ? onps.cooldownDays : '';
+  if ($('cfg-nps-revise')) $('cfg-nps-revise').value = (typeof onps.reviseDays === 'number') ? onps.reviseDays : '';
   if ($('cfg-nps-q'))    $('cfg-nps-q').value    = (typeof onps.question === 'string') ? onps.question : '';
   if ($('cfg-beat-audit')) $('cfg-beat-audit').checked = o.beat_audit_log !== false; // default: log (demo); stamped sites seed false
   if ($('cfg-proactive-style')) $('cfg-proactive-style').value = (o.proactive_style === 'offer') ? 'offer' : 'expertise';
@@ -3961,6 +3964,8 @@ async function saveEngagement() {
     const nQ = ($('cfg-nps-q') ? $('cfg-nps-q').value : '').trim();
     if (isFinite(nMin) && nMin >= 0) nps.minMinutes = nMin;
     if (isFinite(nCool) && nCool >= 0) nps.cooldownDays = nCool;
+    const nRev = parseFloat($('cfg-nps-revise') ? $('cfg-nps-revise').value : '');
+    if (isFinite(nRev) && nRev >= 0) nps.reviseDays = nRev;
     if (nQ) nps.question = nQ.slice(0, 300);
     o.nps = nps;
   }
