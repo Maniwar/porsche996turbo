@@ -1219,14 +1219,14 @@ const BOOKING_TOOL_NAMES = new Set([
   "reschedule_appointment", "update_appointment", "cancel_appointment",
   "request_callback",
 ]);
-// deno-lint-ignore no-explicit-any
-function bookingsEnabled(config: Record<string, any>): boolean {
-  const b = config?.bookings;
+function bookingsEnabled(config: unknown): boolean {
+  // deno-lint-ignore no-explicit-any
+  const b = (config as any)?.bookings;
   return !!(b && typeof b === "object" && b.enabled === true);   // absent = OFF
 }
-// deno-lint-ignore no-explicit-any
-function callbacksEnabled(config: Record<string, any>): boolean {
-  const b = config?.bookings;
+function callbacksEnabled(config: unknown): boolean {
+  // deno-lint-ignore no-explicit-any
+  const b = (config as any)?.bookings;
   return bookingsEnabled(config) && (b.callbacks === undefined || b.callbacks?.enabled !== false);
 }
 /** RFC 5545 minimal event. UID stays stable across reschedules (the original
@@ -1245,8 +1245,7 @@ function buildIcs(uid: string, startsAt: string, endsAt: string,
 /** The context block for hours + (signed-in) the next upcoming booking.
  *  Injected only when the calendar is on; the model answers "are you open?"
  *  from THIS, never from page prose (source-of-truth precedence). */
-// deno-lint-ignore no-explicit-any
-async function bookingContextBlock(config: Record<string, any>,
+async function bookingContextBlock(config: unknown,
   customer: Customer | null, sessionKey: string | null): Promise<string> {
   if (!bookingsEnabled(config)) return "";
   try {
@@ -5861,8 +5860,9 @@ async function handleChatPost(req: Request): Promise<Response> {
                 if (validated.sessionKey && toolInput.session_key === undefined) {
                   toolInput.session_key = validated.sessionKey;
                 }
-                if (typeof wctx.tz === "string" && toolInput.visitor_tz === undefined) {
-                  toolInput.visitor_tz = wctx.tz;
+                const vtzRaw = (validated.context as Record<string, unknown>)?.tz;
+                if (typeof vtzRaw === "string" && toolInput.visitor_tz === undefined) {
+                  toolInput.visitor_tz = vtzRaw;
                 }
               }
               const out = await runRegisterTool(
