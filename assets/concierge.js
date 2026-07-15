@@ -137,6 +137,7 @@
   var pendingNpsScore = null;   /* a tapped survey score, sent as context.nps on the next POST */
   var pendingWrapup = false;    /* the "That's all" chip sends a REAL goodbye turn (context.wrapup) */
   var wrapupClosePending = false; /* the close beacon waits for the goodbye reply (finishTurn) */
+  var pendingNpsReasonClose = false; /* the reason receipt ENDS the visit (NPS.md) */
   var npsAwaitReason = false;   /* the next typed message is the survey's "why" (context.nps_reason) */
   var lastSkip = '';            /* why the last proactive beat did NOT fire — surfaced
                                    by PorscheConcierge.status() so "the bot is
@@ -592,8 +593,8 @@
       '.cx-reply:disabled{opacity:.35;cursor:default;}',
       '.cx-replies-used .cx-reply{opacity:.35;}',
       /* the NPS 0-10 scale row (the {{nps}} token) */
-      '.cx-npsrow{gap:6px;}',
-      '.cx-npsrow .cx-reply{min-width:2.6em;text-align:center;padding:.55em .2em;}',
+      '.cx-npsrow{gap:4px;flex-wrap:nowrap;}',
+      '.cx-npsrow .cx-reply{flex:1 1 0;min-width:0;text-align:center;padding:.5em 0;}',
 
       /* in-chat forms */
       '.cx-form{border:1px solid rgba(211,184,142,.4);background:rgba(211,184,142,.05);',
@@ -2998,17 +2999,27 @@
        open, so the tapped score and the "why" attach to it — the wrap records
        later (pagehide auto-beacon) or not at all if they keep talking. */
     var askedNps = !!(content && content.indexOf('{{nps}}') !== -1);
+    var reasonClose = pendingNpsReasonClose;
+    pendingNpsReasonClose = false;
+    if (reasonClose) {
+      /* The survey's OWN close (NPS.md): the reason receipt ends the visit —
+         quiet, wrapped, no follow-up question, no further nudges. */
+      setQuiet(true);
+      orDismissAll();
+      doWrapup('close');
+      noteSkip('nps: reason received — the survey closes the visit');
+    }
     if (wrapupClosePending) {
       wrapupClosePending = false;
-      if (!askedNps && !snoozed) { doWrapup('close'); }
+      if (!askedNps && !snoozed && !reasonClose) { doWrapup('close'); }
     }
     if (snoozed) {
       /* the send-off in the reply IS the goodbye — no extra system line */
       setQuiet(true);
       orDismissAll();
-      if (!askedNps) { doWrapup('quiet'); }
+      if (!askedNps && !reasonClose) { doWrapup('quiet'); }
       noteSkip('snooze: the bot wound the visit down on the patron\'s cue — quiet for the configured window');
-    } else if (!askedNps) {
+    } else if (!askedNps && !reasonClose) {
       scheduleNudge();
     }
     updateWrapPill();
@@ -3259,6 +3270,7 @@
     } else if (npsAwaitReason && !ctx.nudge && !ctx.opener) {
       ctx.nps_reason = 1;
       npsAwaitReason = false;
+      pendingNpsReasonClose = true; /* the receipt of the reason closes the visit */
     }
     /* The opening greeting is a client-rendered bubble (see renderHistory) that
        the visitor sees but that never entered `history` — so the server never

@@ -4512,10 +4512,11 @@ async function handleChatPost(req: Request): Promise<Response> {
             if (gate.ask) {
               beatDecision = {
                 action: "REQUEST_NPS",
-                detail: "ask for a session rating, ONCE and lightly: say this question warmly in one short " +
-                  "line — “" + npsCfg.question + "” — then put the token {{nps}} ALONE on its own line " +
-                  "after it (the shopper taps a number on the scale it renders). Do not list numbers in " +
-                  "words, do not explain the scale, and never pressure — if they ignore it, it is never asked again",
+                detail: "INVITE a session rating, ONCE and lightly: ask whether they'd be willing to " +
+                  "answer one quick question — “" + npsCfg.question + "” — then put the token {{nps}} " +
+                  "ALONE on its own line after it (the shopper taps a number on the scale it renders; " +
+                  "ignoring it declines). Do not list numbers in words, do not explain the scale, and " +
+                  "never pressure — if they ignore it, it is never asked again",
                 trace: beatDecision.trace.concat(["REQUEST_NPS: " + gate.reason]),
               };
               beatAudit = { action: "REQUEST_NPS", beat: "nudge", ledger, trace: beatDecision.trace };
@@ -4789,9 +4790,12 @@ async function handleChatPost(req: Request): Promise<Response> {
     } else if (npsReasonIn) {
       system.push({
         type: "text",
-        text: "\n\n[SURVEY — the visitor just explained their rating. Receive it graciously in one short " +
-          "line: if it names a problem, acknowledge it plainly and say what the house can do forward; if " +
-          "it is praise, thank them lightly. Never mention numbers, scores, or the survey again.]",
+        text: "\n\n[SURVEY — the visitor just explained their rating, and this ENDS the visit. In one or " +
+          "two short lines: thank them genuinely for taking the time; if the reason names a problem, " +
+          "acknowledge it plainly and say what the house can do forward; if it is praise, receive it " +
+          "warmly. Then close with a brief goodbye. Do NOT ask a new question, do NOT offer more help, " +
+          "do NOT say 'what can I help you with' — the visit is over. Never mention numbers, scores, or " +
+          "the survey again.]",
       });
       const lastUserMsg = [...validated.messages].reverse().find((m) => m.role === "user");
       const reasonText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
@@ -4858,10 +4862,12 @@ async function handleChatPost(req: Request): Promise<Response> {
         if (gate.ask) {
           system.push({
             type: "text",
-            text: "\n\n[CLOSING SURVEY — they are wrapping up, which is the ONE moment the house asks for " +
-              "a rating. Say your warm goodbye line first, then ask exactly this — “" + npsCfgW.question +
-              "” — and put the token {{nps}} ALONE on its own line after it. One ask, zero pressure: if " +
-              "they leave without answering, it is never mentioned again.]",
+            text: "\n\n[CLOSING SURVEY — they are wrapping up: the ONE moment the house may ask for a " +
+              "rating, and only as an INVITATION. Say your warm goodbye line first. Then ask whether " +
+              "they'd be willing to answer one quick question before they go — ask exactly this — “" +
+              npsCfgW.question + "” — and put the token {{nps}} ALONE on its own line after it. Tapping " +
+              "a number answers it; walking away declines it; both are perfectly fine and neither is " +
+              "ever mentioned again.]",
           });
           if (!(validated.sessionKey || "").startsWith("qa-")) {
             pgInsert("concierge_actions", {
