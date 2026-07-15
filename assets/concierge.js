@@ -390,7 +390,7 @@
 
       /* ---------- launcher ---------- */
       '.cx-launch{position:fixed;left:50%;bottom:calc(1rem + env(safe-area-inset-bottom,0px));',
-      'transform:translateX(-50%);z-index:80;display:inline-flex;align-items:center;gap:.55rem;',
+      'transform:translateX(-50%);z-index:100080;display:inline-flex;align-items:center;gap:.55rem;',
       'min-height:44px;padding:.7rem 1.3rem;background:var(--cx-glass);',
       '-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);',
       'border:1px solid var(--cx-hair);border-radius:999px;cursor:pointer;',
@@ -414,7 +414,7 @@
 
       /* ---------- context chip ---------- */
       '.cx-chip{position:fixed;left:50%;bottom:calc(1rem + env(safe-area-inset-bottom,0px) + 62px);',
-      'transform:translateX(-50%);z-index:80;max-width:min(86vw,26rem);',
+      'transform:translateX(-50%);z-index:100080;max-width:min(86vw,26rem);',
       'padding:.65rem 1rem;min-height:44px;display:inline-flex;align-items:center;',
       'background:var(--cx-glass);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);',
       'border:1px solid var(--cx-hair);border-radius:2px;cursor:pointer;',
@@ -425,12 +425,12 @@
       '.cx-chip:hover{border-color:rgba(211,184,142,.6);}',
 
       /* ---------- scrim ---------- */
-      '.cx-scrim{position:fixed;inset:0;z-index:81;background:rgba(7,5,5,.35);',
+      '.cx-scrim{position:fixed;inset:0;z-index:100081;background:rgba(7,5,5,.35);',
       'opacity:0;pointer-events:none;transition:opacity .35s ease;}',
       '.cx-scrim.cx-on{opacity:1;pointer-events:auto;}',
 
       /* ---------- panel ---------- */
-      '.cx-panel{position:fixed;z-index:82;display:flex;flex-direction:column;',
+      '.cx-panel{position:fixed;z-index:100082;display:flex;flex-direction:column;',
       'background:var(--cx-glass);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);',
       'color:var(--cx-ink);visibility:hidden;}',
       '.cx-panel:focus{outline:none;}',
@@ -626,7 +626,7 @@
 
       /* outreach — the concierge speaks first, chat closed or not */
       '.cx-outreach{position:fixed;left:50%;transform:translateX(-50%) translateY(12px);',
-      'bottom:calc(4.6rem + env(safe-area-inset-bottom,0px));z-index:81;',
+      'bottom:calc(4.6rem + env(safe-area-inset-bottom,0px));z-index:100081;',
       'max-width:min(340px,calc(100vw - 32px));display:flex;gap:10px;align-items:flex-start;',
       'background:rgba(7,5,5,.96);border:1px solid rgba(211,184,142,.55);',
       'padding:.85rem 2rem .85rem .85rem;cursor:pointer;opacity:0;',
