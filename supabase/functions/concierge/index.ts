@@ -4612,6 +4612,10 @@ async function handleChatPost(req: Request): Promise<Response> {
     const npsScoreIn = (npsIn && typeof npsIn.score === "number" &&
       npsIn.score >= 0 && npsIn.score <= 10) ? Math.round(npsIn.score) : null;
     const npsReasonIn = nctx.nps_reason === 1 || nctx.nps_reason === true;
+    // QA traffic ("qa-" session keys: CI smoke + the eval deck) exercises the
+    // conversational behavior but must NEVER write survey rows — otherwise
+    // every deploy adds a synthetic rating and the dashboard NPS lies.
+    const npsQaSession = (validated.sessionKey || "").startsWith("qa-");
     if (npsScoreIn !== null) {
       system.push({
         type: "text",
@@ -4619,9 +4623,11 @@ async function handleChatPost(req: Request): Promise<Response> {
           "scale. Thank them warmly in ONE short line and ask what made them give that score — " +
           "nothing else. Never repeat or evaluate the number, and never mention scores again after this.]",
       });
-      conversationPromise.then((cid) =>
-        captureNpsScore(cid, customer, npsScoreIn, model)
-      ).catch(() => { /* capture is best-effort */ });
+      if (!npsQaSession) {
+        conversationPromise.then((cid) =>
+          captureNpsScore(cid, customer, npsScoreIn, model)
+        ).catch(() => { /* capture is best-effort */ });
+      }
     } else if (npsReasonIn) {
       system.push({
         type: "text",
@@ -4631,9 +4637,11 @@ async function handleChatPost(req: Request): Promise<Response> {
       });
       const lastUserMsg = [...validated.messages].reverse().find((m) => m.role === "user");
       const reasonText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
-      conversationPromise.then((cid) =>
-        attachNpsReason(cid, reasonText, apiKey)
-      ).catch(() => { /* attach is best-effort */ });
+      if (!npsQaSession) {
+        conversationPromise.then((cid) =>
+          attachNpsReason(cid, reasonText, apiKey)
+        ).catch(() => { /* attach is best-effort */ });
+      }
     }
   } catch { /* the survey never breaks the chat */ }
 
