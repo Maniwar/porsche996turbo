@@ -714,7 +714,8 @@
       'text-overflow:ellipsis;white-space:nowrap;}',
       '.cx-authlink{background:none;border:none;padding:.6rem .2rem;min-height:44px;cursor:pointer;',
       'font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.58rem;letter-spacing:.18em;',
-      'text-transform:uppercase;color:var(--cx-page-accent-soft);white-space:nowrap;}',
+      'text-transform:uppercase;color:var(--cx-page-accent-soft);white-space:nowrap;',
+      'text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;}',
       '.cx-authlink:hover{color:var(--cx-ink);}',
       '.cx-authlink:focus-visible{outline:1px solid var(--cx-page-accent-soft);outline-offset:2px;}',
       '.cx-authrow{padding:.55rem 0 .75rem .95rem;margin:.55rem 0 .7rem;border-left:2px solid var(--cx-page-accent-soft);}',
@@ -1597,6 +1598,11 @@
       menuBtn.setAttribute('aria-expanded', 'false');
     }
     function openMenu() {
+      /* The account entry mirrors the live state every time the menu opens —
+         a stale "Sign in" beside a signed-in email reads as a broken account. */
+      if (authItem) {
+        authItem.textContent = authEmail ? ('Sign out — ' + shortEmail(authEmail)) : 'Sign in';
+      }
       menuEl.hidden = false;
       menuBtn.setAttribute('aria-expanded', 'true');
     }
@@ -1612,8 +1618,19 @@
     closeItem.type = 'button';
     closeItem.setAttribute('role', 'menuitem');
     closeItem.addEventListener('click', function () { closeMenu(); wrapUpByCustomer(); });
+    /* Sign in / sign out lives here too: the header link is small and sits in
+       a crowded row, and an account control a visitor can't find is an account
+       control that doesn't exist. */
+    var authItem = null;
+    if (authEnabled()) {
+      authItem = el('button', 'cx-menu-item', 'Sign in');
+      authItem.type = 'button';
+      authItem.setAttribute('role', 'menuitem');
+      authItem.addEventListener('click', function () { closeMenu(); onAuthLink(); });
+    }
     menuEl.appendChild(quietItem);
     menuEl.appendChild(closeItem);
+    if (authItem) { menuEl.appendChild(authItem); }
     document.addEventListener('click', function (ev) {
       if (!menuEl.hidden && ev.target !== menuBtn && !menuEl.contains(ev.target)) { closeMenu(); }
     });
@@ -3749,11 +3766,24 @@
   function onAuthLink() {
     if (authEmail) {
       ensureSupabase().then(function (client) {
-        if (!client) { return; }
+        /* The session token lives in THIS browser. An unreachable account
+           service (library blocked, key revoked, network down) must never
+           trap a visitor in a signed-in state — clear it locally instead. */
+        function localSignOut() {
+          try {
+            var doomed = [], i, k;
+            for (i = 0; i < window.localStorage.length; i++) {
+              k = window.localStorage.key(i);
+              if (k && k.indexOf('sb-') === 0) { doomed.push(k); }
+            }
+            for (i = 0; i < doomed.length; i++) { window.localStorage.removeItem(doomed[i]); }
+          } catch (eLS) { /* ignore */ }
+          setAuthState(null);
+        }
+        if (!client) { localSignOut(); return; }
         try {
-          client.auth.signOut().then(function () { setAuthState(null); },
-            function () { /* ignore */ });
-        } catch (eO) { /* ignore */ }
+          client.auth.signOut().then(function () { setAuthState(null); }, localSignOut);
+        } catch (eO) { localSignOut(); }
       });
       return;
     }
@@ -4391,6 +4421,13 @@
       return {
         signedIn: !!authEmail,
         email: authEmail || null,
+        /* Account plumbing at a glance: is the sign-in/out control mounted,
+           actually visible (offsetParent survives clipping/display:none), is
+           the shop's remote auth switch on, did supabase-js load? */
+        authUi: !!authBtn,
+        authVisible: !!(authBtn && authBtn.offsetParent),
+        authFlag: remoteAuth,
+        authLibLoaded: !!sbClient,
         panelOpen: panelOpen,
         checkoutOpen: checkoutOpen(),
         quietMode: quietMode,

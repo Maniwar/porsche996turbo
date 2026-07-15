@@ -1748,10 +1748,11 @@ insert into public.concierge_sops (slug, title, content_md, sort_order) values
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
 5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
-6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$, 12)
+6. If they ask to CHANGE a rating they gave, follow the register's SURVEY REVISION note. Inside the change window: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score; never argue with a correction, never quote the old number. Past the window: the recorded rating stands — say so kindly in ONE line and close warmly; never re-present the scale or promise an exception.$sop$, 12)
 on conflict (slug) do nothing;
 
--- v1 → v2 (invitation phrasing + the reason ends the visit): advance rows the
+-- v1 → v4 (invitation phrasing, the reason ends the visit, bounded change
+-- window): advance rows the
 -- operator has NOT touched; an edited SOP is theirs and stays theirs.
 update public.concierge_sops set content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
 1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
@@ -1759,7 +1760,7 @@ update public.concierge_sops set content_md = $sop$When the register instructs y
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
 5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
-6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$, updated_at = now()
+6. If they ask to CHANGE a rating they gave, follow the register's SURVEY REVISION note. Inside the change window: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score; never argue with a correction, never quote the old number. Past the window: the recorded rating stands — say so kindly in ONE line and close warmly; never re-present the scale or promise an exception.$sop$, updated_at = now()
   where slug = 'closing-survey' and content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
 1. Say the warm goodbye first; the rating ask rides it, it never replaces it.
 2. Ask the configured question once, lightly, then put {{nps}} alone on its own line. Never list the numbers in words, never explain the scale, never pressure.
@@ -1767,20 +1768,36 @@ update public.concierge_sops set content_md = $sop$When the register instructs y
 4. Receive the reason graciously: a problem gets acknowledged plainly with what the house can do forward; praise gets a light thank-you.
 5. After that, scores and surveys are never mentioned again — not this visit, not the next. If they ignore the ask entirely, let it go with grace.$sop$;
 
--- v2 → v3 (corrections welcome): advance untouched rows only.
+-- v2 → v4 (corrections + the bounded change window): advance untouched rows only.
 update public.concierge_sops set content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
 1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
 2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
 5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
-6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$, updated_at = now()
+6. If they ask to CHANGE a rating they gave, follow the register's SURVEY REVISION note. Inside the change window: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score; never argue with a correction, never quote the old number. Past the window: the recorded rating stands — say so kindly in ONE line and close warmly; never re-present the scale or promise an exception.$sop$, updated_at = now()
   where slug = 'closing-survey' and content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
 1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
 2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
 3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
 4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
 5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.$sop$;
+
+-- v3 → v4 (the change window is bounded): advance untouched rows only.
+update public.concierge_sops set content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
+1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
+2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
+3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
+4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
+5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
+6. If they ask to CHANGE a rating they gave, follow the register's SURVEY REVISION note. Inside the change window: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score; never argue with a correction, never quote the old number. Past the window: the recorded rating stands — say so kindly in ONE line and close warmly; never re-present the scale or promise an exception.$sop$, updated_at = now()
+  where slug = 'closing-survey' and content_md = $sop$When the register instructs you to ask the closing rating (a CLOSING SURVEY or REQUEST_NPS note — never on your own initiative):
+1. Say the warm goodbye first; the rating is an INVITATION that rides it, never replaces it.
+2. Ask whether they'd be willing to answer one quick question, then the configured question, then {{nps}} alone on its own line. Tapping a number answers; walking away declines; both are fine. Never list the numbers in words, never explain the scale, never pressure.
+3. If they answer with a score, thank them in one short line and ask what made them give it — nothing else.
+4. The reason ENDS the visit: thank them for taking the time; acknowledge a problem plainly with what the house can do forward, or receive praise warmly; then close with a brief goodbye. Never ask a new question or offer more help after the survey.
+5. Scores and surveys are never mentioned again — not this visit, not the next. If they ignore the invitation entirely, let it go with grace.
+6. If they ask to CHANGE a rating they gave, of course they may: one gracious line, then {{nps}} alone on its own line again — the new tap replaces the old score. Never argue with a correction, never quote the old number, never say a rating can't be changed.$sop$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- NPS hygiene: QA traffic (the "qa-" session keys used by CI smoke and the
