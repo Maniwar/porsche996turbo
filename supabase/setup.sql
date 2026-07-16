@@ -2216,6 +2216,53 @@ end $$;
 grant execute on function public.remove_person(bigint) to authenticated;
 revoke execute on function public.remove_person(bigint) from public, anon;
 
+-- ── The book by dimension — offering or location, same honest math ───────────
+create or replace function public.booking_report(p_days int default 30, p_dim text default 'offering')
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare v jsonb; v_days int := greatest(coalesce(p_days, 30), 1);
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  if p_dim not in ('offering','location') then
+    return jsonb_build_object('ok', false, 'reason', 'unknown_dimension');
+  end if;
+  with rows as (
+    select case when p_dim = 'offering'
+             then coalesce(t.title, '(removed offering)')
+             else coalesce(l.title, '(removed location)') end as name,
+           a.starts_at, a.ends_at, a.status
+      from public.concierge_appointments a
+      left join public.concierge_appointment_types t on t.id = a.type_id
+      left join public.concierge_locations l on l.id = a.location_id
+     where a.kind = 'appointment' and not a.qa),
+  agg as (
+    select name,
+           coalesce(sum(extract(epoch from (ends_at - starts_at)) / 60)
+             filter (where starts_at >= current_date - v_days + 1 and starts_at < now()
+                       and status in ('booked','completed','no_show')), 0)::int as booked_min,
+           count(*) filter (where starts_at >= current_date - v_days + 1 and starts_at < now()
+                              and status = 'completed') as done,
+           count(*) filter (where starts_at >= current_date - v_days + 1 and starts_at < now()
+                              and status = 'no_show') as no_show,
+           count(*) filter (where starts_at >= current_date - v_days + 1
+                              and status = 'cancelled') as cancelled,
+           count(*) filter (where starts_at > now()
+                              and status in ('requested','booked')) as upcoming
+      from rows group by name)
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'name', name, 'booked_min', booked_min, 'done', done, 'no_show', no_show,
+      'cancelled', cancelled,
+      'show_rate', case when done + no_show > 0 then round(done * 100.0 / (done + no_show)) end,
+      'upcoming', upcoming) order by booked_min desc, name), '[]'::jsonb)
+    into v from agg
+   where booked_min > 0 or upcoming > 0 or cancelled > 0 or done > 0 or no_show > 0;
+  return jsonb_build_object('ok', true, 'days', v_days, 'dim', p_dim, 'rows', v);
+end $$;
+grant execute on function public.booking_report(int,text) to authenticated;
+revoke execute on function public.booking_report(int,text) from public, anon;
+
 -- ── The queue — the merchant's actionable inbox, one call ────────────────────
 create or replace function public.appointments_queue()
 returns jsonb language plpgsql security definer set search_path = '' as $$
