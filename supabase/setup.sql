@@ -2149,6 +2149,73 @@ end $$;
 grant execute on function public.staff_report(int) to authenticated;
 revoke execute on function public.staff_report(int) from public, anon;
 
+-- ── Guarded removal — delete is allowed only when nothing ahead depends on it
+-- (JUDGE_COACH_LOOP.md family: honest refusal beats silent damage). Past
+-- visits keep their records: appointment FKs are ON DELETE SET NULL.
+create or replace function public.remove_location(p_id bigint)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_n int;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select count(*) into v_n from public.concierge_appointments a
+    where a.location_id = p_id and a.kind = 'appointment'
+      and a.status in ('requested','booked') and a.starts_at > now();
+  if v_n > 0 then return jsonb_build_object('ok', false, 'reason', 'has_visits', 'count', v_n); end if;
+  delete from public.concierge_business_hours where location_id = p_id;
+  delete from public.concierge_availability where location_id = p_id;
+  delete from public.concierge_staff_hours where location_id = p_id;
+  delete from public.concierge_availability_exceptions where location_id = p_id;
+  delete from public.concierge_locations where id = p_id;
+  return jsonb_build_object('ok', true, 'id', p_id);
+end $$;
+grant execute on function public.remove_location(bigint) to authenticated;
+revoke execute on function public.remove_location(bigint) from public, anon;
+
+create or replace function public.remove_offering(p_id bigint)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_n int;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select count(*) into v_n from public.concierge_appointments a
+    where a.type_id = p_id and a.kind = 'appointment'
+      and a.status in ('requested','booked') and a.starts_at > now();
+  if v_n > 0 then return jsonb_build_object('ok', false, 'reason', 'has_visits', 'count', v_n); end if;
+  delete from public.concierge_availability where type_id = p_id;
+  delete from public.concierge_staff_services where type_id = p_id;
+  delete from public.concierge_availability_exceptions where type_id = p_id;
+  delete from public.concierge_appointment_types where id = p_id;
+  return jsonb_build_object('ok', true, 'id', p_id);
+end $$;
+grant execute on function public.remove_offering(bigint) to authenticated;
+revoke execute on function public.remove_offering(bigint) from public, anon;
+
+create or replace function public.remove_person(p_id bigint)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_n int;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select count(*) into v_n from public.concierge_appointments a
+    where a.staff_id = p_id and a.kind = 'appointment'
+      and a.status in ('requested','booked') and a.starts_at > now();
+  if v_n > 0 then return jsonb_build_object('ok', false, 'reason', 'has_visits', 'count', v_n); end if;
+  delete from public.concierge_staff_hours where staff_id = p_id;
+  delete from public.concierge_staff_services where staff_id = p_id;
+  delete from public.concierge_availability_exceptions where staff_id = p_id;
+  delete from public.concierge_staff where id = p_id;
+  return jsonb_build_object('ok', true, 'id', p_id);
+end $$;
+grant execute on function public.remove_person(bigint) to authenticated;
+revoke execute on function public.remove_person(bigint) from public, anon;
+
 -- ── The queue — the merchant's actionable inbox, one call ────────────────────
 create or replace function public.appointments_queue()
 returns jsonb language plpgsql security definer set search_path = '' as $$
