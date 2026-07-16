@@ -1110,10 +1110,12 @@ const REGISTER_TOOLS: any[] = [
     name: "request_callback",
     description:
       "Take a callback request: their phone number (collected through the form, never free-typed " +
-      "chat), a preferred window IN THEIR OWN WORDS, and their name. The only promise you may make " +
-      "is the one the result returns — 'someone will call you then'; never a precise minute, never " +
-      "'right away'. If the house is closed for their window, the result names the next opening — " +
-      "recite it verbatim.",
+      "chat), a preferred window IN THEIR OWN WORDS, and their name. Collect ALL THREE before " +
+      "promising anything — a callback exists ONLY once this tool returns ok. Until then never say " +
+      "it is logged, submitted, or that someone will call; if a field is missing, ask for it now. " +
+      "The only promise you may make is the one the result returns — 'someone will call you then'; " +
+      "never a precise minute, never 'right away'. If the house is closed for their window, the " +
+      "result names the next opening — recite it verbatim.",
     input_schema: {
       type: "object",
       properties: {
@@ -1303,6 +1305,33 @@ async function bookingContextBlock(config: unknown,
           `serve this visit (prepare, confirm details, answer questions); do NOT re-sell or re-book it. ` +
           `They may move or cancel it whenever they wish.`;
       }
+      // The conversation's own callbacks — the ONLY warrant for saying one is
+      // logged, pending, or already handled. Absent here = nothing on file
+      // (the tool must return ok before any promise). No names or admin
+      // identities ride the prompt — status and timing only.
+      try {
+        const since = new Date(Date.now() - 14 * 86400000).toISOString();
+        const cbs = await pgSelect<{ status: string; window_pref: string | null; created_at: string; updated_at: string }>(
+          `concierge_appointments?select=status,window_pref,created_at,updated_at&${who}` +
+          `&kind=eq.callback&qa=eq.false&created_at=gt.${since}&order=created_at.desc&limit=2`);
+        if (cbs && cbs.length) {
+          const fmtT = (iso: string) => {
+            try {
+              return new Intl.DateTimeFormat("en-US", {
+                timeZone: locs[0]?.timezone || "UTC", weekday: "short", month: "short",
+                day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+              }).format(new Date(iso));
+            } catch { return iso; }
+          };
+          const parts = cbs.map((c) =>
+            c.status === "open"
+              ? `a callback IS on file (logged ${fmtT(c.created_at)}${c.window_pref ? `, they asked for "${String(c.window_pref).slice(0, 80)}"` : ""}) — the house has not called yet`
+              : c.status === "done"
+              ? `the house ALREADY MADE the requested call (${fmtT(c.updated_at)}) — reference it, never offer to log it again`
+              : `an earlier callback request was cancelled`);
+          upcoming += `\nCALLBACKS (authoritative for this conversation — speak of callbacks ONLY from this line): ${parts.join("; ")}.`;
+        }
+      } catch { /* callback context must never break the conversation */ }
     }
     return `HOURS (authoritative — when the page's prose disagrees, THIS wins; ` +
       `answer "are you open?" from it and read the next opening from the table):\n` +
@@ -3989,6 +4018,188 @@ async function handleInsightsGet(req: Request): Promise<Response> {
   });
 }
 
+// ── The Judge & Coach weekly digest (JUDGE_COACH_LOOP.md §6) ─────────────────
+// No cron, no secrets: a piggybacked check on the conversation path claims the
+// week atomically in concierge_insights (one isolate wins) and emails the owner
+// what was caught, what healed, and what awaits approval. Tier-1 auto-drafts
+// ride the same run: repeat PHRASING defect classes earn a short coach-written
+// "say it differently" procedure, seeded DISABLED into concierge_sops — the
+// merchant flips it on, edits it, or ignores it. The coach never writes facts,
+// prices, or policy; nothing enables itself; the judge is never loosened here.
+
+const COACH_DRAFT_CLASSES: Record<string, string> = {
+  plumbing: "mechanics or template talk leaking into outreach",
+  invented: "claims not grounded in the house's own facts",
+  inventorying: "reciting the shopper's stored data back at them",
+  etiquette: "unsolicited or pushy questioning",
+  house_rules: "lines that cross the house's own rules",
+};
+
+async function coachDraftInstead(
+  apiKey: string, meaning: string, samples: string,
+): Promise<string> {
+  try {
+    const res = await llmFetch("judge", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({
+        model: BEAT_JUDGE_MODEL,
+        max_tokens: 350,
+        temperature: 0,
+        system:
+          "You are the house sales coach. Write a SHORT procedure (3-5 markdown bullet lines) " +
+          "teaching a concierge what to SAY INSTEAD when tempted toward one defect. Teach shapes " +
+          "of phrasing only — NEVER invent product facts, numbers, prices, or policies.",
+        messages: [{
+          role: "user",
+          content: "Defect family: " + meaning + ".\nLines a review judge blocked:\n" + samples +
+            "\n\nWrite the \"say this instead\" procedure.",
+        }],
+      }),
+    });
+    if (!res.ok) return "";
+    const j = await res.json();
+    const block = Array.isArray(j.content) ? j.content.find((b: { type?: string }) => b.type === "text") : null;
+    return block && typeof block.text === "string" ? block.text.trim().slice(0, 2000) : "";
+  } catch { return ""; }
+}
+
+async function composeJudgeDigest(
+  config: Record<string, unknown> | null, doDrafts: boolean,
+): Promise<{ subject: string; heading: string; lines: string[]; drafted: string[] } | null> {
+  const f = await pgRpc<Record<string, unknown>>("judge_findings", { p_days: 7 });
+  if (!f || f.ok !== true) return null;
+  const tt = (f.totals ?? {}) as Record<string, number>;
+  const classes = (Array.isArray(f.classes) ? f.classes : []) as Array<Record<string, unknown>>;
+  const gaps = (Array.isArray(f.gaps) ? f.gaps : []) as Array<Record<string, unknown>>;
+  const drafted: string[] = [];
+  if (doDrafts) {
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+    for (const c of classes) {
+      if (drafted.length >= 2 || !apiKey) break;
+      const key = String(c.key ?? "");
+      const meaning = COACH_DRAFT_CLASSES[key];
+      if (!meaning || !(Number(c.n ?? 0) >= 5)) continue;
+      const slug = "coach-draft-" + key;
+      const existing = await pgSelect<{ slug: string }>(
+        `concierge_sops?select=slug&slug=eq.${slug}&limit=1`);
+      if (existing && existing.length) continue; // one standing draft per class — the merchant owns it from here
+      const samples = (Array.isArray(c.samples) ? c.samples : []) as Array<Record<string, unknown>>;
+      const sampleTxt = samples.map((s) =>
+        `- "${String(s.line ?? "").slice(0, 140)}" (blocked: ${String(s.reason ?? "").slice(0, 100)})`).join("\n");
+      const body = await coachDraftInstead(apiKey, meaning, sampleTxt);
+      if (!body) continue;
+      const ins = await pgInsert("concierge_sops", {
+        slug,
+        title: "Coach draft — say it differently (" + key + ")",
+        content_md: body +
+          "\n\n_(Drafted by the coach from the review judge's blocks, " +
+          new Date().toISOString().slice(0, 10) +
+          ". It teaches nothing while disabled — enable it to apply, edit it freely, or delete it.)_",
+        enabled: false, audience: "all", sort_order: 900,
+      });
+      if (ins) drafted.push(key);
+    }
+  }
+  const lines: string[] = [];
+  lines.push(
+    `This week the concierge spoke ${tt.spoke ?? 0} times, held back ${tt.held ?? 0}, ` +
+    `and the review judge blocked ${tt.vetoed ?? 0}` +
+    ((tt.prefilter ?? 0) > 0 ? ` (${tt.prefilter} by the deterministic guard)` : "") + ".");
+  if ((tt.redraft_ok ?? 0) + (tt.redraft_blocked ?? 0) > 0) {
+    lines.push(`Blocks that taught: ${tt.redraft_ok ?? 0} redraft(s) made it through; ` +
+      `${tt.redraft_blocked ?? 0} stayed blocked.`);
+  }
+  for (const c of classes.slice(0, 3)) {
+    if (!(Number(c.n ?? 0) > 0)) continue;
+    lines.push(`Repeat defect — ${String(c.key ?? "?")}: ${c.n} block(s) this week.`);
+  }
+  const askGaps = gaps.filter((g) => !g.system).slice(0, 3);
+  for (const g of askGaps) {
+    lines.push(`Shoppers keep asking: \u201C${String(g.q ?? "").slice(0, 90)}\u201D (${g.n}\u00D7)` +
+      ` — answer it under Training \u2192 Knowledge and the concierge stops shrugging.`);
+  }
+  if (drafted.length) {
+    lines.push(`The coach drafted ${drafted.length} "say it differently" procedure(s) — ` +
+      `they stay OFF until you enable them under Training \u2192 Procedures.`);
+  }
+  lines.push("The full picture lives on the Judge & coach page in your studio.");
+  return {
+    subject: "Your concierge's week — judge & coach digest",
+    heading: "The judge & coach, this week",
+    lines, drafted,
+  };
+}
+
+let lastJudgeDigestCheckMs = 0;
+function scheduleJudgeDigest(): void {
+  try {
+    if (Date.now() - lastJudgeDigestCheckMs < 3600000) return; // at most one DB peek per isolate-hour
+    lastJudgeDigestCheckMs = Date.now();
+    const p = sendJudgeDigestIfDue().catch(() => {});
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
+  } catch { /* the digest must never touch a conversation */ }
+}
+
+async function sendJudgeDigestIfDue(): Promise<void> {
+  const data = await loadConciergeData();
+  const cfg = data.config as Record<string, unknown> | null;
+  const jdg = (cfg?.judge ?? null) as Record<string, unknown> | null;
+  if (jdg && jdg.digest === false) return; // the merchant's off switch
+  const ownerEmail = typeof cfg?.ownerEmail === "string" ? cfg.ownerEmail.trim() : "";
+  if (!ownerEmail) return;
+  // claim the week atomically — exactly one isolate wins
+  const seeded = await pgSelect<{ computed_at: string }>(
+    "concierge_insights?select=computed_at&kind=eq.judge_digest&limit=1");
+  if (!seeded) return; // unreachable store: try again next hour
+  if (!seeded.length) {
+    const planted = await pgInsert("concierge_insights", {
+      kind: "judge_digest", payload: {}, computed_at: new Date().toISOString(),
+    });
+    if (!planted) return; // lost the race
+  } else {
+    const cut = new Date(Date.now() - 7 * 86400000).toISOString();
+    const won = await pgPatch<{ kind: string }>(
+      `concierge_insights?kind=eq.judge_digest&computed_at=lt.${encodeURIComponent(cut)}`,
+      { computed_at: new Date().toISOString() });
+    if (!won || !won.length) return; // not due yet, or another isolate won
+  }
+  const composed = await composeJudgeDigest(cfg, true);
+  if (!composed) return;
+  await sendEmail(ownerEmail, composed.subject, emailShell(composed.heading, composed.lines));
+  await pgPatch("concierge_insights?kind=eq.judge_digest",
+    { payload: { sent_to: ownerEmail, drafted: composed.drafted, lines: composed.lines.length } });
+}
+
+// ── GET ?judgedigest=1 — the digest on demand (admin) ────────────────────────
+// Preview by default (no side effects); `send=1` emails the owner now AND runs
+// the Tier-1 drafting pass. The weekly self-send continues unaffected.
+async function handleJudgeDigestGet(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const data = await loadConciergeData();
+  const cfg = data.config as Record<string, unknown> | null;
+  const sendNow = new URL(req.url).searchParams.get("send") === "1";
+  const composed = await composeJudgeDigest(cfg, sendNow);
+  if (!composed) return jsonResponse(req, 200, { ok: false, reason: "nothing to report yet" });
+  let sent = false;
+  if (sendNow) {
+    const ownerEmail = typeof cfg?.ownerEmail === "string" ? cfg.ownerEmail.trim() : "";
+    if (ownerEmail) {
+      await sendEmail(ownerEmail, composed.subject, emailShell(composed.heading, composed.lines));
+      sent = true;
+    }
+  }
+  return jsonResponse(req, 200, {
+    ok: true, subject: composed.subject, lines: composed.lines,
+    drafted: composed.drafted, sent,
+  });
+}
+
 // ── GET ?npsreport=1 — the LLM satisfaction analyst (NPS.md) ─────────────────
 // Conversational analytics, on demand: the model reads REAL rated sessions —
 // score, the customer's own reason, transcript excerpts — and writes an
@@ -5474,6 +5685,7 @@ async function handleChatPost(req: Request): Promise<Response> {
   // is served, not re-sold. Empty string when the calendar is off.
   const bookingCtx = await bookingContextBlock(data.config, customer, validated.sessionKey);
   const editionCtx = await editionContextBlock();
+  scheduleJudgeDigest(); // piggybacked weekly check — fire-and-forget, never on the reply path
   const customerLine = [customerLine0, bookingCtx, editionCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
   // Live goal status from the last evaluation, so the prompt shows which goals
   // are still open and the concierge actively drives them.
@@ -5878,7 +6090,17 @@ async function handleChatPost(req: Request): Promise<Response> {
           if (/^\W*hold\W*$/i.test(tx)) { sp = false; tx = ""; }
           return { speak: sp, text: tx };
         };
-        ({ speak, text } = await draftOnce(null));
+        // The merchant's pause switch (JUDGE_COACH_LOOP.md §6): a paused kind
+        // holds before any drafting spend, and the hold is marked so the tab
+        // can tell merchant silence from model restraint.
+        let beatKindPaused = false;
+        try {
+          const ocfgP = ((await loadConciergeData()).config?.outreach ?? null) as Record<string, unknown> | null;
+          const pk = ocfgP?.pausedKinds;
+          beatKindPaused = Array.isArray(pk) && pk.includes(isNudge ? "nudge" : "opener");
+        } catch { /* a broken config never blocks the beat */ }
+        if (beatKindPaused) { speak = false; text = ""; }
+        else ({ speak, text } = await draftOnce(null));
         const held = !speak || text.length === 0;
         // The reach-out judge: a spoken line is reviewed before it ships
         // (default ON; Engagement → House rules turns it off). Fail-open —
@@ -5938,7 +6160,8 @@ async function handleChatPost(req: Request): Promise<Response> {
                 payload: vetoReason !== null
                   ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined, coaching: coaching ?? undefined,
                       redraft: redrafted || undefined, first_line: firstKill ? firstKill.line : undefined, first_reason: firstKill ? firstKill.reason : undefined }
-                  : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined, coaching: coaching ?? undefined },
+                  : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined, coaching: coaching ?? undefined,
+                      paused: beatKindPaused || undefined },
                 result: vetoReason !== null ? "vetoed — " + vetoReason : "beat held — nothing new to say",
               }).catch(() => { /* audit failures never break the chat */ });
             }
@@ -6987,6 +7210,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("insights")) {
     return await handleInsightsGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("judgedigest")) {
+    return await handleJudgeDigestGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("npsreport")) {
     return await handleNpsReportGet(req);

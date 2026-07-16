@@ -2638,6 +2638,15 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div id="jc-classes"></div>
       </section>
       <section class="card">
+        <div class="card-head"><h3>The coach&#8217;s drafts &amp; the weekly digest</h3><span class="micro">nothing applies until you enable it</span></div>
+        <div id="jc-drafts"></div>
+        <div class="cal-frow" style="margin-top:14px;">
+          <button id="jc-digest" class="btn ghost" type="button" title="The owner gets this digest by email once a week, automatically. This previews it without sending.">Preview the weekly digest</button>
+          <button id="jc-digest-send" class="btn ghost" type="button" title="Emails the digest to the owner right now, and lets the coach draft any due procedures (they arrive disabled).">Email it now</button>
+        </div>
+        <div id="jc-digest-out" class="micro" style="margin-top:10px;white-space:pre-wrap;text-transform:none;letter-spacing:0;"></div>
+      </section>
+      <section class="card">
         <div class="card-head"><h3>Findings ledger</h3><span class="micro">repeated gaps · system alerts · your notes</span></div>
         <div id="jc-gaps"></div>
         <div class="cal-frow" style="margin-top:14px;">
@@ -10192,12 +10201,78 @@ async function loadJudge() {
         ? Math.round((t.vetoed || 0) * 100 / ((t.spoke || 0) + (t.vetoed || 0))) : null;
       sub.textContent = rate == null ? 'nothing proactive yet' : rate + '% of drafted lines were blocked';
     }
-    const kinds = d.kinds || [];
+    let oVal = {};
+    try {
+      const oc = await sb.from('concierge_config').select('*').eq('key', 'outreach');
+      oVal = ((oc.data && oc.data[0]) || {}).value || {};
+    } catch (e2) { /* the pause state is optional */ }
+    const pausedK = Array.isArray(oVal.pausedKinds) ? oVal.pausedKinds : [];
+    const kinds = (d.kinds || []).slice();
+    ['nudge', 'opener'].forEach((kk) => {
+      if (!kinds.some((k) => k.kind === kk)) kinds.push({ kind: kk, spoke: 0, held: 0, vetoed: 0 });
+    });
     $('jc-kinds').innerHTML = kinds.length
-      ? '<table class="cal-reptable"><thead><tr><th>kind</th><th>spoke</th><th>held</th><th>blocked</th></tr></thead><tbody>' +
-        kinds.map((k) => '<tr><td>' + esc(k.kind) + '</td><td>' + k.spoke + '</td><td>' + k.held + '</td>' +
-          '<td' + (k.vetoed > k.spoke ? ' style="color:#d08770;"' : '') + '>' + k.vetoed + '</td></tr>').join('') +
+      ? '<table class="cal-reptable"><thead><tr><th>kind</th><th>spoke</th><th>held</th><th>blocked</th><th></th></tr></thead><tbody>' +
+        kinds.map((k) => '<tr><td>' + esc(k.kind) + (pausedK.includes(k.kind)
+            ? ' <span class="micro" style="color:#c9a15f;" data-jc-paused>paused</span>' : '') +
+          '</td><td>' + k.spoke + '</td><td>' + k.held + '</td>' +
+          '<td' + (k.vetoed > k.spoke ? ' style="color:#d08770;"' : '') + '>' + k.vetoed + '</td>' +
+          '<td><button class="btn ghost mini" type="button" data-jc-pause="' + esc(k.kind) + '" title="' +
+          (pausedK.includes(k.kind)
+            ? 'Paused — the concierge stays silent for this kind until you resume it.'
+            : 'Silences this kind of reach-out entirely — no drafting, no spend — until you resume it. Nothing else changes.') +
+          '">' + (pausedK.includes(k.kind) ? 'Resume' : 'Pause') + '</button></td></tr>').join('') +
         '</tbody></table>' : '';
+    document.querySelectorAll('[data-jc-pause]').forEach((b2) => b2.addEventListener('click', async () => {
+      try {
+        const kk = b2.getAttribute('data-jc-pause');
+        const list = Array.isArray(oVal.pausedKinds) ? oVal.pausedKinds.slice() : [];
+        const i3 = list.indexOf(kk);
+        if (i3 === -1) list.push(kk); else list.splice(i3, 1);
+        const v2 = Object.assign({}, oVal, { pausedKinds: list });
+        const u = await sb.from('concierge_config').upsert(
+          [{ key: 'outreach', value: v2, updated_at: nowIso() }], { onConflict: 'key' });
+        if (u.error) throw new Error(u.error.message);
+        await loadJudge();
+        if (note) note.textContent = i3 === -1
+          ? 'Paused — ' + kk + ' reach-outs stay silent until you resume them.'
+          : 'Resumed — ' + kk + ' reach-outs may speak again.';
+      } catch (e2) { if (note) { note.textContent = 'Could not change — ' + (e2 && e2.message ? e2.message : e2); note.className = 'micro warn'; } }
+    }));
+    const dEl = $('jc-drafts');
+    if (dEl) {
+      dEl.textContent = '';
+      try {
+        const ds = await sb.from('concierge_sops').select('slug,title,enabled').like('slug', 'coach-draft-%');
+        const drows = ds.data || [];
+        if (!drows.length) dEl.appendChild(el('div', 'cal-empty', 'No coach drafts yet — one appears here when a defect keeps repeating, written from the judge\u2019s own blocks. It never applies until you enable it.'));
+        drows.forEach((s3) => {
+          const row2 = document.createElement('div'); row2.className = 'cal-frow';
+          row2.innerHTML = '<span class="micro"' + (s3.enabled ? '' : ' style="color:#c9a15f;"') + '>' +
+            (s3.enabled ? 'teaching' : 'awaiting you') + '</span>' +
+            '<span style="flex:1 1 300px;min-width:220px;">' + esc(s3.title) + '</span>' +
+            '<button class="btn ghost mini" type="button" data-jc-open-sops>Review in Procedures</button>';
+          row2.querySelector('[data-jc-open-sops]').addEventListener('click', () => activateTab('procedures'));
+          dEl.appendChild(row2);
+        });
+      } catch (e2) { dEl.appendChild(el('div', 'cal-empty', 'Could not read the drafts.')); }
+    }
+    const dg = $('jc-digest'); const dgs = $('jc-digest-send'); const dgo = $('jc-digest-out');
+    const runDigest = async (sendIt) => {
+      try {
+        if (dgo) dgo.textContent = 'Working\u2026';
+        const j = await adminGet('?judgedigest=1' + (sendIt ? '&send=1' : ''));
+        const outTxt = !j.ok ? 'Nothing to report yet.'
+          : (j.lines || []).join('\n') +
+            ((j.drafted || []).length ? '\n\nCoach drafted: ' + j.drafted.join(', ') : '') +
+            (j.sent ? '\n\nSent to the owner.' : '');
+        if (sendIt) await loadJudge(); /* the drafts strip refreshes; set text AFTER so the reload cannot wipe it */
+        const dgo2 = $('jc-digest-out');
+        if (dgo2) dgo2.textContent = outTxt;
+      } catch (e2) { const dgo2 = $('jc-digest-out'); if (dgo2) dgo2.textContent = 'Could not build the digest \u2014 ' + (e2 && e2.message ? e2.message : e2); }
+    };
+    if (dg) dg.onclick = () => runDigest(false);
+    if (dgs) dgs.onclick = () => runDigest(true);
     const cEl = $('jc-classes'); cEl.textContent = '';
     const classes = d.classes || [];
     if (!classes.length) cEl.appendChild(el('div', 'cal-empty', 'No blocked lines in the window — nothing to learn from yet.'));
