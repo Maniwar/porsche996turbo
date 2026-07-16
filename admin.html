@@ -10376,7 +10376,7 @@ function calStaffHoursGrid(staffId, locId) {
     '<input type="time" data-brk="from" value="12:00"><span class="micro">to</span>' +
     '<input type="time" data-brk="to" value="13:00">' +
     '<button class="btn ghost mini" type="button" data-add-break>Split their days around it</button>' +
-    '<span class="info-badge" title="Lunches and breaks: every day whose hours span the break is split in two — 9:00 to 17:00 with a 12 to 1 break becomes 9:00-12:00 and 13:00-17:00 — and no visit can be offered across the gap. Days that do not span it are left alone; adjust any single day by hand afterwards. Remember to save.">i</span>';
+    '<span class="info-badge" title="Lunches and breaks: every day whose hours span the break is split in two — 9:00 to 17:00 with a 12 to 1 break becomes 9:00-12:00 and 13:00-17:00 — and no visit can be offered across the gap. Any length works — a 15-minute pause splits the same way. Days that do not span it are left alone; adjust any single day by hand afterwards. Remember to save.">i</span>';
   box.appendChild(brk);
   return box;
 }

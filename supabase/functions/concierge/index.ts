@@ -1310,6 +1310,28 @@ async function bookingContextBlock(config: unknown,
   } catch { return ""; /* the calendar must never break the conversation */ }
 }
 
+/** EDITION context — the live register count, so "how many are left?" gets
+ *  a real number instead of an honest shrug (it was the most-repeated
+ *  knowledge gap on record). Empty for single-piece or edition-less sites;
+ *  fail-open: the register must never break the conversation. Scarcity talk
+ *  stays fact-gated per the SOPs — this block IS the fact. */
+async function editionContextBlock(): Promise<string> {
+  try {
+    const rows = await pgSelect<{ next_serial: number; run_size: number }>(
+      "allocation_counter?select=next_serial,run_size&id=eq.1&limit=1",
+    );
+    const a = rows && rows[0];
+    if (!a || !(a.run_size > 1)) return "";
+    const claimed = Math.max(a.next_serial - 1, 0);
+    const remaining = Math.max(a.run_size - claimed, 0);
+    return `EDITION (authoritative — live from the register, refreshed each turn): ` +
+      `this year's run is ${a.run_size.toLocaleString("en-US")} numbered pieces; ` +
+      `${claimed.toLocaleString("en-US")} claimed so far; ` +
+      `${remaining.toLocaleString("en-US")} remain open. When asked how many are left, ` +
+      `answer with this number plainly — it is fact, not pressure; never dramatize beyond it.`;
+  } catch { return ""; }
+}
+
 /** The tools array sent to the model, with admin overrides applied:
  *  disabled tools are dropped; a non-empty description override replaces the
  *  built-in copy. An empty/absent registry leaves every tool at its default. */
@@ -5355,7 +5377,8 @@ async function handleChatPost(req: Request): Promise<Response> {
   // next booking, so "are you open?" is answered from data and a booked guest
   // is served, not re-sold. Empty string when the calendar is off.
   const bookingCtx = await bookingContextBlock(data.config, customer, validated.sessionKey);
-  const customerLine = [customerLine0, bookingCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
+  const editionCtx = await editionContextBlock();
+  const customerLine = [customerLine0, bookingCtx, editionCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
   // Live goal status from the last evaluation, so the prompt shows which goals
   // are still open and the concierge actively drives them.
   let goalStatus: Record<string, { status?: string; note?: string }> | null = null;
