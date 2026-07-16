@@ -10708,7 +10708,9 @@ async function calTeamReport(dim) {
     (dim === k ? ' style="color:var(--brass-soft);border-color:var(--brass);"' : '') + '>' + lab + '</button>';
   const head = dim === 'person'
     ? '<th>person</th><th>scheduled</th><th>booked</th><th>utilization</th><th>kept</th><th>no-shows</th><th>kept rate</th><th>days off</th><th>ahead</th>'
-    : '<th>' + dim + '</th><th>booked</th><th>kept</th><th>no-shows</th><th>cancelled</th><th>kept rate</th><th>ahead</th>';
+    : dim === 'callbacks'
+      ? '<th>handled by</th><th>handled</th><th>cancelled</th><th>median time to done</th>'
+      : '<th>' + dim + '</th><th>booked</th><th>kept</th><th>no-shows</th><th>cancelled</th><th>kept rate</th><th>ahead</th>';
   const body = rows.map((p) => dim === 'person'
     ? '<tr' + (p.enabled ? '' : ' style="opacity:.55;"') + '><td>' + esc(p.name) +
       (p.enabled ? '' : ' <span class="micro">(away)</span>') + '</td>' +
@@ -10717,25 +10719,35 @@ async function calTeamReport(dim) {
       '<td>' + p.done + '</td><td' + heat(p) + '>' + p.no_show + '</td>' +
       '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
       '<td>' + p.days_off + '</td><td>' + p.upcoming + '</td></tr>'
-    : '<tr><td>' + esc(p.name) + '</td><td>' + hm2(p.booked_min) + '</td><td>' + p.done + '</td>' +
-      '<td' + heat(p) + '>' + p.no_show + '</td><td>' + p.cancelled + '</td>' +
-      '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
-      '<td>' + p.upcoming + '</td></tr>').join('');
+    : dim === 'callbacks'
+      ? '<tr><td>' + esc(p.name) + '</td><td>' + p.done + '</td><td>' + p.cancelled + '</td>' +
+        '<td>' + (p.median_min == null ? '—' : hm2(p.median_min)) + '</td></tr>'
+      : '<tr><td>' + esc(p.name) + '</td><td>' + hm2(p.booked_min) + '</td><td>' + p.done + '</td>' +
+        '<td' + heat(p) + '>' + p.no_show + '</td><td>' + p.cancelled + '</td>' +
+        '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
+        '<td>' + p.upcoming + '</td></tr>').join('');
   repEl.innerHTML =
     '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">The last 30 days' +
     '<span class="info-badge" title="Adherence and productivity, computed from the same tables the calendar sells from. People rows: scheduled = working hours minus time off; utilization = booked over scheduled. All rows: kept counts completed visits; the rate is kept against kept plus no-shows. A dash means nothing to measure yet — never a fake zero. Export downloads exactly what you see, as CSV.">i</span> ' +
-    dimBtn('person', 'people') + dimBtn('offering', 'offerings') + dimBtn('location', 'locations') +
+    dimBtn('person', 'people') + dimBtn('offering', 'offerings') + dimBtn('location', 'locations') + dimBtn('callbacks', 'callbacks') +
     '<button type="button" class="btn ghost mini" data-repcsv>Export CSV</button></div>' +
     (rows.length
       ? '<table class="cal-reptable"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>'
-      : '<div class="cal-empty">Nothing on the books in this window yet.</div>');
+      : '<div class="cal-empty">Nothing on the books in this window yet.</div>') +
+    (dim === 'callbacks' && state.calRepCache && state.calRepCache.callbacks
+      ? '<div class="micro" style="margin-top:6px;">' + (state.calRepCache.callbacks.open_now || 0) + ' open now' +
+        (state.calRepCache.callbacks.oldest_open_min
+          ? ' · oldest waiting ' + hm2(state.calRepCache.callbacks.oldest_open_min) : '') + '</div>'
+      : '');
   repEl.querySelectorAll('[data-repdim]').forEach((b) =>
     b.addEventListener('click', () => calTeamReport(b.getAttribute('data-repdim'))));
   const ex = repEl.querySelector('[data-repcsv]');
   if (ex) ex.addEventListener('click', () => {
     const cols = dim === 'person'
       ? ['name', 'sched_min', 'booked_min', 'utilization', 'done', 'no_show', 'show_rate', 'days_off', 'upcoming']
-      : ['name', 'booked_min', 'done', 'no_show', 'cancelled', 'show_rate', 'upcoming'];
+      : dim === 'callbacks'
+        ? ['name', 'done', 'cancelled', 'median_min']
+        : ['name', 'booked_min', 'done', 'no_show', 'cancelled', 'show_rate', 'upcoming'];
     const csv = [cols.join(',')].concat(rows.map((r) => cols.map((c) => {
       const s = r[c] == null ? '' : String(r[c]);
       return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -10745,6 +10757,18 @@ async function calTeamReport(dim) {
     a.download = 'adherence-' + dim + '-30d.csv'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   });
+}
+/* open a named thing's editor — the drill-in target for matrix cells */
+function calOpenEditor(containerId, title) {
+  const box = $(containerId); if (!box) return;
+  const holder = Array.from(box.children).find((h) => {
+    const b = h.querySelector && h.querySelector('.cal-sum b');
+    return b && b.textContent === title;
+  });
+  if (!holder) return;
+  const btn = holder.querySelector('.cal-sum .edit');
+  if (btn && btn.getAttribute('aria-expanded') === 'false') btn.click();
+  holder.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 /* a staffed offering: someone on the team does it */
 function calStaffedType(title) {
@@ -11048,6 +11072,37 @@ async function loadCalendar() {
       '<button class="btn" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'},this)">Completed</button> ' +
       '<button class="btn ghost" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'},this)">No-show</button></div>'),
       'Nothing to close out.');
+    /* checked-off things leave a trace — and a mistake is correctable for
+       seven days (kept/no-show flips, reopen), with who acted on record */
+    const rc = q.recently_closed || [];
+    if (rc.length) {
+      const fold = document.createElement('div'); fold.style.marginTop = '14px';
+      const fbtn = document.createElement('button'); fbtn.className = 'btn ghost mini'; fbtn.type = 'button';
+      fbtn.setAttribute('data-recent-closed', '');
+      fbtn.textContent = rc.length + ' recently closed out — show';
+      const hold = document.createElement('div'); hold.style.display = 'none'; hold.style.marginTop = '8px';
+      rc.forEach((r) => {
+        const row = document.createElement('div'); row.className = 'cal-frow'; row.style.opacity = '.78';
+        const lbl = r.kind === 'callback' ? 'call back' : (r.type || 'visit');
+        const out = r.status === 'done' ? 'done' : (r.status === 'completed' ? 'kept' : 'no-show');
+        row.innerHTML = '<span class="micro mono">' + esc(calWhen(r.closed_at)) + '</span>' +
+          '<b>' + esc(r.name || '') + '</b><span class="micro">' + esc(lbl) + ' · ' + out +
+          ' · by ' + esc(r.acted_by || 'the concierge') + '</span>' +
+          (r.contact ? '<span class="micro mono">' + esc(r.contact) + '</span>' : '') +
+          (r.kind === 'appointment' && r.status !== 'completed'
+            ? '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'},this)">kept instead</button>' : '') +
+          (r.kind === 'appointment' && r.status !== 'no_show'
+            ? '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'},this)">no-show instead</button>' : '') +
+          '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'reopen\'},this)">reopen</button>';
+        hold.appendChild(row);
+      });
+      fbtn.addEventListener('click', () => {
+        const vis = hold.style.display !== 'none';
+        hold.style.display = vis ? 'none' : '';
+        fbtn.textContent = rc.length + ' recently closed out — ' + (vis ? 'show' : 'hide');
+      });
+      fold.appendChild(fbtn); fold.appendChild(hold); qEl.appendChild(fold);
+    }
 
     /* the week — temperature ribbons: dark closed · pale open · solid booked */
     const wEl = $('cal-week'); wEl.textContent = '';
@@ -11257,13 +11312,23 @@ async function loadCalendar() {
             '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">Capacity at a glance' +
             '<span class="info-badge" title="What the calendar can actually promise, per offering and place. Promised is the configured how-many-at-once. Effective is what the team can really cover at the busiest moment — qualified people, on shift, inside the bookable windows. Coverage is qualified person-hours per week; starts is how many start times the visit length and spacing allow per week. A warm row means the promise outruns the people.">i</span></div>' +
             '<table class="cal-reptable"><thead><tr><th>offering</th><th>location</th><th>promised</th><th>effective</th><th>people</th><th>peak together</th><th>coverage / wk</th><th>starts / wk</th></tr></thead><tbody>' +
-            cRows.map((r) => '<tr' + (r.warn ? ' style="color:#d08770;"' : '') + '><td>' + esc(r.offering) + '</td>' +
-              '<td>' + esc(r.location) + '</td><td>' + r.capacity + '</td>' +
+            cRows.map((r) => '<tr data-cap-off="' + esc(r.offering) + '" style="cursor:pointer;' + (r.warn ? 'color:#d08770;' : '') + '"><td>' + esc(r.offering) + '</td>' +
+              '<td data-cap-loc="' + esc(r.location) + '">' + esc(r.location) + '</td><td>' + r.capacity + '</td>' +
               '<td>' + (r.staffed ? r.effective : r.capacity + ' <span class="micro">(no team gate)</span>') + '</td>' +
-              '<td>' + (r.staffed ? r.people : '—') + '</td><td>' + (r.staffed ? r.peak_concurrent : '—') + '</td>' +
+              '<td data-cap-team>' + (r.staffed ? r.people : '—') + '</td><td data-cap-team>' + (r.staffed ? r.peak_concurrent : '—') + '</td>' +
               '<td>' + (r.staffed ? hm3(r.cover_min_week) : '—') + '</td><td>' + r.starts_week + '</td></tr>' +
-              (r.warn ? '<tr style="color:#d08770;"><td></td><td colspan="7" class="micro">' + esc(r.warn) + '</td></tr>' : '')).join('') +
+              (r.warn ? '<tr data-cap-off="' + esc(r.offering) + '" style="cursor:pointer;color:#d08770;"><td></td><td colspan="7" class="micro">' + esc(r.warn) + '</td></tr>' : '')).join('') +
             '</tbody></table>';
+          /* the numbers are doors: offering cells open the offering, the
+             location cell its location, people cells the Team card */
+          capEl.onclick = (ev) => {
+            const tr = ev.target.closest ? ev.target.closest('tr[data-cap-off]') : null;
+            if (!tr) return;
+            const td = ev.target.closest ? ev.target.closest('td') : null;
+            if (td && td.hasAttribute('data-cap-loc')) { calOpenEditor('cal-locs', td.getAttribute('data-cap-loc')); return; }
+            if (td && td.hasAttribute('data-cap-team')) { const c = $('cal-team-card'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+            calOpenEditor('cal-types', tr.getAttribute('data-cap-off'));
+          };
         }
       }
     }

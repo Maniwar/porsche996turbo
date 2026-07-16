@@ -1338,6 +1338,7 @@ create table if not exists public.concierge_staff (
   created_at timestamptz not null default now()
 );
 alter table public.concierge_staff add column if not exists email text not null default '';
+alter table public.concierge_appointments add column if not exists acted_by text not null default '';
 alter table public.concierge_staff add column if not exists phone text not null default '';
 create table if not exists public.concierge_staff_hours (
   id          bigint generated always as identity primary key,
@@ -1918,7 +1919,8 @@ begin
   end if;
   select * into v_row from public.concierge_appointments where id = p_id and status = 'requested';
   if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
-  update public.concierge_appointments set status = 'booked', updated_at = now() where id = p_id;
+  update public.concierge_appointments set status = 'booked', updated_at = now(),
+    acted_by = coalesce((select auth.jwt()->>'email'), '') where id = p_id;
   if v_row.reschedule_of is not null then
     -- completing the swap: the original finally yields its slot
     update public.concierge_appointments set status = 'cancelled', updated_at = now()
@@ -1953,7 +1955,8 @@ begin
   end if;
   update public.concierge_appointments
     set status = case when kind = 'callback' then 'cancelled' else 'cancelled' end,
-        updated_at = now()
+        updated_at = now(),
+        acted_by = coalesce((select auth.jwt()->>'email'), '')
     where id = p_id;
   -- a pending move for this booking dies with it (one guest intent)
   update public.concierge_appointments set status = 'cancelled', updated_at = now()
@@ -2225,8 +2228,38 @@ begin
           or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
     raise exception 'not authorized';
   end if;
-  if p_dim not in ('offering','location') then
+  if p_dim not in ('offering','location','callbacks') then
     return jsonb_build_object('ok', false, 'reason', 'unknown_dimension');
+  end if;
+  -- Callbacks are their own dimension: who handled them, how many, how fast.
+  -- 'name' is the admin who checked it off (acted_by); chat/server acts and
+  -- pre-audit rows group under '(unattributed)'. Medians are honest NULLs.
+  if p_dim = 'callbacks' then
+    with cb as (
+      select coalesce(nullif(acted_by, ''), '(unattributed)') as who, status,
+             extract(epoch from (updated_at - created_at)) / 60 as mins
+        from public.concierge_appointments
+       where kind = 'callback' and not qa
+         and created_at >= current_date - v_days + 1),
+    handlers as (
+      select who,
+             count(*) filter (where status = 'done') as done,
+             count(*) filter (where status = 'cancelled') as cancelled,
+             (percentile_cont(0.5) within group (order by mins)
+                filter (where status = 'done'))::int as median_min
+        from cb group by who
+       having count(*) filter (where status in ('done','cancelled')) > 0)
+    select jsonb_build_object('ok', true, 'days', v_days, 'dim', 'callbacks',
+      'open_now', (select count(*) from public.concierge_appointments
+                    where kind = 'callback' and status = 'open' and not qa),
+      'oldest_open_min', (select extract(epoch from (now() - min(created_at)))::int / 60
+                            from public.concierge_appointments
+                           where kind = 'callback' and status = 'open' and not qa),
+      'rows', coalesce((select jsonb_agg(jsonb_build_object(
+          'name', who, 'done', done, 'cancelled', cancelled, 'median_min', median_min)
+          order by done desc, who) from handlers), '[]'::jsonb))
+      into v;
+    return v;
   end if;
   with rows as (
     select case when p_dim = 'offering'
@@ -2323,6 +2356,14 @@ begin
     select type_id, location_id, sum(ce - cs)::int as cover_min,
            count(distinct staff_id) as people
       from qual group by 1, 2),
+  -- designated headcount is window-independent: "I have a person" must read
+  -- as 1 even before the offering has windows — effective still says 0
+  desig as (
+    select ss.type_id, sh.location_id, count(distinct ss.staff_id) as people
+      from public.concierge_staff_services ss
+      join public.concierge_staff st on st.id = ss.staff_id and st.enabled
+      join public.concierge_staff_hours sh on sh.staff_id = ss.staff_id
+     group by 1, 2),
   shape as (
     select type_id, location_id,
            sum(case when e - s >= duration_min
@@ -2344,7 +2385,7 @@ begin
       'offering', g.offering, 'location', g.location,
       'capacity', g.capacity, 'duration_min', g.duration_min, 'step_min', g.step_min,
       'staffed', g.is_staffed,
-      'people', coalesce(c.people, 0),
+      'people', coalesce(d.people, 0),
       'cover_min_week', coalesce(c.cover_min, 0),
       'starts_week', coalesce(s2.starts_week, 0),
       'peak_concurrent', coalesce(p.peak, 0),
@@ -2353,13 +2394,16 @@ begin
         when coalesce(s2.starts_week, 0) = 0 and coalesce(c.cover_min, 0) = 0
              and not exists (select 1 from public.concierge_availability av3 where av3.type_id = g.type_id)
           then 'no bookable windows yet — open the offering and add hours windows'
-        when g.is_staffed and coalesce(c.people, 0) = 0 then 'no qualified person has hours here'
+        when g.is_staffed and coalesce(d.people, 0) = 0 then 'no qualified person has hours here'
+        when g.is_staffed and coalesce(d.people, 0) > 0 and coalesce(p.peak, 0) = 0
+          then 'their hours never overlap the bookable windows here'
         when g.is_staffed and g.capacity > coalesce(p.peak, 0)
           then 'promises ' || g.capacity || ' at once but at best ' || coalesce(p.peak, 0) || ' can cover'
         end) order by g.offering, g.location), '[]'::jsonb)
     into v
     from grid g
     left join cover c on c.type_id = g.type_id and c.location_id = g.location_id
+    left join desig d on d.type_id = g.type_id and d.location_id = g.location_id
     left join peak p on p.type_id = g.type_id and p.location_id = g.location_id
     left join shape s2 on s2.type_id = g.type_id and s2.location_id = g.location_id;
   return jsonb_build_object('ok', true, 'rows', v);
@@ -2501,7 +2545,18 @@ begin
       left join public.concierge_locations l on l.id = a.location_id
       left join public.concierge_staff st2 on st2.id = a.staff_id
       where a.kind = 'appointment' and a.status = 'booked' and not a.qa
-        and a.ends_at < now()), '[]'::jsonb)
+        and a.ends_at < now()), '[]'::jsonb),
+    'recently_closed', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', a.id, 'kind', a.kind, 'status', a.status, 'name', a.visitor_name,
+        'contact', a.visitor_contact, 'type', t.title,
+        'window_pref', a.window_pref, 'starts_at', a.starts_at,
+        'acted_by', a.acted_by, 'closed_at', a.updated_at,
+        'conversation_id', a.conversation_id) order by a.updated_at desc)
+      from (select * from public.concierge_appointments a2
+             where a2.status in ('done','completed','no_show') and not a2.qa
+               and a2.updated_at > now() - interval '7 days'
+             order by a2.updated_at desc limit 15) a
+      left join public.concierge_appointment_types t on t.id = a.type_id), '[]'::jsonb)
   ) into v;
   return v;
 end $$;
@@ -2516,11 +2571,28 @@ begin
           or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
     raise exception 'not authorized';
   end if;
-  if p_outcome not in ('completed','no_show','done') then
+  if p_outcome not in ('completed','no_show','done','reopen') then
     return jsonb_build_object('ok', false, 'reason', 'bad_outcome');
   end if;
-  update public.concierge_appointments set status = p_outcome, updated_at = now()
-    where id = p_id and status in ('booked','open');
+  -- 'reopen' + outcome flips give the merchant a 7-day correction window:
+  -- a mistaken check-off is editable, not carved in stone. acted_by records
+  -- the correcting admin each time.
+  if p_outcome = 'reopen' then
+    update public.concierge_appointments
+      set status = case when kind = 'callback' then 'open' else 'booked' end,
+          updated_at = now(), acted_by = coalesce((select auth.jwt()->>'email'), '')
+      where id = p_id and status in ('completed','no_show','done')
+        and updated_at > now() - interval '7 days';
+    if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+    return jsonb_build_object('ok', true, 'id', p_id, 'status', 'reopened');
+  end if;
+  update public.concierge_appointments
+    set status = p_outcome, updated_at = now(),
+        acted_by = coalesce((select auth.jwt()->>'email'), '')
+    where id = p_id
+      and (status in ('booked','open')
+           or (status in ('completed','no_show','done') and status <> p_outcome
+               and updated_at > now() - interval '7 days'));
   if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
   return jsonb_build_object('ok', true, 'id', p_id, 'status', p_outcome);
 end $$;
