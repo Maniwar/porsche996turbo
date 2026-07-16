@@ -1165,14 +1165,14 @@
   <div class="navwrap">
   <nav class="groups" role="tablist" aria-label="Sections"></nav>
   <nav class="tabs" role="tablist" aria-label="Pages">
-    <button class="tab" data-tab="conversations" role="tab">Conversations</button>
+    <button class="tab on" data-tab="conversations" role="tab">Conversations</button>
     <button class="tab" data-tab="calendar" role="tab">Calendar</button>
     <button class="tab" data-tab="customers" role="tab">Orders &amp; Customers</button>
     <button class="tab" data-tab="actions" role="tab">Actions</button>
     <button class="tab" data-tab="conversion" role="tab">Conversion</button>
     <button class="tab" data-tab="nps" role="tab">NPS</button>
     <button class="tab" data-tab="spend" role="tab">Spend</button>
-    <button class="tab on" data-tab="tuning" role="tab">Tuning</button>
+    <button class="tab" data-tab="tuning" role="tab">Tuning</button>
     <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
     <button class="tab" data-tab="procedures" role="tab">Procedures</button>
     <button class="tab" data-tab="evals" role="tab">Evals</button>
@@ -1186,7 +1186,7 @@
   <main>
 
     <!-- ============ TAB 1 : TUNING ============ -->
-    <div id="panel-tuning" class="panel on">
+    <div id="panel-tuning" class="panel">
       <div class="panel-head">
         <span class="micro">Configuration</span>
         <h2>Tuning</h2>
@@ -2110,7 +2110,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
     </div>
 
     <!-- ============ TAB 6 : CONVERSATIONS ============ -->
-    <div id="panel-conversations" class="panel">
+    <div id="panel-conversations" class="panel on">
       <div class="panel-head">
         <span class="micro">The floor</span>
         <h2>Conversations</h2>
@@ -3097,7 +3097,7 @@ function wireStatic() {
     if (TAB_NAMES.indexOf(t) >= 0) activateTab(t, true);
   });
   const initialTab = (location.hash || '').slice(1);
-  if (TAB_NAMES.indexOf(initialTab) >= 0 && initialTab !== 'tuning') activateTab(initialTab, true);
+  if (TAB_NAMES.indexOf(initialTab) >= 0 && initialTab !== 'conversations') activateTab(initialTab, true);
   $('cv-refresh').addEventListener('click', function () { loadConversion(); });
   if ($('sp-refresh')) $('sp-refresh').addEventListener('click', function () { loadSpend(); });
   if ($('cal-save-rules')) $('cal-save-rules').addEventListener('click', async function () {
