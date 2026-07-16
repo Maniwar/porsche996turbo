@@ -11150,7 +11150,7 @@ function calTickPop(x, y, r) {
   });
 }
 /* the lane card: give a person time off on the day you clicked */
-function calLanePop(x, y, stf, dateStr) {
+function calLanePop(x, y, stf, dateStr, clickMin) {
   calPop(x, y, (pop) => {
     const offToday = [];
     (state.calExcAll || []).forEach((e2) => {
@@ -11166,12 +11166,19 @@ function calLanePop(x, y, stf, dateStr) {
       (offToday.length ? '<div class="micro" style="opacity:.8;" data-off-today>already off: ' +
         esc([...new Set(offToday)].join(', ')) + '</div>' : '') +
       '<div class="cal-frow"><label class="micro"><input type="checkbox" data-p="all" checked> all day</label>' +
+      '<span class="micro" style="opacity:.6;">uncheck for a window' +
+      (clickMin != null ? ' — around ' + calHm(clickMin) : '') + '</span>' +
       '<span data-p="win" style="display:none;align-items:center;gap:6px;">' +
       '<input type="time" data-p="from"> <span class="micro">to</span> <input type="time" data-p="to"></span></div>' +
       '<div class="cal-frow"><button class="btn" data-p="go">Add time off</button></div>';
     pop.querySelector('[data-p="all"]').addEventListener('change', () => {
-      pop.querySelector('[data-p="win"]').style.display =
-        pop.querySelector('[data-p="all"]').checked ? 'none' : 'inline-flex';
+      const allOn = pop.querySelector('[data-p="all"]').checked;
+      pop.querySelector('[data-p="win"]').style.display = allOn ? 'none' : 'inline-flex';
+      /* a click on 12:30 means the lunch window, not the whole day — prefill it */
+      if (!allOn && clickMin != null && !pop.querySelector('[data-p="from"]').value) {
+        pop.querySelector('[data-p="from"]').value = calT(clickMin);
+        pop.querySelector('[data-p="to"]').value = calT(Math.min(clickMin + 60, 1439));
+      }
     });
     pop.querySelector('[data-p="go"]').addEventListener('click', async () => {
       try {
@@ -11421,21 +11428,32 @@ async function loadCalendar() {
       fbtn.setAttribute('data-recent-closed', '');
       fbtn.textContent = rc.length + ' recently closed out — show';
       const hold = document.createElement('div'); hold.style.display = 'none'; hold.style.marginTop = '8px';
+      hold.style.overflowX = 'auto';
+      /* a real table — this ledger grows every day; loose prose rows don't scale */
+      const tbl = document.createElement('table'); tbl.className = 'cal-reptable';
+      tbl.innerHTML = '<thead><tr><th>closed</th><th>who</th><th>what</th><th>outcome</th>' +
+        '<th>handled by</th><th>contact</th><th></th></tr></thead>';
+      const tb = document.createElement('tbody');
       rc.forEach((r) => {
-        const row = document.createElement('div'); row.className = 'cal-frow'; row.style.opacity = '.78';
         const lbl = r.kind === 'callback' ? 'call back' : (r.type || 'visit');
         const out = r.status === 'done' ? 'done' : (r.status === 'completed' ? 'kept' : 'no-show');
-        row.innerHTML = '<span class="micro mono">' + esc(calWhen(r.closed_at)) + '</span>' +
-          '<b>' + esc(r.name || '') + '</b><span class="micro">' + esc(lbl) + ' · ' + out +
-          ' · by ' + esc(r.acted_by || 'the concierge') + '</span>' +
-          (r.contact ? '<span class="micro mono">' + esc(r.contact) + '</span>' : '') +
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="mono">' + esc(calWhen(r.closed_at)) + '</td>' +
+          '<td><b>' + esc(r.name || '') + '</b></td>' +
+          '<td>' + esc(lbl) + '</td>' +
+          '<td' + (out === 'no-show' ? ' style="color:#d08770;"' : '') + '>' + out + '</td>' +
+          '<td>' + esc(r.acted_by || 'the concierge') + '</td>' +
+          '<td class="mono">' + esc(r.contact || '') + '</td>' +
+          '<td style="white-space:nowrap;">' +
           (r.kind === 'appointment' && r.status !== 'completed'
-            ? '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'},this)">kept instead</button>' : '') +
+            ? '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'},this)">kept instead</button> ' : '') +
           (r.kind === 'appointment' && r.status !== 'no_show'
-            ? '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'},this)">no-show instead</button>' : '') +
-          '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'reopen\'},this)">reopen</button>';
-        hold.appendChild(row);
+            ? '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'},this)">no-show instead</button> ' : '') +
+          '<button class="btn ghost mini" type="button" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'reopen\'},this)">reopen</button></td>';
+        tb.appendChild(tr);
       });
+      tbl.appendChild(tb); hold.appendChild(tbl);
+      hold.appendChild(el('div', 'micro', 'The last 7 days, newest first (up to 15). The full record lives in the operations review export below.'));
       fbtn.addEventListener('click', () => {
         const vis = hold.style.display !== 'none';
         hold.style.display = vis ? 'none' : '';
@@ -11499,6 +11517,7 @@ async function loadCalendar() {
     const laneView = teamOn && state.calTeamView !== false;
     const wk = document.createElement('div'); wk.className = 'cal-wk';
     const axis = document.createElement('div'); axis.className = 'cal-axis';
+    state.calWkLoHi = [lo, hi]; /* the lane quick-add maps a click back to a time */
     const mid = Math.round((lo + hi) / 120) * 60;
     axis.innerHTML = '<span></span><span class="ax">' +
       '<span style="left:0;">' + calHm(lo) + '</span>' +
@@ -11579,7 +11598,13 @@ async function loadCalendar() {
       const lane = ev.target.closest ? ev.target.closest('.cal-lane-track[data-lane]') : null;
       if (lane) {
         const stf = state.calStaff.find((x) => x.id === +lane.getAttribute('data-lane'));
-        if (stf) calLanePop(ev.clientX, ev.clientY, stf, lane.getAttribute('data-day'));
+        if (stf) {
+          const rect = lane.getBoundingClientRect();
+          const lohi = state.calWkLoHi || [540, 1020];
+          const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / (rect.width || 1)));
+          const min2 = Math.round((lohi[0] + frac * (lohi[1] - lohi[0])) / 30) * 30;
+          calLanePop(ev.clientX, ev.clientY, stf, lane.getAttribute('data-day'), min2);
+        }
       }
     };
     if (!(week || []).length) {
