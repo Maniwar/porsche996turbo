@@ -10680,6 +10680,69 @@ function calStaffCard(st) {
   });
   return holder;
 }
+/* the team's numbers — person | offering | location, exportable. Person rows
+   carry the scheduled/utilization math (staff_report); the other dimensions
+   come from booking_report on demand and are cached until the next reload. */
+async function calTeamReport(dim) {
+  const repEl = $('cal-team-report'); if (!repEl) return;
+  state.calRepDim = dim;
+  let rows;
+  if (dim === 'person') {
+    rows = ((state.calTeamRep && state.calTeamRep.people) || []).filter((p) =>
+      p.enabled || p.booked_min > 0 || p.upcoming > 0);
+    if (!rows.length && !(state.calStaff || []).length) { repEl.textContent = ''; return; }
+  } else {
+    state.calRepCache = state.calRepCache || {};
+    if (!state.calRepCache[dim]) {
+      try { state.calRepCache[dim] = await calRpc('booking_report', { p_days: 30, p_dim: dim }); }
+      catch (e) { calFail(e); return; }
+    }
+    rows = (state.calRepCache[dim].rows || []);
+  }
+  const hm2 = (m) => (m >= 60 ? (Math.round(m / 6) / 10) + 'h' : m + 'm');
+  const heat = (p) => (p.show_rate != null && p.show_rate < 80 ? ' style="color:#d08770;"' : '');
+  const dimBtn = (k, lab) => '<button type="button" class="btn ghost mini" data-repdim="' + k + '"' +
+    (dim === k ? ' style="color:var(--brass-soft);border-color:var(--brass);"' : '') + '>' + lab + '</button>';
+  const head = dim === 'person'
+    ? '<th>person</th><th>scheduled</th><th>booked</th><th>utilization</th><th>kept</th><th>no-shows</th><th>kept rate</th><th>days off</th><th>ahead</th>'
+    : '<th>' + dim + '</th><th>booked</th><th>kept</th><th>no-shows</th><th>cancelled</th><th>kept rate</th><th>ahead</th>';
+  const body = rows.map((p) => dim === 'person'
+    ? '<tr' + (p.enabled ? '' : ' style="opacity:.55;"') + '><td>' + esc(p.name) +
+      (p.enabled ? '' : ' <span class="micro">(away)</span>') + '</td>' +
+      '<td>' + hm2(p.sched_min) + '</td><td>' + hm2(p.booked_min) + '</td>' +
+      '<td>' + (p.utilization == null ? '—' : p.utilization + '%') + '</td>' +
+      '<td>' + p.done + '</td><td' + heat(p) + '>' + p.no_show + '</td>' +
+      '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
+      '<td>' + p.days_off + '</td><td>' + p.upcoming + '</td></tr>'
+    : '<tr><td>' + esc(p.name) + '</td><td>' + hm2(p.booked_min) + '</td><td>' + p.done + '</td>' +
+      '<td' + heat(p) + '>' + p.no_show + '</td><td>' + p.cancelled + '</td>' +
+      '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
+      '<td>' + p.upcoming + '</td></tr>').join('');
+  repEl.innerHTML =
+    '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">The last 30 days' +
+    '<span class="info-badge" title="Adherence and productivity, computed from the same tables the calendar sells from. People rows: scheduled = working hours minus time off; utilization = booked over scheduled. All rows: kept counts completed visits; the rate is kept against kept plus no-shows. A dash means nothing to measure yet — never a fake zero. Export downloads exactly what you see, as CSV.">i</span> ' +
+    dimBtn('person', 'people') + dimBtn('offering', 'offerings') + dimBtn('location', 'locations') +
+    '<button type="button" class="btn ghost mini" data-repcsv>Export CSV</button></div>' +
+    (rows.length
+      ? '<table class="cal-reptable"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>'
+      : '<div class="cal-empty">Nothing on the books in this window yet.</div>');
+  repEl.querySelectorAll('[data-repdim]').forEach((b) =>
+    b.addEventListener('click', () => calTeamReport(b.getAttribute('data-repdim'))));
+  const ex = repEl.querySelector('[data-repcsv]');
+  if (ex) ex.addEventListener('click', () => {
+    const cols = dim === 'person'
+      ? ['name', 'sched_min', 'booked_min', 'utilization', 'done', 'no_show', 'show_rate', 'days_off', 'upcoming']
+      : ['name', 'booked_min', 'done', 'no_show', 'cancelled', 'show_rate', 'upcoming'];
+    const csv = [cols.join(',')].concat(rows.map((r) => cols.map((c) => {
+      const s = r[c] == null ? '' : String(r[c]);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(','))).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'adherence-' + dim + '-30d.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+}
 /* a staffed offering: someone on the team does it */
 function calStaffedType(title) {
   const t = (state.calTypes || []).find((x) => x.title === title);
@@ -11176,31 +11239,9 @@ async function loadCalendar() {
       state.calStaff.forEach((stf) => stEl.appendChild(calStaffCard(stf)));
       const addBtn = $('cal-add-staff');
       if (addBtn) addBtn.onclick = () => stEl.appendChild(calStaffCard(null));
-      /* the team's numbers — same tables the calendar sells from */
-      const repEl = $('cal-team-report');
-      if (repEl) {
-        repEl.textContent = '';
-        const ppl = ((teamRep && teamRep.people) || []).filter((p) =>
-          p.enabled || p.booked_min > 0 || p.upcoming > 0);
-        if (ppl.length && state.calStaff.length) {
-          const hm2 = (m) => (m >= 60 ? (Math.round(m / 6) / 10) + 'h' : m + 'm');
-          const heat = (p) => (p.show_rate != null && p.show_rate < 80 ? ' style="color:#d08770;"' : '');
-          repEl.innerHTML =
-            '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">The last 30 days' +
-            '<span class="info-badge" title="Adherence and productivity, computed from the same tables the calendar sells from. Scheduled: their working hours across the window minus time off. Booked: visit minutes on their book — kept, no-show, or still standing. Utilization: booked over scheduled. Kept rate: kept against kept plus no-shows. A dash means nothing to measure yet — never a fake zero.">i</span></div>' +
-            '<table class="cal-reptable"><thead><tr>' +
-            '<th>person</th><th>scheduled</th><th>booked</th><th>utilization</th><th>kept</th><th>no-shows</th><th>kept rate</th><th>days off</th><th>ahead</th>' +
-            '</tr></thead><tbody>' +
-            ppl.map((p) => '<tr' + (p.enabled ? '' : ' style="opacity:.55;"') + '><td>' + esc(p.name) +
-              (p.enabled ? '' : ' <span class="micro">(away)</span>') + '</td>' +
-              '<td>' + hm2(p.sched_min) + '</td><td>' + hm2(p.booked_min) + '</td>' +
-              '<td>' + (p.utilization == null ? '—' : p.utilization + '%') + '</td>' +
-              '<td>' + p.done + '</td><td' + heat(p) + '>' + p.no_show + '</td>' +
-              '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
-              '<td>' + p.days_off + '</td><td>' + p.upcoming + '</td></tr>').join('') +
-            '</tbody></table>';
-        }
-      }
+      /* the team's numbers — person | offering | location, exportable */
+      state.calTeamRep = teamRep; state.calRepCache = {};
+      calTeamReport(state.calRepDim || 'person');
     }
 
     /* offerings */
