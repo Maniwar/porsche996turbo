@@ -2157,7 +2157,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <label class="ct-check" title="Only chats where the concierge acted on a house note">
             <input type="checkbox" id="convo-house"> 🏷 house-note chats
           </label>
-          <label class="ct-check" title="Only chats whose session produced a commission (chat-assisted or ✳ concierge-initiated — see ATTRIBUTION.md)">
+          <label class="ct-check" title="Only chats whose session produced a commission (chat-assisted or ✳ concierge-initiated)">
             <input type="checkbox" id="convo-comm"> 🛒 commissioned chats
           </label>
           <label class="ct-check" title="Show the automated QA / eval harness runs (session keys beginning &quot;qa-&quot;). Hidden by default — these are test conversations, not real visitors.">
@@ -2208,7 +2208,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <b>chat-assisted</b> — a conversation ran in the buying session, checkout came from a page button;
         <b>identity-assisted</b> — a signed-in buyer whose account chatted within 30 days (cross-session);
         <b>unassisted</b> — no conversation. Hover any <span class="info-badge">i</span> for the exact
-        definition; formal definitions with date bases in <span class="mono">ATTRIBUTION.md</span>.</p>
+        definition.</p>
 
       <div class="ct-row" style="margin-bottom:10px;">
         <span class="ct-tag" title="There is no single shared date — the range filters each fact by ITS OWN clock: orders by order date (placed_at), conversations by start date (created_at), funnel beacons by event time, spoke-stage by message time. So 'Commissions' = orders PLACED in the range, 'Conversations' = chats STARTED in the range, and the conversion rate deliberately crosses the two (see its ⓘ).">Range</span>
@@ -2339,8 +2339,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <p class="micro" style="opacity:.7;">A lead is qualified interest, <b>not a closed sale</b> — an inquiry opens a
           conversation the house closes off-platform, so it is <b>counted, never valued</b>, and never added to
           commission revenue or the ✳ tiers above. Concierge-attributed by construction (submitted through the
-          concierge). Date basis: inquiry date (created_at). Deltas compare the prior window of equal length.
-          Full definition: <span class="mono">ATTRIBUTION.md</span>.</p>
+          concierge). Date basis: inquiry date (created_at). Deltas compare the prior window of equal length.</p>
       </section>
 
       <p class="micro" style="opacity:.7;">Date bases: order metrics bucket by <b>order date</b> (placed_at);
@@ -2348,8 +2347,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         unique visitors per bucket. Deltas compare the prior window of equal length. Attribution is captured
         when chat and checkout share a browser tab session — cross-day and cross-device journeys record as
         unassisted, so attributed figures are a floor, not a ceiling. Funnel events begin at their ship date —
-        earlier history shows zeros. Cancelled orders are excluded from revenue but keep their attribution.
-        Full definitions: <span class="mono">ATTRIBUTION.md</span>.</p>
+        earlier history shows zeros. Cancelled orders are excluded from revenue but keep their attribution.</p>
 
     </div>
 
@@ -2359,7 +2357,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <span class="micro">appointments &amp; callbacks</span>
         <h2>Calendar</h2>
       </div>
-      <p class="note">The concierge books ONLY what this page publishes (<span class="mono">APPOINTMENTS.md</span>):
+      <p class="note">The concierge books ONLY what this page publishes:
         availability is computed from your hours, never invented; double-booking is impossible by construction;
         a visitor's contact is stored here and never spoken in chat. The feature ships <b>off</b> — set a timezone
         and hours below, enable an offering, then flip the master switch. QA traffic never occupies a slot.</p>
@@ -2441,8 +2439,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <span class="micro">API consumption</span>
         <h2>Spend</h2>
       </div>
-      <p class="note">Every model call the concierge makes is metered at the source with a purpose
-        (<span class="mono">COST.md</span>). Deploy testing (<span class="mono">qa-</span> sessions: CI smoke + the
+      <p class="note">Every model call the concierge makes is metered at the source with a purpose. Deploy testing (<span class="mono">qa-</span> sessions: CI smoke + the
         eval deck on <em>every deploy</em>) is metered separately — it is the usual culprit when a day spikes.
         Dollars are <b>estimates</b> from the editable prices at the bottom; the ledger stores tokens, so a price
         edit reprices all history. The ledger begins at its ship date — older spend is invisible here.</p>
@@ -2499,7 +2496,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <span class="micro">The satisfaction loop</span>
         <h2>NPS</h2>
       </div>
-      <p class="note">The closed rating loop (<span class="mono">NPS.md</span>): the concierge asks <b>once</b> at a
+      <p class="note">The closed rating loop: the concierge asks <b>once</b> at a
         natural close (a pure, unit-tested gate), the score and reason are captured deterministically, the reason is
         categorized against the vocabulary below, and each customer's history quietly grounds the coach — never quoted
         back at the shopper. QA traffic (<span class="mono">qa-</span> sessions) never counts toward any number here.
@@ -2516,7 +2513,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <section class="card" id="nps-card">
         <div class="card-head">
           <h3>NPS — session ratings</h3>
-          <span class="micro">%promoters − %detractors · offers → holds → responses → rate · detractor themes are the fix-first list · spec: <span class="mono">NPS.md</span></span>
+          <span class="micro">%promoters − %detractors · offers → holds → responses → rate · detractor themes are the fix-first list</span>
           <button id="nps-csv" class="btn ghost" type="button" style="margin-left:auto;padding:4px 12px;">Export CSV</button>
         </div>
         <div class="cv-kpis" style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:10px;">
@@ -2587,7 +2584,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <h2>Tools</h2>
       </div>
       <p class="note" style="max-width:720px;">Everything the concierge can <em>do</em> for a signed-in patron lives here. There are two kinds, and they're added in two different ways:</p>
-      <p class="note" style="max-width:720px;">• <strong>Model tools</strong> run code on our side — read the register, cancel, re-send a confirmation, log a mending request. The bot decides when to call them. You control which are switched on and how they're instructed; <strong>creating a brand-new model tool needs a developer</strong> (it has to run real server logic — see <code>TOOLS.md</code>).<br>• <strong>Form tools</strong> hand the patron a little form in the chat and write the result to an order. These are pure configuration — <strong>you can create, edit, and remove them right here</strong>, no deploy.</p>
+      <p class="note" style="max-width:720px;">• <strong>Model tools</strong> run code on our side — read the register, cancel, re-send a confirmation, log a mending request. The bot decides when to call them. You control which are switched on and how they're instructed; <strong>creating a brand-new model tool needs a developer</strong> (it has to run real server logic).<br>• <strong>Form tools</strong> hand the patron a little form in the chat and write the result to an order. These are pure configuration — <strong>you can create, edit, and remove them right here</strong>, no deploy.</p>
       <p class="note" style="max-width:720px;">Looking for the satisfaction survey? <strong>There is no survey tool, by design</strong> — the bot can never write or change a rating; only the customer’s tap does, through tested code. Configure the survey (question, timing, cooldown, rating change window) under <strong>Engagement → House rules</strong>, its wording in the <strong>closing-survey SOP</strong>, and read results on the <strong>NPS</strong> tab.</p>
 
       <section class="card">
@@ -2595,7 +2592,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <h3>Model tools</h3>
           <span class="micro">code-backed actions the bot can call</span>
         </div>
-        <p class="note" style="margin-bottom:16px;">Turn one off to withhold it from the bot entirely, or rewrite its instruction to change when and how the bot uses it. A blank instruction uses the built-in default. Every tool is ownership-scoped and logged; turning a <strong>core</strong> tool off will noticeably dull the concierge. To add a new one, see the developer note in <code>TOOLS.md</code> — a model tool needs a handler in the concierge function.</p>
+        <p class="note" style="margin-bottom:16px;">Turn one off to withhold it from the bot entirely, or rewrite its instruction to change when and how the bot uses it. A blank instruction uses the built-in default. Every tool is ownership-scoped and logged; turning a <strong>core</strong> tool off will noticeably dull the concierge. To add a new one, ask your developer — a model tool needs a handler in the concierge function.</p>
         <div id="tools-list"></div>
         <div class="card-foot" style="margin-top:16px;">
           <button id="tools-save" class="btn primary">Save changes</button>
@@ -2609,7 +2606,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <h3>Form tools</h3>
           <span class="micro">capabilities you can create — the bot hands these out in chat</span>
         </div>
-        <p class="note" style="margin-bottom:16px;"><strong>This is how you give the concierge a new capability without code.</strong> A form tool renders inside the chat when the concierge emits its <code>{{form:slug:serial}}</code> token, so it's <strong>order-scoped</strong> (it carries a serial). Each binds to one <strong>write path</strong> (a register action such as <code>update_shipping_address</code> or <code>update_gift_details</code>) — pick it when you create the tool. <strong>Fields</strong> are the labelled inputs the patron fills in (JSON: name, label, type <code>text · state · zip</code>, required, maxlength); at least one is required. Submissions run through the same verified, audited path as the bot's own tools, and — because the patron types each labelled field — this is the safe way to collect things the model shouldn't free-type (like an address). Turn one off to stop the bot offering it. Full guide: <code>FORMS.md</code>.</p>
+        <p class="note" style="margin-bottom:16px;"><strong>This is how you give the concierge a new capability without code.</strong> A form tool renders inside the chat when the concierge emits its <code>{{form:slug:serial}}</code> token, so it's <strong>order-scoped</strong> (it carries a serial). Each binds to one <strong>write path</strong> (a register action such as <code>update_shipping_address</code> or <code>update_gift_details</code>) — pick it when you create the tool. <strong>Fields</strong> are the labelled inputs the patron fills in (JSON: name, label, type <code>text · state · zip</code>, required, maxlength); at least one is required. Submissions run through the same verified, audited path as the bot's own tools, and — because the patron types each labelled field — this is the safe way to collect things the model shouldn't free-type (like an address). Turn one off to stop the bot offering it.</p>
         <div id="forms-list"></div>
         <div class="card-foot">
           <button id="forms-add" class="btn primary">Create form tool</button>
@@ -2635,7 +2632,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           attributed order (serial-less, cancelled — it can never count as revenue), verifies the tier
           stamp and the order→conversation join, then deletes everything it created.
           <span class="mono">qa-</span> and <span class="mono">eval-</span> traffic is excluded from every
-          Conversion metric, so QA never moves production numbers. Spec: <span class="mono">ATTRIBUTION.md</span>.</p>
+          Conversion metric, so QA never moves production numbers.</p>
         <div class="card-foot"><button id="attrqa-run" class="btn primary" type="button">Run attribution QA</button></div>
         <div id="attrqa-out" class="micro" style="margin-top:10px;"></div>
       </section>
@@ -8515,7 +8512,7 @@ function renderCustomers() {
     const sw = el('span', 'swatch'); sw.style.background = t[2]; c.appendChild(sw);
     c.appendChild(document.createTextNode(t[1] + ' '));
     c.appendChild(el('span', 'n', String(tCounts[t[0]])));
-    c.title = 'Attribution tier — see ATTRIBUTION.md';
+    c.title = 'Attribution tier';
     c.addEventListener('click', function () {
       state.custVia = (state.custVia === t[0]) ? '' : t[0];
       renderCustomers();
