@@ -10086,6 +10086,7 @@ function calTypeRow(t) {
       const typeId = up.data && up.data[0] && up.data[0].id;
       const loc = (state.calLocs.length > 1 && locSelEl)
         ? state.calLocs.find((l) => l.slug === locSelEl.value) : state.calLocs[0];
+      let warn = '';
       if (typeId && loc) {
         const lines = g('avail').value.trim();
         const rows = [];
@@ -10109,12 +10110,15 @@ function calTypeRow(t) {
           // out-of-hours warning (the clamp will silently yield nothing otherwise)
           const hrs = state.calHours.filter((h) => h.location_id === loc.id);
           const escapes = rows.filter((r2) => !hrs.some((h) => h.dow === r2.dow && h.open_min < r2.end_min && h.close_min > r2.start_min));
-          if (escapes.length) $('cal-note').textContent =
+          if (escapes.length) warn =
             'Saved — but ' + escapes.length + ' window(s) fall entirely outside ' + loc.title +
             "'s business hours and will yield no slots.";
         }
       }
-      loadCalendar();
+      // the reload clears #cal-note — put the warning back AFTER it, or the
+      // operator never sees why their new window will produce nothing
+      await loadCalendar();
+      if (warn) $('cal-note').textContent = warn;
     } catch (e) { calFail(e); }
   });
   return box;
