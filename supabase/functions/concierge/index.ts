@@ -1093,6 +1093,23 @@ const REGISTER_TOOLS: any[] = [
     },
   },
   {
+    name: "change_callback",
+    description:
+      "Change an OPEN callback request — a new preferred window (in their words) and/or a " +
+      "corrected phone number. Use the id from the CALLBACKS context line or get_my_appointments. " +
+      "Never for a callback already handled ('done') — that call was made; offer a fresh " +
+      "request_callback instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        callback_id: { type: "integer", description: "The callback's id, from context or get_my_appointments." },
+        window_pref: { type: "string", description: "The new window, in their words." },
+        phone: { type: "string", description: "A corrected number, if they gave one." },
+      },
+      required: ["callback_id"],
+    },
+  },
+  {
     name: "cancel_appointment",
     description:
       "Cancel their booking or callback — always granted graciously, never guilt. Confirm WHICH " +
@@ -1125,6 +1142,7 @@ const REGISTER_TOOLS: any[] = [
         notes: { type: "string", description: "One line of context." },
       },
       required: ["name", "phone", "window_pref"],
+      /* change_callback (below) edits an OPEN request; this one only creates */
     },
   },
   {
@@ -1224,7 +1242,7 @@ const CORE_TOOLS = new Set(["get_my_orders", "recall_context"]);
 const BOOKING_TOOL_NAMES = new Set([
   "get_available_times", "book_appointment", "get_my_appointments",
   "reschedule_appointment", "update_appointment", "cancel_appointment",
-  "request_callback",
+  "request_callback", "change_callback",
 ]);
 function bookingsEnabled(config: unknown): boolean {
   // deno-lint-ignore no-explicit-any
@@ -1311,8 +1329,8 @@ async function bookingContextBlock(config: unknown,
       // identities ride the prompt — status and timing only.
       try {
         const since = new Date(Date.now() - 14 * 86400000).toISOString();
-        const cbs = await pgSelect<{ status: string; window_pref: string | null; created_at: string; updated_at: string }>(
-          `concierge_appointments?select=status,window_pref,created_at,updated_at&${who}` +
+        const cbs = await pgSelect<{ id: number; status: string; window_pref: string | null; created_at: string; updated_at: string }>(
+          `concierge_appointments?select=id,status,window_pref,created_at,updated_at&${who}` +
           `&kind=eq.callback&qa=eq.false&created_at=gt.${since}&order=created_at.desc&limit=2`);
         if (cbs && cbs.length) {
           const fmtT = (iso: string) => {
@@ -1325,7 +1343,7 @@ async function bookingContextBlock(config: unknown,
           };
           const parts = cbs.map((c) =>
             c.status === "open"
-              ? `a callback IS on file (logged ${fmtT(c.created_at)}${c.window_pref ? `, they asked for "${String(c.window_pref).slice(0, 80)}"` : ""}) — the house has not called yet`
+              ? `callback #${c.id} IS on file (logged ${fmtT(c.created_at)}${c.window_pref ? `, they asked for "${String(c.window_pref).slice(0, 80)}"` : ""}) — the house has not called yet; it stays THEIRS to change (change_callback) or cancel (cancel_appointment)`
               : c.status === "done"
               ? `the house ALREADY MADE the requested call (${fmtT(c.updated_at)}) — reference it, never offer to log it again`
               : `an earlier callback request was cancelled`);
@@ -1375,7 +1393,8 @@ function buildToolsForModel(data: ConciergeData): any[] {
     // the toggle cascade's master switch: calendar off ⇒ the model never
     // even sees the booking tools (and callbacks have their own sub-switch)
     if (BOOKING_TOOL_NAMES.has(tool.name) && !bookingsEnabled(data.config)) continue;
-    if (tool.name === "request_callback" && !callbacksEnabled(data.config)) continue;
+    if ((tool.name === "request_callback" || tool.name === "change_callback") &&
+        !callbacksEnabled(data.config)) continue;
     if (o && typeof o.description === "string" && o.description.trim().length > 0) {
       out.push({ ...tool, description: o.description });
     } else {
@@ -1812,6 +1831,30 @@ async function runRegisterTool(
       }
       delete r.staff_email;
       return JSON.stringify(r);
+    }
+
+    if (name === "change_callback") {
+      const cbId = typeof input.callback_id === "number" ? input.callback_id : NaN;
+      if (!Number.isFinite(cbId)) return "ERROR: which callback? Use the id on file.";
+      const r = await pgRpc<Record<string, unknown>>("change_callback", {
+        p_id: cbId,
+        p_window: typeof input.window_pref === "string" ? input.window_pref.trim().slice(0, 200) : null,
+        p_phone: typeof input.phone === "string" ? input.phone.trim().slice(0, 40) : null,
+        p_customer: customer?.id ?? null,
+        p_session: sessKey ?? null,
+      });
+      if (!r) return "ERROR: the register is unreachable right now.";
+      if (r.ok !== true) {
+        return r.reason === "not_found"
+          ? "ERROR: no open callback with that id — it may already be handled or cancelled. Offer a fresh request."
+          : r.reason === "not_yours"
+          ? "ERROR: that callback is not theirs to change."
+          : "ERROR: nothing to change — they need to give a new window or a new number.";
+      }
+      await logAction(cid, safeCust, "change_callback", null,
+        { window: r.window_pref }, `callback #${cbId}`);
+      return JSON.stringify({ ok: true, callback_id: cbId, window_pref: r.window_pref,
+        note: "Updated. The promise is unchanged: someone will call in that window." });
     }
 
     if (name === "request_callback") {
@@ -6272,6 +6315,7 @@ async function handleChatPost(req: Request): Promise<Response> {
                 update_appointment: "Amending the booking…",
                 cancel_appointment: "Releasing the time…",
                 request_callback: "Noting the callback…",
+                change_callback: "Updating the callback…",
               } as Record<string, string>)[block.name] ?? "Consulting the register…";
               send({ s: label });
               // submit_inquiry is the inquiry-mode conversion event — stamp it with

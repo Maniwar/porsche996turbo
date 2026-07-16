@@ -1984,6 +1984,44 @@ end $$;
 grant execute on function public.cancel_appointment(bigint,uuid,uuid,text) to authenticated;
 revoke execute on function public.cancel_appointment(bigint,uuid,uuid,text) from public, anon;
 
+-- ── Change an OPEN callback — the request stays the visitor's to shape ───────
+-- New window (their words) and/or corrected number; ownership = the signed-in
+-- customer or the same session (admin override); a handled ('done') or
+-- cancelled callback refuses — the call already happened or the intent died.
+create or replace function public.change_callback(
+  p_id bigint, p_window text default null, p_phone text default null,
+  p_customer uuid default null, p_session text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_row public.concierge_appointments%rowtype;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select * into v_row from public.concierge_appointments
+    where id = p_id and kind = 'callback' and status = 'open';
+  if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  -- three-valued logic guard: a NULL owner must never satisfy ownership
+  if not coalesce(
+          (p_customer is not null and v_row.customer_id = p_customer)
+          or (p_session is not null and v_row.session_key = p_session)
+          or public.is_concierge_admin(), false) then
+    return jsonb_build_object('ok', false, 'reason', 'not_yours');
+  end if;
+  if coalesce(nullif(trim(p_window), ''), nullif(trim(p_phone), '')) is null then
+    return jsonb_build_object('ok', false, 'reason', 'nothing_to_change');
+  end if;
+  update public.concierge_appointments
+    set window_pref     = coalesce(nullif(trim(p_window), ''), window_pref),
+        visitor_contact = coalesce(nullif(trim(p_phone), ''), visitor_contact),
+        updated_at      = now()
+    where id = p_id;
+  return jsonb_build_object('ok', true, 'id', p_id,
+    'window_pref', coalesce(nullif(trim(p_window), ''), v_row.window_pref));
+end $$;
+grant execute on function public.change_callback(bigint,text,text,uuid,text) to authenticated;
+revoke execute on function public.change_callback(bigint,text,text,uuid,text) from public, anon;
+
 -- ── Departures — hand a visit (or a whole book) to whoever is free ───────────
 -- Same candidate rules as booking: qualified for the offering, working that
 -- location/day/time, not on time off, no overlapping visit (any offering,
@@ -3496,7 +3534,7 @@ insert into public.concierge_sops (slug, title, content_md, sort_order) values
 5. If the register answers that the house confirms requests, promise exactly that: "the house will confirm shortly — you'll have an email either way." Never present a request as a done deal.
 6. If the register answers taken, the slot went to someone else while you spoke: say so plainly and warmly, then offer the nearest alternatives the register returned. Never argue, never blame, never promise to "squeeze them in".
 7. Changes are always granted graciously — moving, resizing, correcting, or cancelling. First confirm WHICH booking (the register lists theirs); then make exactly the change they asked, and restate the result in one line. When moving a time: their existing slot is safe until the new one is theirs — if the new time was just taken, say their original still stands and offer the alternatives the register returned. When the house confirms moves by hand, say both truths plainly: the current booking holds; the new time awaits the house's confirmation. Never guilt, never a cancellation they didn't ask for.
-8. A CALLBACK request needs their name, their number, and a preferred window in their words — collect all three BEFORE promising anything. The request exists only once the tool returns ok; until then never say it is logged or that someone will call. Then one honest promise: "someone will call you then" — never a precise minute you cannot guarantee, never "right away". When the house is closed, promise what the register provides — never a window the house cannot keep. If they later ask about their callback, answer from the CALLBACKS context line — including when the house has already made the call.
+8. A CALLBACK request needs their name, their number, and a preferred window in their words — collect all three BEFORE promising anything. The request exists only once the tool returns ok; until then never say it is logged or that someone will call. Then one honest promise: "someone will call you then" — never a precise minute you cannot guarantee, never "right away". When the house is closed, promise what the register provides — never a window the house cannot keep. If they later ask about their callback, answer from the CALLBACKS context line — including when the house has already made the call. An open request stays theirs to shape: change the window or number with change_callback, or cancel it — always graciously.
 8a. Asked whether the house is open, answer from the HOURS the register provides — including when it opens next — never from memory or the page's prose if they disagree.
 9. The calendar is never used for pressure ("slots are going fast") unless the register genuinely shows scarcity — and even then, state the fact once, plainly.$sop$, 13)
 on conflict (slug) do nothing;
