@@ -11687,7 +11687,8 @@ async function loadCalendar() {
             : '<button class="btn ghost mini" type="button" data-ro-re title="Puts this back as approved time off.">Restore</button>';
           row.innerHTML = '<b style="min-width:70px;">' + esc(who ? who.name : '?') + '</b>' +
             '<span class="micro mono">' + esc(when + (r.note ? ' · ' + r.note : '')) + '</span>' +
-            chip2 + acts2;
+            chip2 + acts2 +
+            '<button class="btn ghost mini" type="button" data-ro-edit title="Move or reshape these days — the reason and the decision state stay.">edit</button>';
           const setSt = async (s2) => {
             try {
               for (const id of r.ids) {
@@ -11701,6 +11702,52 @@ async function loadCalendar() {
            ['[data-ro-back]', 'returned'], ['[data-ro-re]', 'approved']].forEach(([sel, s2]) => {
             const b2 = row.querySelector(sel);
             if (b2) b2.addEventListener('click', () => setSt(s2));
+          });
+          row.querySelector('[data-ro-edit]').addEventListener('click', () => {
+            const form = document.createElement('span');
+            form.className = 'cal-frow'; form.style.gap = '6px';
+            form.innerHTML = '<input type="date" data-me="from" value="' + r.from + '">' +
+              '<span class="micro">to</span><input type="date" data-me="to" value="' + r.to + '">' +
+              (r.closed ? '' : ' <input type="time" data-me="tf" value="' + calT(r.start_min) + '">' +
+                '<span class="micro">–</span><input type="time" data-me="tt" value="' + calT(r.end_min) + '">') +
+              '<button class="btn ghost mini" type="button" data-me-save>Save the change</button>' +
+              '<button class="btn ghost mini" type="button" data-me-x>cancel</button>';
+            row.textContent = '';
+            row.appendChild(el('b', '', who ? who.name : '?'));
+            row.appendChild(form);
+            form.querySelector('[data-me-x]').addEventListener('click', () => loadCalendar());
+            form.querySelector('[data-me-save]').addEventListener('click', async () => {
+              try {
+                const d1 = form.querySelector('[data-me="from"]').value;
+                const d2 = (form.querySelector('[data-me="to"]').value || d1);
+                if (!d1) throw new Error('Pick a date.');
+                if (d2 < d1) throw new Error('Time off ends before it starts.');
+                let sMin = r.start_min; let eMin = r.end_min;
+                if (!r.closed) {
+                  sMin = calMin(form.querySelector('[data-me="tf"]').value || '');
+                  eMin = calMin(form.querySelector('[data-me="tt"]').value || '');
+                  if (sMin === null || eMin === null) throw new Error('Time off needs both times.');
+                  if (eMin <= sMin) throw new Error('Time off ends before it starts.');
+                  if (d2 !== d1) throw new Error('A time window fits a single day — keep one date.');
+                }
+                const daysArr = [];
+                for (let dd = d1; dd <= d2; dd = dayAfter(dd)) {
+                  daysArr.push(dd);
+                  if (daysArr.length > 62) throw new Error('That is over two months of days — check the dates.');
+                }
+                for (const id of r.ids) {
+                  const res = await sb.from('concierge_availability_exceptions').delete().eq('id', id);
+                  if (res.error) throw new Error(res.error.message);
+                }
+                const ins = await sb.from('concierge_availability_exceptions').insert(daysArr.map((dd) => {
+                  const nrow = { on_date: dd, closed: r.closed, staff_id: r.staff_id, note: r.note, status: r.status };
+                  if (!r.closed) { nrow.start_min = sMin; nrow.end_min = eMin; }
+                  return nrow;
+                }));
+                if (ins.error) throw new Error(ins.error.message);
+                loadCalendar();
+              } catch (e2) { calFail(e2); }
+            });
           });
           roll.appendChild(row);
         });
