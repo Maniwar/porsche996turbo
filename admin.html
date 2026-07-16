@@ -333,6 +333,24 @@
   .emails .btn{ padding:4px 10px; font-size:11px; }
   .tok-ref{ width:100%; border-collapse:collapse; font-size:13px; }
   .tok-ref td{ padding:8px 10px; border-top:1px solid var(--hairline-dim); vertical-align:top; color:var(--text); }
+  /* Calendar tab */
+  .cal-sect{ margin:12px 0 6px; letter-spacing:.12em; text-transform:uppercase; display:flex; align-items:center; gap:7px; }
+  .cal-dot{ width:7px; height:7px; border-radius:50%; display:inline-block; }
+  .cal-board{ display:flex; flex-direction:column; gap:7px; }
+  .cal-item{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:9px 12px; border:1px solid var(--hairline-dim); border-radius:9px; }
+  .cal-pill{ font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; padding:2px 8px; border:1px solid; border-radius:999px; white-space:nowrap; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7, minmax(132px, 1fr)); gap:8px; overflow-x:auto; }
+  .cal-day{ border:1px solid var(--hairline-dim); border-radius:9px; padding:8px; min-height:76px; }
+  .cal-day.today{ border-color:rgba(211,184,142,.55); }
+  .cal-day-h{ font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; opacity:.75; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .cal-chip{ font-size:.78rem; padding:4px 7px; border-radius:6px; background:rgba(128,128,128,.12); margin-top:4px; line-height:1.3; }
+  .cal-chip.req{ background:transparent; border:1px dashed rgba(211,184,142,.6); }
+  .cal-loc, .cal-offer{ border:1px solid var(--hairline-dim); border-radius:10px; padding:12px 14px; margin-top:10px; }
+  .cal-offer{ display:flex; flex-direction:column; gap:9px; }
+  .cal-hours{ display:grid; grid-template-columns:38px minmax(200px, 460px); gap:5px 8px; align-items:center; margin-top:6px; }
+  .cal-field{ display:inline-flex; flex-direction:column; gap:3px; }
+  .cal-field>span{ font-size:.64rem; letter-spacing:.09em; text-transform:uppercase; opacity:.7; white-space:nowrap; }
+  .cal-frow{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
   .tok-ref td:first-child{ white-space:nowrap; width:1%; }
   .tok-ref code{ font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:var(--brass-soft); background:rgba(211,184,142,.08); padding:1px 5px; border-radius:4px; }
   .imgrow{ display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--hairline-dim); flex-wrap:wrap; }
@@ -9688,6 +9706,7 @@ async function loadSpend() {
    Queue-first; fail-visible (#cal-note); every mutation is the same RPC the
    chat uses, so the two surfaces can never disagree. */
 const CAL_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const CAL_TONES = { amber:'#d3b88e', green:'#a3be8c', red:'#d08770', blue:'#8fa6bd', dim:'#8a8a8a' };
 function calFail(e) {
   $('cal-note').textContent = 'Calendar problem — ' + (e && e.message ? e.message : String(e));
   console.warn('[concierge-admin] calendar:', e);
@@ -9713,9 +9732,11 @@ function calWhen(iso, tz) {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
   } catch (e) { return iso; }
 }
-function calRow(html) { const d = document.createElement('div');
-  d.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:6px 0;border-top:1px solid rgba(128,128,128,.15);';
-  d.innerHTML = html; return d; }
+function calItem(html) { const d = document.createElement('div'); d.className = 'cal-item'; d.innerHTML = html; return d; }
+function calPill(text, tone) {
+  const c = CAL_TONES[tone] || CAL_TONES.dim;
+  return '<span class="cal-pill" style="border-color:' + c + ';color:' + c + ';">' + text + '</span>';
+}
 async function calRpc(fn, args) {
   const r = await sb.rpc(fn, args || {});
   if (r.error) throw new Error(fn + ': ' + (r.error.message || JSON.stringify(r.error)));
@@ -9756,97 +9777,127 @@ async function loadCalendar() {
     $('cal-cap').value = (typeof bcfg.maxOpenPerContact === 'number') ? bcfg.maxOpenPerContact : '';
     $('cal-ttl').value = (typeof bcfg.requestTtlHours === 'number') ? bcfg.requestTtlHours : '';
 
-    /* the queue */
+    /* the queue — a triage board: newest obligations first, one row per act */
     const qEl = $('cal-queue'); qEl.textContent = '';
     const pending = (q.requested || []).length + (q.callbacks || []).length + (q.needs_closing || []).length;
     calBadge(pending);
-    const sect = (title, rows, render, empty) => {
-      const h = el('div', 'micro', title); h.style.cssText = 'margin:10px 0 2px;letter-spacing:.12em;text-transform:uppercase;';
+    const sect = (title, tone, rows, render, empty) => {
+      const n = rows ? rows.length : 0;
+      const h = document.createElement('div'); h.className = 'micro cal-sect';
+      h.innerHTML = '<span class="cal-dot" style="background:' + CAL_TONES[tone] + (n ? '' : ';opacity:.25') + ';"></span>' +
+        esc(title) + ' · ' + n;
       qEl.appendChild(h);
-      if (!rows || !rows.length) { qEl.appendChild(el('div', 'empty micro', empty)); return; }
-      rows.forEach((r) => qEl.appendChild(render(r)));
+      if (!n) { qEl.appendChild(el('div', 'empty micro', empty)); return; }
+      const board = document.createElement('div'); board.className = 'cal-board';
+      rows.forEach((r) => board.appendChild(render(r)));
+      qEl.appendChild(board);
     };
     const convoLink = (r) => r.conversation_id
       ? ' <a href="#conversations" onclick="state.convoJump=\'' + r.conversation_id + '\'" class="mono micro">chat↗</a>' : '';
-    sect('Awaiting confirmation', q.requested, (r) => calRow(
-      '<span>' + (r.is_move ? '↷ move — ' : '') + esc(r.name) + ' · ' + esc(r.type || '') +
-      ' · ' + calWhen(r.starts_at) + (r.location ? ' at ' + esc(r.location) : '') +
-      (r.party ? ' · party ' + r.party : '') + '</span>' +
+    const ttlPill = (r) => {
+      if (!r.ttl_deadline) return '';
+      const hLeft = (new Date(r.ttl_deadline) - Date.now()) / 36e5;
+      if (hLeft <= 0) return calPill('expiring', 'red');
+      const label = hLeft < 2 ? Math.max(1, Math.round(hLeft * 60)) + 'm left' : Math.round(hLeft) + 'h left';
+      return calPill(label, hLeft < 2 ? 'red' : 'dim');
+    };
+    sect('Awaiting confirmation', 'amber', q.requested, (r) => calItem(
+      calPill(r.is_move ? 'move request' : 'new request', 'amber') + ttlPill(r) +
+      '<b>' + esc(r.name) + '</b><span>' + esc(r.type || '') + '</span>' +
+      '<span>' + calWhen(r.starts_at) + '</span>' +
+      (r.location ? '<span class="micro">at ' + esc(r.location) + '</span>' : '') +
+      (r.party ? '<span class="micro">party of ' + r.party + '</span>' : '') +
       '<span class="micro mono">' + esc(r.contact) + '</span>' +
       (r.notes ? '<span class="micro">“' + esc(r.notes) + '”</span>' : '') + convoLink(r) +
-      '<span style="margin-left:auto;"><button class="btn" onclick="calAct(\'confirm_appointment\',{p_id:' + r.id + '})">✓ Confirm</button> ' +
+      '<span style="margin-left:auto;white-space:nowrap;"><button class="btn" onclick="calAct(\'confirm_appointment\',{p_id:' + r.id + '})">✓ Confirm</button> ' +
       '<button class="btn ghost" onclick="calAct(\'cancel_appointment\',{p_id:' + r.id + '})">✗ Decline</button></span>'),
       'Nothing awaiting confirmation.');
-    sect('Callbacks', q.callbacks, (r) => calRow(
-      '<span>' + esc(r.name) + ' — ' + esc(r.contact) + '</span>' +
-      '<span class="micro">window: “' + esc(r.window_pref || '') + '”</span>' +
-      '<span class="micro' + (r.age_min > 1440 ? '" style="color:#d08770;' : '') + '">' + Math.round(r.age_min / 60) + 'h old</span>' + convoLink(r) +
+    sect('Callbacks to make', 'blue', q.callbacks, (r) => calItem(
+      calPill('call back', 'blue') + '<b>' + esc(r.name) + '</b>' +
+      '<span class="micro mono">' + esc(r.contact) + '</span>' +
+      '<span class="micro">window: “' + esc(r.window_pref || 'any') + '”</span>' +
+      '<span class="micro"' + (r.age_min > 1440 ? ' style="color:' + CAL_TONES.red + ';"' : '') + '>waiting ' +
+      (r.age_min >= 60 ? Math.round(r.age_min / 60) + 'h' : Math.round(r.age_min) + 'm') + '</span>' + convoLink(r) +
       '<span style="margin-left:auto;"><button class="btn" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'done\'})">Done</button></span>'),
       'No open callbacks.');
-    sect('Today', q.today, (r) => calRow(
-      '<span>' + calWhen(r.starts_at) + ' — ' + esc(r.name) + ' · ' + esc(r.type || '') +
-      (r.location ? ' at ' + esc(r.location) : '') + (r.party ? ' · party ' + r.party : '') + '</span>' +
+    sect('Today', 'green', q.today, (r) => calItem(
+      calPill(r.status === 'requested' ? 'unconfirmed' : 'confirmed', r.status === 'requested' ? 'amber' : 'green') +
+      '<b>' + calWhen(r.starts_at) + '</b><span>' + esc(r.name) + ' · ' + esc(r.type || '') + '</span>' +
+      (r.location ? '<span class="micro">at ' + esc(r.location) + '</span>' : '') +
+      (r.party ? '<span class="micro">party of ' + r.party + '</span>' : '') +
       (r.notes ? '<span class="micro">“' + esc(r.notes) + '”</span>' : '') +
-      ((r.open_notes || []).length ? '<span class="micro" style="color:#d3b88e;">DUE: ' + r.open_notes.map(esc).join(' · ') + '</span>' : '') +
+      ((r.open_notes || []).length ? '<span class="micro" style="color:' + CAL_TONES.amber + ';">DUE: ' + r.open_notes.map(esc).join(' · ') + '</span>' : '') +
       convoLink(r)),
       'No visits today.');
-    sect('Needs closing', q.needs_closing, (r) => calRow(
-      '<span>' + calWhen(r.starts_at) + ' — ' + esc(r.name) + ' · ' + esc(r.type || '') + '</span>' + convoLink(r) +
-      '<span style="margin-left:auto;"><button class="btn" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'})">Completed</button> ' +
+    sect('Needs closing out', 'red', q.needs_closing, (r) => calItem(
+      calPill('past visit', 'red') + '<b>' + calWhen(r.starts_at) + '</b>' +
+      '<span>' + esc(r.name) + ' · ' + esc(r.type || '') + '</span>' + convoLink(r) +
+      '<span style="margin-left:auto;white-space:nowrap;"><button class="btn" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'})">Completed</button> ' +
       '<button class="btn ghost" onclick="calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'})">No-show</button></span>'),
       'Nothing to close out.');
 
-    /* week */
+    /* the week — a 7-column grid; each visit is a chip on its location-local day */
     const wEl = $('cal-week'); wEl.textContent = '';
-    if (!week.length) { wEl.appendChild(el('div', 'empty micro', 'No standing bookings in the next 7 days.')); }
-    else {
-      let day = '';
-      week.forEach((r) => {
-        const d = String(r.starts_at).slice(0, 10);
-        if (d !== day) { day = d;
-          const h = el('div', 'micro', calWhen(r.starts_at, r.location_tz).split(',')[0] + ' · ' + d);
-          h.style.cssText = 'margin:10px 0 2px;letter-spacing:.12em;text-transform:uppercase;'; wEl.appendChild(h); }
-        wEl.appendChild(calRow('<span>' + calWhen(r.starts_at, r.location_tz) + ' — ' + esc(r.name) +
-          ' · ' + esc(r.type || '') + (r.location ? ' at ' + esc(r.location) : '') +
-          (r.status === 'requested' ? ' <span class="micro">(awaiting confirmation)</span>' : '') + '</span>' +
-          '<span class="micro mono">' + esc(r.contact) + '</span>' + convoLink(r)));
+    const byDay = {};
+    week.forEach((r) => {
+      let key;
+      try { key = new Intl.DateTimeFormat('en-CA', { timeZone: r.location_tz || undefined }).format(new Date(r.starts_at)); }
+      catch (e2) { key = String(r.starts_at).slice(0, 10); }
+      (byDay[key] = byDay[key] || []).push(r);
+    });
+    const grid = document.createElement('div'); grid.className = 'cal-grid';
+    for (let i2 = 0; i2 < 7; i2++) {
+      const dt = new Date(); dt.setDate(dt.getDate() + i2);
+      const key = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+      const rows = (byDay[key] || []).slice().sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
+      const col = document.createElement('div'); col.className = 'cal-day' + (i2 === 0 ? ' today' : '');
+      col.innerHTML = '<div class="cal-day-h"><span>' + CAL_DAYS[dt.getDay()] + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate() +
+        '</span><span>' + (rows.length || '') + '</span></div>';
+      rows.forEach((r) => {
+        const chip = document.createElement('div');
+        chip.className = 'cal-chip' + (r.status === 'requested' ? ' req' : '');
+        chip.title = (r.type || '') + (r.location ? ' at ' + r.location : '') + ' · ' + (r.contact || '') +
+          (r.status === 'requested' ? ' · awaiting confirmation' : '');
+        chip.textContent = calWhen(r.starts_at, r.location_tz).split(', ').pop() + ' · ' + (r.name || '');
+        col.appendChild(chip);
       });
+      grid.appendChild(col);
     }
+    wEl.appendChild(grid);
+    if (!week.length) wEl.appendChild(el('div', 'empty micro', 'No standing bookings in the next 7 days — dashed chips will mean “awaiting confirmation”.'));
 
-    /* locations & hours — progressive disclosure */
+    /* locations & hours — one card per place */
     const lEl = $('cal-locs'); lEl.textContent = '';
     locs.forEach((l) => {
-      const head = calRow('<b>' + esc(l.title) + '</b> <span class="micro mono">' + esc(l.slug) + '</span>' +
-        '<label class="micro">tz <input value="' + esc(l.timezone) + '" data-f="timezone" style="width:190px;"></label>' +
-        '<label class="micro">address <input value="' + esc(l.address || '') + '" data-f="address" style="width:220px;"></label>' +
-        '<label class="micro"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> on</label>' +
-        '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button>');
-      head.dataset.locId = l.id;
-      lEl.appendChild(head);
-      const grid = document.createElement('div');
-      grid.style.cssText = 'padding:4px 0 10px 14px;';
+      const card = document.createElement('div'); card.className = 'cal-loc'; card.dataset.locId = l.id;
+      card.innerHTML =
+        '<div class="cal-frow">' +
+        '<div style="padding-bottom:4px;"><b>' + esc(l.title) + '</b> <span class="micro mono">' + esc(l.slug) + '</span></div>' +
+        '<label class="cal-field"><span>timezone (IANA)</span><input value="' + esc(l.timezone) + '" data-f="timezone" style="width:200px;"></label>' +
+        '<label class="cal-field"><span>address</span><input value="' + esc(l.address || '') + '" data-f="address" style="width:230px;"></label>' +
+        '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> open for booking</label>' +
+        '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button></div>' +
+        '<div class="micro" style="margin-top:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Business hours</div>' +
+        '<div class="micro" style="opacity:.7;">Leave a day blank to stay closed; comma-separate split shifts (09:00-13:00, 14:00-18:00).</div>';
+      const hoursGrid = document.createElement('div'); hoursGrid.className = 'cal-hours';
       for (let d = 0; d < 7; d++) {
         const ranges = state.calHours.filter((h) => h.location_id === l.id && h.dow === d)
           .map((h) => calHm(h.open_min) + '-' + calHm(h.close_min)).join(', ');
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin:2px 0;';
-        row.innerHTML = '<span class="micro mono" style="width:34px;">' + CAL_DAYS[d] + '</span>' +
-          '<input data-hours-day="' + d + '" data-loc="' + l.id + '" value="' + esc(ranges) +
-          '" placeholder="closed — or 09:00-13:00, 14:00-18:00" style="width:320px;">';
-        grid.appendChild(row);
+        const lab = document.createElement('span'); lab.className = 'micro mono'; lab.textContent = CAL_DAYS[d];
+        const inp = document.createElement('input');
+        inp.value = ranges; inp.placeholder = 'closed';
+        inp.setAttribute('data-hours-day', d); inp.setAttribute('data-loc', l.id);
+        hoursGrid.appendChild(lab); hoursGrid.appendChild(inp);
       }
+      card.appendChild(hoursGrid);
       const sv = document.createElement('button'); sv.className = 'btn ghost'; sv.type = 'button';
+      sv.style.marginTop = '8px';
       sv.textContent = 'Save hours'; sv.addEventListener('click', () => calSaveHours(l.id));
-      grid.appendChild(sv);
-      lEl.appendChild(grid);
+      card.appendChild(sv);
+      lEl.appendChild(card);
     });
     const addEl = $('cal-add-loc'); addEl.textContent = '';
-    if (locs.length === 1) {
-      const a = document.createElement('a'); a.href = '#'; a.className = 'micro';
-      a.textContent = '+ Add a second location (each keeps its own clock and hours)';
-      a.addEventListener('click', (ev) => { ev.preventDefault(); a.replaceWith(calNewLocRow()); });
-      addEl.appendChild(a);
-    } else { addEl.appendChild(calNewLocRow()); }
+    addEl.appendChild(calNewLocRow());
 
     /* offerings */
     const tEl = $('cal-types'); tEl.textContent = '';
@@ -9859,10 +9910,11 @@ async function loadCalendar() {
     exc.forEach((x) => {
       const loc = locs.find((l) => l.id === x.location_id);
       const typ = types.find((t) => t.id === x.type_id);
-      eEl.appendChild(calRow('<span>' + esc(x.on_date) + ' — ' +
-        (x.closed ? 'closed' : (calHm(x.start_min) + '-' + calHm(x.end_min))) +
-        ' · ' + (loc ? esc(loc.title) : 'every location') + ' · ' + (typ ? esc(typ.title) : 'all offerings') +
-        (x.note ? ' · ' + esc(x.note) : '') + '</span>' +
+      eEl.appendChild(calItem(calPill(x.closed ? 'closed' : 'special hours', x.closed ? 'red' : 'amber') +
+        '<b>' + esc(x.on_date) + '</b><span>' +
+        (x.closed ? 'closed all day' : (calHm(x.start_min) + '-' + calHm(x.end_min))) + '</span>' +
+        '<span class="micro">' + (loc ? esc(loc.title) : 'every location') + ' · ' + (typ ? esc(typ.title) : 'all offerings') + '</span>' +
+        (x.note ? '<span class="micro">' + esc(x.note) + '</span>' : '') +
         '<span style="margin-left:auto;"><button class="btn ghost" data-del-exc="' + x.id + '">Remove</button></span>'));
     });
     eEl.querySelectorAll('[data-del-exc]').forEach((b) => b.addEventListener('click', async () => {
@@ -9880,10 +9932,12 @@ async function loadCalendar() {
   } catch (e) { calFail(e); }
 }
 function calNewLocRow() {
-  const d = calRow('<input id="cal-nl-slug" placeholder="slug (e.g. downtown)" style="width:140px;">' +
-    '<input id="cal-nl-title" placeholder="Name" style="width:160px;">' +
-    '<input id="cal-nl-tz" placeholder="IANA timezone (e.g. America/Chicago)" style="width:230px;">' +
-    '<button id="cal-nl-add" class="btn ghost" type="button">Add location</button>');
+  const d = document.createElement('div'); d.className = 'cal-frow';
+  d.innerHTML =
+    '<label class="cal-field"><span>new location — name</span><input id="cal-nl-title" placeholder="Downtown studio" style="width:170px;"></label>' +
+    '<label class="cal-field"><span>slug</span><input id="cal-nl-slug" placeholder="downtown" style="width:120px;"></label>' +
+    '<label class="cal-field"><span>timezone (IANA)</span><input id="cal-nl-tz" placeholder="America/Chicago" style="width:200px;"></label>' +
+    '<button id="cal-nl-add" class="btn ghost" type="button">＋ Add location</button>';
   d.querySelector('#cal-nl-add').addEventListener('click', async () => {
     const slug = d.querySelector('#cal-nl-slug').value.trim().toLowerCase();
     const title = d.querySelector('#cal-nl-title').value.trim();
@@ -9906,31 +9960,31 @@ function calTypeRow(t) {
   t = t || { slug: '', title: '', duration_min: 30, step_min: 30, mode: 'in-person', buffer_min: 0,
     lead_time_min: 240, horizon_days: 21, capacity: 1, max_party: 0, confirm_mode: 'auto',
     intake_prompt: '', enabled: false, description: '' };
-  const box = document.createElement('div');
-  box.style.cssText = 'border-top:1px solid rgba(128,128,128,.2);padding:10px 0;';
+  const box = document.createElement('div'); box.className = 'cal-offer';
   const sel = (f, opts, cur) => '<select data-f="' + f + '">' +
     opts.map((o) => '<option value="' + o + '"' + (String(cur) === String(o) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>';
+  const fld = (label, inner) => '<label class="cal-field"><span>' + label + '</span>' + inner + '</label>';
   const locSel = locs.length > 1
-    ? '<label class="micro">location ' + sel('loc', locs.map((l) => l.slug), locs[0].slug) + '</label>' : '';
+    ? fld('location', sel('loc', locs.map((l) => l.slug), locs[0].slug)) : '';
   box.innerHTML =
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
-    '<input data-f="title" value="' + esc(t.title) + '" placeholder="Offering name" style="width:170px;">' +
-    '<input data-f="slug" value="' + esc(t.slug) + '" placeholder="slug" style="width:110px;"' + (isNew ? '' : ' readonly') + '>' +
-    '<label class="micro">min ' + sel('duration_min', [5,10,15,20,30,45,60,90,120,180,240], t.duration_min) + '</label>' +
-    '<label class="micro">grid ' + sel('step_min', [5,10,15,20,30,45,60], t.step_min) + '</label>' +
-    '<label class="micro">' + sel('mode', ['in-person','video','phone'], t.mode) + '</label>' +
-    '<label class="micro">buffer <input data-f="buffer_min" type="number" min="0" value="' + t.buffer_min + '" style="width:52px;"></label>' +
-    '<label class="micro">lead(min) <input data-f="lead_time_min" type="number" min="0" value="' + t.lead_time_min + '" style="width:64px;"></label>' +
-    '<label class="micro">horizon(d) <input data-f="horizon_days" type="number" min="1" value="' + t.horizon_days + '" style="width:52px;"></label>' +
-    '<label class="micro">cap <input data-f="capacity" type="number" min="1" value="' + t.capacity + '" style="width:44px;"></label>' +
-    '<label class="micro">party≤ <input data-f="max_party" type="number" min="0" value="' + t.max_party + '" style="width:44px;"></label>' +
-    '<label class="micro">' + sel('confirm_mode', ['auto','manual'], t.confirm_mode) + '</label>' +
-    '<label class="micro"><input data-f="enabled" type="checkbox"' + (t.enabled ? ' checked' : '') + '> on</label>' +
-    '</div>' +
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px;">' + locSel +
-    '<input data-f="avail" value="' + esc(isNew ? '' : calAvailText(t.id, locs[0] ? locs[0].id : 0)) +
-    '" placeholder="Sat 10:00-16:00; Tue 09:00-13:00 @15" style="flex:1 1 280px;">' +
-    '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="optional extra question" style="width:220px;">' +
+    '<div class="cal-frow">' +
+    fld('offering', '<input data-f="title" value="' + esc(t.title) + '" placeholder="e.g. Viewing" style="width:170px;">') +
+    fld('slug', '<input data-f="slug" value="' + esc(t.slug) + '" placeholder="viewing" style="width:120px;"' + (isNew ? '' : ' readonly') + '>') +
+    fld('duration (min)', sel('duration_min', [5,10,15,20,30,45,60,90,120,180,240], t.duration_min)) +
+    fld('start grid (min)', sel('step_min', [5,10,15,20,30,45,60], t.step_min)) +
+    fld('mode', sel('mode', ['in-person','video','phone'], t.mode)) +
+    fld('confirmation', sel('confirm_mode', ['auto','manual'], t.confirm_mode)) +
+    '<label class="micro" style="padding-bottom:6px;"><input data-f="enabled" type="checkbox"' + (t.enabled ? ' checked' : '') + '> bookable</label>' +
+    '</div><div class="cal-frow">' +
+    fld('concurrent slots', '<input data-f="capacity" type="number" min="1" value="' + t.capacity + '" style="width:64px;">') +
+    fld('party up to', '<input data-f="max_party" type="number" min="0" value="' + t.max_party + '" style="width:64px;">') +
+    fld('buffer after (min)', '<input data-f="buffer_min" type="number" min="0" value="' + t.buffer_min + '" style="width:64px;">') +
+    fld('notice needed (min)', '<input data-f="lead_time_min" type="number" min="0" value="' + t.lead_time_min + '" style="width:74px;">') +
+    fld('bookable ahead (days)', '<input data-f="horizon_days" type="number" min="1" value="' + t.horizon_days + '" style="width:64px;">') +
+    '</div><div class="cal-frow">' + locSel +
+    fld('weekly availability', '<input data-f="avail" value="' + esc(isNew ? '' : calAvailText(t.id, locs[0] ? locs[0].id : 0)) +
+      '" placeholder="Sat 10:00-16:00; Tue 09:00-13:00 @15" style="width:330px;">') +
+    fld('extra question (optional)', '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="asked once while booking" style="width:230px;">') +
     '<button class="btn ghost" data-save-type>Save</button></div>';
   const locSelEl = box.querySelector('[data-f="loc"]');
   if (locSelEl) locSelEl.addEventListener('change', () => {
