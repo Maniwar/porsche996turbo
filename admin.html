@@ -496,6 +496,32 @@
   .cal-pv-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
   .cal-pv{ font-family:var(--cal-mono); font-size:11.5px; padding:4px 9px; border:1px solid var(--hairline-dim);
     border-radius:999px; color:var(--wool); white-space:nowrap; }
+  /* the living week */
+  .cal-tick{ cursor:pointer; }
+  .cal-tick:hover{ filter:brightness(1.25); }
+  .cal-row[data-qid]{ cursor:pointer; }
+  .cal-pop{ position:fixed; z-index:420; min-width:240px; max-width:330px; background:var(--loden);
+    border:1px solid var(--hairline); border-radius:3px; padding:13px 15px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45); font-size:13px; }
+  .cal-pop .micro{ display:block; margin-bottom:4px; }
+  .cal-pop .cal-frow{ margin-top:10px; }
+  .cal-pop b{ font-weight:500; }
+  .cal-wk-row.lane{ padding:1px 0; }
+  .cal-lane-name{ font-family:var(--cal-mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--wool-faint); text-align:right; padding-right:2px; }
+  .cal-lane-track{ position:relative; height:12px; background:rgba(23,31,26,.35); border-radius:2px;
+    overflow:hidden; cursor:pointer; }
+  .cal-lane-track:hover{ outline:1px solid var(--hairline-dim); }
+  .cal-lane-track .cal-open{ background:rgba(241,236,226,.07); }
+  .cal-lane-track .cal-tick{ top:2px; bottom:2px; }
+  .cal-off{ position:absolute; top:0; bottom:0;
+    background:repeating-linear-gradient(45deg, rgba(208,135,112,.35) 0 4px, transparent 4px 8px); }
+  .cal-wk-n.lane-n{ font-size:10px; }
+  @media (prefers-reduced-motion: no-preference){
+    @keyframes calflash { 0%{ outline:2px solid var(--brass-soft); outline-offset:3px; }
+      100%{ outline:2px solid transparent; outline-offset:8px; } }
+    .cal-tick.flash{ animation:calflash 1.4s ease-out 2; }
+  }
   #panel-calendar :is(button,a,input,select):focus-visible{ outline:1px solid var(--brass-soft); outline-offset:2px; }
   @media (prefers-reduced-motion: no-preference){
     .cal-pulse-t, .cal-row{ transition:border-color .15s ease, background-color .15s ease; }
@@ -2328,7 +2354,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       </section>
 
       <section class="card" style="margin-top:14px;">
-        <div class="card-head"><h3>Next 7 days</h3><span class="micro" id="cal-wk-sub">every standing booking, day by day</span></div>
+        <div class="card-head"><h3>Next 7 days</h3><span class="micro" id="cal-wk-sub">every standing booking, day by day</span><label class="micro" id="cal-wk-teamlbl" style="display:none;margin-left:14px;cursor:pointer;"><input type="checkbox" id="cal-wk-team" checked> the team</label></div>
         <div id="cal-week"><div class="cal-empty">Loading…</div></div>
       </section>
 
@@ -10022,8 +10048,10 @@ function calPill(text, tone) {
   return '<span class="cal-pill" style="border-color:' + c + ';color:' + c + ';">' + text + '</span>';
 }
 /* the queue/ledger row: tone drives the left rail + wash + tag color */
-function calRow(tone, html) {
-  const d = document.createElement('div'); d.className = 'cal-row t-' + tone; d.innerHTML = html; return d;
+function calRow(tone, html, qid) {
+  const d = document.createElement('div'); d.className = 'cal-row t-' + tone; d.innerHTML = html;
+  if (qid) d.setAttribute('data-qid', qid);
+  return d;
 }
 async function calRpc(fn, args) {
   const r = await sb.rpc(fn, args || {});
@@ -10032,7 +10060,8 @@ async function calRpc(fn, args) {
 }
 async function calAct(fn, args, btn) {
   if (btn) { btn.disabled = true; btn.dataset.lbl = btn.textContent; btn.textContent = '···'; }
-  try { const d = await calRpc(fn, args); if (d && d.ok === false) throw new Error(d.reason || 'refused'); await loadCalendar(); }
+  try { const d = await calRpc(fn, args); if (d && d.ok === false) throw new Error(({ nobody_free: 'no one else is free at that time',
+      in_the_past: 'that visit already happened' })[d.reason] || d.reason || 'refused'); await loadCalendar(); }
   catch (e) {
     calFail(e);
     if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = btn.dataset.lbl; }
@@ -10247,12 +10276,14 @@ async function calSaveStaff(holder, st) {
     const name = holder.querySelector('[data-f="stname"]').value.trim();
     if (!name) throw new Error('Give them a name.');
     const enabled = holder.querySelector('[data-f="stenabled"]').checked;
+    const email = (holder.querySelector('[data-f="stemail"]').value || '').trim();
+    const phone = (holder.querySelector('[data-f="stphone"]').value || '').trim();
     let sid = st ? st.id : null;
     if (sid) {
-      const r = await sb.from('concierge_staff').update({ name: name, enabled: enabled }).eq('id', sid);
+      const r = await sb.from('concierge_staff').update({ name: name, enabled: enabled, email: email, phone: phone }).eq('id', sid);
       if (r.error) throw new Error(r.error.message);
     } else {
-      const r = await sb.from('concierge_staff').insert([{ name: name, enabled: enabled }]).select('id');
+      const r = await sb.from('concierge_staff').insert([{ name: name, enabled: enabled, email: email, phone: phone }]).select('id');
       if (r.error) throw new Error(r.error.message);
       sid = r.data && r.data[0] && r.data[0].id;
     }
@@ -10339,7 +10370,9 @@ function calStaffCard(st) {
     : '';
   ed.innerHTML =
     '<div class="cal-frow">' +
-    '<label class="cal-field"><span>name</span><input data-f="stname" value="' + esc(st ? st.name : '') + '" placeholder="e.g. Maya" style="width:170px;"></label>' +
+    '<label class="cal-field"><span>name</span><input data-f="stname" value="' + esc(st ? st.name : '') + '" placeholder="e.g. Maya" style="width:150px;"></label>' +
+    '<label class="cal-field"><span>email — booking alerts land here</span><input type="email" data-f="stemail" value="' + esc(st ? (st.email || '') : '') + '" placeholder="maya@example.com" style="width:210px;"></label>' +
+    '<label class="cal-field"><span>phone (optional)</span><input type="tel" data-f="stphone" value="' + esc(st ? (st.phone || '') : '') + '" placeholder="" style="width:140px;"></label>' +
     '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="stenabled"' + (isNew || st.enabled ? ' checked' : '') + '> takes bookings</label>' +
     locPick +
     '</div>' +
@@ -10408,6 +10441,23 @@ function calStaffCard(st) {
   sv.textContent = 'Save person'; sv.setAttribute('data-save-staff', '');
   sv.addEventListener('click', () => calSaveStaff(holder, st));
   foot.appendChild(sv);
+  if (!isNew && st.enabled) {
+    const dep = document.createElement('button'); dep.className = 'btn ghost'; dep.type = 'button';
+    dep.textContent = "They've left — hand bookings to the team"; dep.setAttribute('data-depart', '');
+    dep.addEventListener('click', async () => {
+      if (!window.confirm(st.name + ' stops taking bookings, and every future visit of theirs is handed to whoever is free. A visit nobody can take is flagged in the queue. Continue?')) return;
+      try {
+        const d = await calRpc('staff_departure', { p_staff_id: st.id });
+        if (d && d.ok === false) throw new Error(d.reason || 'refused');
+        await loadCalendar();
+        const n = $('cal-note');
+        n.textContent = st.name + ' retired — ' + (d.moved || 0) + ' booking' + (d.moved === 1 ? '' : 's') + ' handed over' +
+          (d.needs_attention ? '; ' + d.needs_attention + ' still need' + (d.needs_attention === 1 ? 's' : '') + ' a person — see the queue' : '') + '.';
+        n.className = 'micro' + (d.needs_attention ? ' warn' : '');
+      } catch (e) { calFail(e); }
+    });
+    foot.appendChild(dep);
+  }
   ed.appendChild(foot);
   holder.appendChild(ed);
   sum.querySelector('.edit').addEventListener('click', () => {
@@ -10424,6 +10474,88 @@ function calStaffCard(st) {
     old.replaceWith(fresh);
   });
   return holder;
+}
+/* a staffed offering: someone on the team does it */
+function calStaffedType(title) {
+  const t = (state.calTypes || []).find((x) => x.title === title);
+  return !!t && (state.calStaffSvcs || []).some((s2) => s2.type_id === t.id);
+}
+/* the reassign act — only for future staffed visits */
+function calPopReassign(r) {
+  if (!r.id || !calStaffedType(r.type)) return '';
+  if (r.starts_at && new Date(r.starts_at) < new Date()) return '';
+  return '<button class="btn ghost" onclick="this.closest(\'.cal-pop\').remove();' +
+    'calAct(\'reassign_appointment\',{p_id:' + r.id + '},this)">' +
+    (r.staff ? 'Hand to someone else' : 'Give it a person') + '</button>';
+}
+/* one floating card at a time; tap elsewhere dismisses */
+function calPop(x, y, build) {
+  const old = document.querySelector('.cal-pop'); if (old) old.remove();
+  const pop = document.createElement('div'); pop.className = 'cal-pop';
+  build(pop);
+  document.body.appendChild(pop);
+  const W = pop.offsetWidth || 280, H = pop.offsetHeight || 120;
+  pop.style.left = Math.max(10, Math.min(x - 30, window.innerWidth - W - 12)) + 'px';
+  pop.style.top = Math.max(10, Math.min(y + 12, window.innerHeight - H - 12)) + 'px';
+  const dismiss = (ev) => {
+    if (pop.contains(ev.target)) return;
+    pop.remove(); document.removeEventListener('click', dismiss, true);
+  };
+  setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+  return pop;
+}
+/* the tick card: everything about the visit + the act that fits its state */
+function calTickPop(x, y, r) {
+  calPop(x, y, (pop) => {
+    const past = r.starts_at && new Date(r.starts_at) < new Date();
+    const un = r.status === 'requested';
+    pop.innerHTML =
+      '<span class="micro">' + (un ? 'awaiting confirmation' : (past ? 'needs closing out' : 'booked')) + '</span>' +
+      '<b>' + esc(r.name || '') + '</b> — ' + esc(r.type || '') +
+      (r.staff ? '<div>with ' + esc(r.staff) + '</div>' : '') +
+      '<div>' + esc(calWhen(r.starts_at, r.location_tz)) + (r.location ? ' at ' + esc(r.location) : '') + '</div>' +
+      (r.contact ? '<div class="mono micro" style="margin-top:4px;">' + esc(r.contact) + '</div>' : '') +
+      (r.conversation_id ? '<a href="#conversations" class="mono micro" onclick="state.convoJump=\'' + r.conversation_id + '\'">chat↗</a>' : '') +
+      '<div class="cal-frow">' +
+      (un ? '<button class="btn" onclick="this.closest(\'.cal-pop\').remove();calAct(\'confirm_appointment\',{p_id:' + r.id + '},this)">Confirm</button>' +
+            '<button class="btn ghost" onclick="this.closest(\'.cal-pop\').remove();calAct(\'cancel_appointment\',{p_id:' + r.id + '},this)">Decline</button>'
+          : (past ? '<button class="btn" onclick="this.closest(\'.cal-pop\').remove();calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'completed\'},this)">Completed</button>' +
+                    '<button class="btn ghost" onclick="this.closest(\'.cal-pop\').remove();calAct(\'close_appointment\',{p_id:' + r.id + ',p_outcome:\'no_show\'},this)">No-show</button>'
+                  : '<button class="btn ghost" onclick="this.closest(\'.cal-pop\').remove();calAct(\'cancel_appointment\',{p_id:' + r.id + '},this)">Cancel booking</button>')) + calPopReassign(r) +
+      '</div>';
+  });
+}
+/* the lane card: give a person time off on the day you clicked */
+function calLanePop(x, y, stf, dateStr) {
+  calPop(x, y, (pop) => {
+    pop.innerHTML =
+      '<span class="micro">time off — ' + esc(stf.name) + '</span>' +
+      '<b>' + esc(dateStr) + '</b>' +
+      '<div class="cal-frow"><label class="micro"><input type="checkbox" data-p="all" checked> all day</label>' +
+      '<span data-p="win" style="display:none;align-items:center;gap:6px;">' +
+      '<input type="time" data-p="from"> <span class="micro">to</span> <input type="time" data-p="to"></span></div>' +
+      '<div class="cal-frow"><button class="btn" data-p="go">Add time off</button></div>';
+    pop.querySelector('[data-p="all"]').addEventListener('change', () => {
+      pop.querySelector('[data-p="win"]').style.display =
+        pop.querySelector('[data-p="all"]').checked ? 'none' : 'inline-flex';
+    });
+    pop.querySelector('[data-p="go"]').addEventListener('click', async () => {
+      try {
+        const all = pop.querySelector('[data-p="all"]').checked;
+        const row = { on_date: dateStr, closed: all, staff_id: stf.id, note: '' };
+        if (!all) {
+          const a = calMin(pop.querySelector('[data-p="from"]').value || '');
+          const b = calMin(pop.querySelector('[data-p="to"]').value || '');
+          if (a === null || b === null) throw new Error('Time off needs both times.');
+          if (b <= a) throw new Error('Time off ends before it starts.');
+          row.closed = false; row.start_min = a; row.end_min = b;
+        }
+        const r = await sb.from('concierge_availability_exceptions').insert([row]);
+        if (r.error) throw new Error(r.error.message);
+        pop.remove(); loadCalendar();
+      } catch (e) { pop.remove(); calFail(e); }
+    });
+  });
 }
 async function loadCalendar() {
   const noteEl = $('cal-note'); noteEl.textContent = ''; noteEl.className = 'micro';
@@ -10516,6 +10648,15 @@ async function loadCalendar() {
 
     /* the queue — pulse first, then the four triage sections */
     const qEl = $('cal-queue'); qEl.textContent = '';
+    qEl.onclick = (ev) => {
+      if (ev.target.closest && (ev.target.closest('button') || ev.target.closest('a'))) return;
+      const row = ev.target.closest ? ev.target.closest('.cal-row[data-qid]') : null;
+      if (!row) return;
+      const tick = document.querySelector('.cal-tick[data-qid="' + row.getAttribute('data-qid') + '"]');
+      if (!tick) return;
+      tick.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      tick.classList.remove('flash'); void tick.offsetWidth; tick.classList.add('flash');
+    };
     const req = q.requested || [], cbs = q.callbacks || [], tdy = q.today || [], ncl = q.needs_closing || [];
     const pending = req.length + cbs.length + ncl.length;
     calBadge(pending);
@@ -10588,14 +10729,15 @@ async function loadCalendar() {
       '<div class="cal-badge"><span class="cal-tag">' + (r.is_move ? 'move' : 'new request') + '</span>' + ttlHtml(r) + '</div>' +
       '<div class="cal-l1"><span class="cal-when">' + calWhen(r.starts_at) + '</span><b>' + esc(r.name) + '</b>' +
       '<span class="type">' + esc(r.type || '') + '</span></div>' +
-      l2([r.staff ? '<span>with ' + esc(r.staff) + '</span>' : '',
+      l2([r.staff ? '<span>with ' + esc(r.staff) + '</span>'
+            : (calStaffedType(r.type) ? '<span class="due">needs a person</span>' : ''),
           r.location ? '<span>at ' + esc(r.location) + '</span>' : '',
           r.party ? '<span>party of ' + r.party + '</span>' : '',
           '<span class="mono">' + esc(r.contact) + '</span>',
           r.notes ? '<span class="quote">“' + esc(r.notes) + '”</span>' : '', convoLink(r)]) +
       '<div class="cal-acts">' +
       '<button class="btn" aria-label="Confirm ' + esc(r.name) + '" onclick="calAct(\'confirm_appointment\',{p_id:' + r.id + '},this)">Confirm</button> ' +
-      '<button class="btn ghost" aria-label="Decline ' + esc(r.name) + '" onclick="calAct(\'cancel_appointment\',{p_id:' + r.id + '},this)">Decline</button></div>'),
+      '<button class="btn ghost" aria-label="Decline ' + esc(r.name) + '" onclick="calAct(\'cancel_appointment\',{p_id:' + r.id + '},this)">Decline</button></div>', r.id),
       'Nothing awaiting confirmation.');
     sect('cal-sect-cb', 'Callbacks owed', 'blue', cbs, (r) => {
       const hot = r.age_min > 1440;
@@ -10615,13 +10757,14 @@ async function loadCalendar() {
         '<div class="cal-badge"><span class="cal-tag">' + (un ? 'unconfirmed' : 'confirmed') + '</span></div>' +
         '<div class="cal-l1"><span class="cal-when">' + calWhen(r.starts_at).split(', ').pop() + '</span>' +
         '<b>' + esc(r.name) + '</b><span class="type">' + esc(r.type || '') + '</span></div>' +
-        l2([r.staff ? '<span>with ' + esc(r.staff) + '</span>' : '',
+        l2([r.staff ? '<span>with ' + esc(r.staff) + '</span>'
+            : (calStaffedType(r.type) ? '<span class="due">needs a person</span>' : ''),
             r.location ? '<span>at ' + esc(r.location) + '</span>' : '',
             r.party ? '<span>party of ' + r.party + '</span>' : '',
             r.notes ? '<span class="quote">“' + esc(r.notes) + '”</span>' : '',
             (r.open_notes || []).length ? '<span class="due">DUE: ' + r.open_notes.map(esc).join(' · ') + '</span>' : '',
             convoLink(r)]) +
-        '<div class="cal-acts"></div>');
+        '<div class="cal-acts"></div>', r.id);
     }, 'No visits today.');
     sect('cal-sect-close', 'Needs closing out', 'red', ncl, (r) => calRow('red',
       '<div class="cal-badge"><span class="cal-tag">past visit</span></div>' +
@@ -10676,6 +10819,16 @@ async function loadCalendar() {
     lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
     if (hi - lo < 360) { hi = Math.min(1440, lo + 360); lo = hi - 360; }
     const X = (m) => (m - lo) / (hi - lo) * 100;
+    state.calWkById = {};
+    const teamOn = state.calStaff.some((x) => x.enabled);
+    const teamLbl = $('cal-wk-teamlbl');
+    if (teamLbl) {
+      teamLbl.style.display = teamOn ? 'inline-flex' : 'none';
+      const tcb = $('cal-wk-team');
+      tcb.checked = state.calTeamView !== false;
+      tcb.onchange = () => { state.calTeamView = tcb.checked; loadCalendar(); };
+    }
+    const laneView = teamOn && state.calTeamView !== false;
     const wk = document.createElement('div'); wk.className = 'cal-wk';
     const axis = document.createElement('div'); axis.className = 'cal-axis';
     const mid = Math.round((lo + hi) / 120) * 60;
@@ -10697,13 +10850,39 @@ async function loadCalendar() {
           const ttl = esc((t.type || '') + (t.staff ? ' with ' + t.staff : '') +
             (t.location ? ' at ' + t.location : '') + ' · ' + (t.contact || '') +
             (t.status === 'requested' ? ' · awaiting confirmation' : ''));
-          return '<span class="cal-tick' + (t.status === 'requested' ? ' req' : '') + '" title="' + ttl +
+          if (t.id) state.calWkById[t.id] = t;
+          return '<span class="cal-tick' + (t.status === 'requested' ? ' req' : '') + '"' +
+            (t.id ? ' data-qid="' + t.id + '"' : '') + ' title="' + ttl +
             '" style="left:' + X(b.m) + '%;width:' + Math.max(X(b.m + b.dur) - X(b.m), 1) + '%;"></span>';
         }).join('') +
         (d.today ? '<span class="cal-now" style="left:' + X(Math.max(lo, Math.min(hi, nowMin))) + '%;"></span>' : '') +
         '</span>' +
         '<span class="cal-wk-n ' + (d.rows.length ? (anyReq ? 'part' : '') : 'zero') + '">' + d.rows.length + '</span>';
       wk.appendChild(row);
+      if (laneView) {
+        const dayKey = d.dt.getFullYear() + '-' + String(d.dt.getMonth() + 1).padStart(2, '0') + '-' + String(d.dt.getDate()).padStart(2, '0');
+        state.calStaff.filter((x) => x.enabled).forEach((stf) => {
+          const lane = document.createElement('div'); lane.className = 'cal-wk-row lane';
+          const wins2 = (state.calStaffHours || []).filter((h) => h.staff_id === stf.id && h.dow === d.dt.getDay())
+            .map((h) => '<span class="cal-open" style="left:' + X(h.open_min) + '%;width:' + (X(h.close_min) - X(h.open_min)) + '%;"></span>').join('');
+          const offs = exc.filter((x) => x.staff_id === stf.id && x.on_date === dayKey)
+            .map((x) => x.closed
+              ? '<span class="cal-off" style="left:0;width:100%;" title="' + esc(stf.name) + ' — day off"></span>'
+              : '<span class="cal-off" style="left:' + X(x.start_min) + '%;width:' + (X(x.end_min) - X(x.start_min)) + '%;" title="' + esc(stf.name) + ' — off ' + calHm(x.start_min) + '–' + calHm(x.end_min) + '"></span>').join('');
+          const mine = d.rows.filter((b) => b.r.staff === stf.name);
+          const ticks2 = mine.map((b) => {
+            const t = b.r;
+            return '<span class="cal-tick' + (t.status === 'requested' ? ' req' : '') + '"' +
+              (t.id ? ' data-qid="' + t.id + '"' : '') + ' title="' + esc((t.name || '') + ' · ' + (t.type || '')) +
+              '" style="left:' + X(b.m) + '%;width:' + Math.max(X(b.m + b.dur) - X(b.m), 1) + '%;"></span>';
+          }).join('');
+          lane.innerHTML = '<span class="cal-lane-name">' + esc(stf.name) + '</span>' +
+            '<span class="cal-lane-track" data-lane="' + stf.id + '" data-day="' + dayKey + '"' +
+            ' title="' + esc(stf.name) + ' — click to add time off">' + wins2 + offs + ticks2 + '</span>' +
+            '<span class="cal-wk-n lane-n ' + (mine.length ? '' : 'zero') + '">' + (mine.length || '') + '</span>';
+          wk.appendChild(lane);
+        });
+      }
       if (d.rows.length) {
         const chips = document.createElement('div'); chips.className = 'cal-wk-row chips';
         chips.innerHTML = '<span></span><span class="cal-wk-chips">' + d.rows.map((b) => {
@@ -10716,6 +10895,19 @@ async function loadCalendar() {
       }
     });
     wEl.appendChild(wk);
+    wEl.onclick = (ev) => {
+      const tick = ev.target.closest ? ev.target.closest('.cal-tick[data-qid]') : null;
+      if (tick) {
+        const r = state.calWkById[+tick.getAttribute('data-qid')];
+        if (r) calTickPop(ev.clientX, ev.clientY, r);
+        return;
+      }
+      const lane = ev.target.closest ? ev.target.closest('.cal-lane-track[data-lane]') : null;
+      if (lane) {
+        const stf = state.calStaff.find((x) => x.id === +lane.getAttribute('data-lane'));
+        if (stf) calLanePop(ev.clientX, ev.clientY, stf, lane.getAttribute('data-day'));
+      }
+    };
     if (!(week || []).length) {
       wEl.appendChild(el('div', 'cal-empty', anyWin
         ? 'No bookings in the next seven days. The pale bands are open hours — solid marks will appear as visits are booked.'

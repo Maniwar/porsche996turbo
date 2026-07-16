@@ -1326,10 +1326,14 @@ create index if not exists concierge_appt_slot_idx
 create table if not exists public.concierge_staff (
   id         bigint generated always as identity primary key,
   name       text not null,
+  email      text not null default '',
+  phone      text not null default '',
   enabled    boolean not null default true,
   sort_order int not null default 0,
   created_at timestamptz not null default now()
 );
+alter table public.concierge_staff add column if not exists email text not null default '';
+alter table public.concierge_staff add column if not exists phone text not null default '';
 create table if not exists public.concierge_staff_hours (
   id          bigint generated always as identity primary key,
   staff_id    bigint not null references public.concierge_staff(id) on delete cascade,
@@ -1717,7 +1721,8 @@ begin
     'location', jsonb_build_object('title', v_loc.title, 'address', v_loc.address,
       'directions', v_loc.directions, 'timezone', v_loc.timezone),
     'type_title', v_type.title, 'confirm_mode', v_type.confirm_mode,
-    'staff_name', v_staff_name);
+    'staff_name', v_staff_name,
+    'staff_email', (select nullif(st.email, '') from public.concierge_staff st where st.id = v_staff_id));
 end $$;
 grant execute on function public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text,text) to authenticated;
 revoke execute on function public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text,text) from public, anon;
@@ -1830,6 +1835,8 @@ begin
     returning * into v_new;
     return jsonb_build_object('ok', true, 'status', 'requested', 'id', v_new.id,
       'original_id', v_row.id, 'no_gap', true,
+      'staff_name',  (select st.name from public.concierge_staff st where st.id = v_new.staff_id),
+      'staff_email', (select nullif(st.email, '') from public.concierge_staff st where st.id = v_new.staff_id),
       'lead_label', v_slot->>'lead_label', 'shop_label', v_slot->>'shop_label',
       'visitor_label', v_slot->>'visitor_label');
   end if;
@@ -1843,6 +1850,8 @@ begin
   return jsonb_build_object('ok', true, 'status', v_new.status, 'id', v_new.id,
     'lead_label', v_slot->>'lead_label', 'shop_label', v_slot->>'shop_label',
     'visitor_label', v_slot->>'visitor_label',
+    'staff_name',  (select st.name from public.concierge_staff st where st.id = v_new.staff_id),
+    'staff_email', (select nullif(st.email, '') from public.concierge_staff st where st.id = v_new.staff_id),
     'location', jsonb_build_object('title', v_loc.title, 'address', v_loc.address));
 end $$;
 grant execute on function public.reschedule_appointment(bigint,text,timestamptz,text,uuid,uuid,text) to authenticated;
@@ -1944,10 +1953,122 @@ begin
   -- a pending move for this booking dies with it (one guest intent)
   update public.concierge_appointments set status = 'cancelled', updated_at = now()
     where reschedule_of = p_id and status = 'requested';
-  return jsonb_build_object('ok', true, 'id', p_id, 'status', 'cancelled');
+  return jsonb_build_object('ok', true, 'id', p_id, 'status', 'cancelled',
+    'starts_at', v_row.starts_at,
+    'staff_name',  (select st.name from public.concierge_staff st where st.id = v_row.staff_id),
+    'staff_email', (select nullif(st.email, '') from public.concierge_staff st where st.id = v_row.staff_id));
 end $$;
 grant execute on function public.cancel_appointment(bigint,uuid,uuid,text) to authenticated;
 revoke execute on function public.cancel_appointment(bigint,uuid,uuid,text) from public, anon;
+
+-- ── Departures — hand a visit (or a whole book) to whoever is free ───────────
+-- Same candidate rules as booking: qualified for the offering, working that
+-- location/day/time, not on time off, no overlapping visit (any offering,
+-- buffer respected) — chosen least-loaded, serialized per person+start so a
+-- concurrent booking can never double-book the new person.
+create or replace function public.reassign_appointment(p_id bigint, p_staff text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_row  public.concierge_appointments%rowtype;
+  v_type public.concierge_appointment_types%rowtype;
+  v_loc  public.concierge_locations%rowtype;
+  v_min int; v_cand record; v_got boolean := false;
+  v_staff_id bigint; v_staff_name text;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select * into v_row from public.concierge_appointments
+    where id = p_id and kind = 'appointment' and status in ('requested','booked');
+  if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  if v_row.starts_at <= now() then
+    return jsonb_build_object('ok', false, 'reason', 'in_the_past');
+  end if;
+  select * into v_type from public.concierge_appointment_types where id = v_row.type_id;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'unknown_type'); end if;
+  select * into v_loc from public.concierge_locations where id = v_row.location_id;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'unknown_location'); end if;
+  v_min := extract(hour from (v_row.starts_at at time zone v_loc.timezone))::int * 60
+         + extract(minute from (v_row.starts_at at time zone v_loc.timezone))::int;
+  for v_cand in
+    select st.id, st.name
+      from public.concierge_staff st
+      join public.concierge_staff_services ss on ss.staff_id = st.id and ss.type_id = v_type.id
+      where st.enabled
+        and st.id is distinct from v_row.staff_id
+        and (p_staff is null or st.name ilike trim(p_staff))
+        and exists (select 1 from public.concierge_staff_hours sh
+          where sh.staff_id = st.id and sh.location_id = v_loc.id
+            and sh.dow = extract(dow from (v_row.starts_at at time zone v_loc.timezone))::int
+            and sh.open_min <= v_min and sh.close_min >= v_min + v_type.duration_min)
+        and not exists (select 1 from public.concierge_availability_exceptions e3
+          where e3.staff_id = st.id
+            and e3.on_date = (v_row.starts_at at time zone v_loc.timezone)::date
+            and (e3.closed or (e3.start_min is not null
+                 and e3.start_min < v_min + v_type.duration_min and e3.end_min > v_min)))
+      order by (select count(*) from public.concierge_appointments b
+                  where b.staff_id = st.id and b.kind = 'appointment'
+                    and b.status in ('requested','booked') and not b.qa
+                    and b.starts_at > now()) asc, st.id asc
+  loop
+    perform pg_advisory_xact_lock(hashtext('staff|' || v_cand.id::text || '|' || v_row.starts_at::text));
+    if not exists (select 1 from public.concierge_appointments a2
+        where a2.staff_id = v_cand.id and a2.kind = 'appointment' and a2.id <> v_row.id
+          and a2.status in ('requested','booked') and not a2.qa
+          and a2.starts_at < v_row.starts_at + make_interval(mins => v_type.duration_min + v_type.buffer_min)
+          and a2.ends_at   > v_row.starts_at - make_interval(mins => v_type.buffer_min)) then
+      v_staff_id := v_cand.id; v_staff_name := v_cand.name; v_got := true; exit;
+    end if;
+  end loop;
+  if not v_got then return jsonb_build_object('ok', false, 'reason', 'nobody_free'); end if;
+  update public.concierge_appointments set staff_id = v_staff_id, updated_at = now() where id = p_id;
+  return jsonb_build_object('ok', true, 'id', p_id, 'staff_name', v_staff_name,
+    'staff_email', (select nullif(st.email, '') from public.concierge_staff st where st.id = v_staff_id));
+end $$;
+grant execute on function public.reassign_appointment(bigint,text) to authenticated;
+revoke execute on function public.reassign_appointment(bigint,text) from public, anon;
+
+-- Someone leaves: stop their bookings and shuffle their future visits to the
+-- team, one by one, nearest first. A visit nobody can take is left standing
+-- but UNASSIGNED — the queue flags it "needs a person" instead of silently
+-- keeping it on a calendar nobody reads anymore.
+create or replace function public.staff_departure(p_staff_id bigint)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_name text; v_apt record; v_r jsonb;
+  v_moved int := 0; v_stuck int := 0; v_detail jsonb := '[]'::jsonb;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select name into v_name from public.concierge_staff where id = p_staff_id;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  update public.concierge_staff set enabled = false where id = p_staff_id;
+  for v_apt in
+    select id, visitor_name, starts_at from public.concierge_appointments
+      where staff_id = p_staff_id and kind = 'appointment'
+        and status in ('requested','booked') and starts_at > now()
+      order by starts_at asc
+  loop
+    v_r := public.reassign_appointment(v_apt.id, null);
+    if coalesce((v_r->>'ok')::boolean, false) then
+      v_moved := v_moved + 1;
+      v_detail := v_detail || jsonb_build_object('id', v_apt.id, 'name', v_apt.visitor_name,
+        'starts_at', v_apt.starts_at, 'to', v_r->>'staff_name');
+    else
+      update public.concierge_appointments set staff_id = null, updated_at = now() where id = v_apt.id;
+      v_stuck := v_stuck + 1;
+      v_detail := v_detail || jsonb_build_object('id', v_apt.id, 'name', v_apt.visitor_name,
+        'starts_at', v_apt.starts_at, 'to', null);
+    end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'staff_name', v_name,
+    'moved', v_moved, 'needs_attention', v_stuck, 'details', v_detail);
+end $$;
+grant execute on function public.staff_departure(bigint) to authenticated;
+revoke execute on function public.staff_departure(bigint) from public, anon;
 
 -- ── The queue — the merchant's actionable inbox, one call ────────────────────
 create or replace function public.appointments_queue()
@@ -2071,7 +2192,7 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', a.id, 'starts_at', a.starts_at, 'ends_at', a.ends_at,
       'status', a.status, 'type', t.title, 'location', l.title,
-      'location_tz', l.timezone, 'name', a.visitor_name, 'staff', st2.name,
+      'id', a.id, 'conversation_id', a.conversation_id, 'location_tz', l.timezone, 'name', a.visitor_name, 'staff', st2.name,
       'contact', a.visitor_contact, 'contact_kind', a.contact_kind,
       'party', a.party_size, 'notes', a.notes, 'is_move', a.reschedule_of is not null,
       'conversation_id', a.conversation_id, 'customer_id', a.customer_id)

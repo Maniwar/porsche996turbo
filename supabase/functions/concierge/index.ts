@@ -1603,6 +1603,20 @@ async function runRegisterTool(
             { kind: isReq ? "appointment-requested" : "appointment-confirmation" },
             isReq ? undefined : [{ filename: "appointment.ics", content: btoa(ics) }]);
         }
+        if (r.staff_email) {
+          const staffIcs = buildIcs(uid, r.starts_at, r.ends_at,
+            `${r.type_title} — ${String(input.name || "guest")}`,
+            [locTitle, locAddr].filter(Boolean).join(", "), String(r.shop_label || ""));
+          await sendEmail(String(r.staff_email),
+            isReq ? `Request pending: ${r.type_title} — ${r.shop_label}`
+                  : `On your calendar: ${r.type_title} — ${r.shop_label}`,
+            emailShell(isReq ? "A request awaits the house's confirmation" : "A new booking is yours",
+              [`${String(input.name || "")} — ${r.shop_label}${locTitle ? " at " + locTitle : ""}`,
+               isReq ? "If the house confirms it, this lands on your calendar."
+                     : "The visitor is confirmed. A calendar invite is attached."]),
+            { kind: "appointment-staff" },
+            isReq ? undefined : [{ filename: "appointment.ics", content: btoa(staffIcs) }]);
+        }
         if (ownerEmail) {
           await sendEmail(ownerEmail,
             `${isReq ? "Booking request" : "New booking"}: ${r.type_title} — ${r.shop_label}`,
@@ -1613,6 +1627,7 @@ async function runRegisterTool(
             { kind: "appointment-owner" });
         }
         return JSON.stringify({ ok: true, status: r.status, when: r.lead_label,
+          with: r.staff_name || undefined,
           location: { title: locTitle, address: locAddr }, contact: MASK,
           note: isReq
             ? "Say EXACTLY: the house will confirm shortly — they'll have an email either way. Never a done deal."
@@ -1686,6 +1701,15 @@ async function runRegisterTool(
       if (r.ok && r.no_gap) {
         r.note = "Say both truths plainly: the current booking holds; the new time awaits the house's confirmation.";
       }
+      if (r.ok && r.staff_email) {
+        await sendEmail(String(r.staff_email),
+          r.no_gap ? "A move awaits confirmation" : `Moved: a booking of yours — ${r.shop_label || ""}`,
+          emailShell(r.no_gap ? "A visitor asked to move a booking" : "A booking moved on your calendar",
+            [String(r.shop_label || r.lead_label || ""),
+             r.no_gap ? "If the house confirms, the new time replaces the old one." : "The new time is firm."]),
+          { kind: "appointment-staff" });
+      }
+      delete r.staff_email;
       return JSON.stringify(r);
     }
 
@@ -1729,6 +1753,13 @@ async function runRegisterTool(
           emailShell("A booking was cancelled", [`Appointment #${id} — see the Calendar queue.`]),
           { kind: "appointment-owner" });
       }
+      if (r.ok && r.staff_email) {
+        await sendEmail(String(r.staff_email), "Time released on your calendar",
+          emailShell("A booking of yours was cancelled",
+            [`The ${r.starts_at ? new Date(String(r.starts_at)).toUTCString() : "reserved"} slot is free again.`]),
+          { kind: "appointment-staff" });
+      }
+      delete r.staff_email;
       return JSON.stringify(r);
     }
 
