@@ -2544,6 +2544,14 @@ function el(tag, cls, text) {
   return n;
 }
 
+/* HTML-escape for the few innerHTML surfaces (the calendar and the patron
+   appointments timeline); everything else stays textContent-first. */
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
 function nowIso() { return new Date().toISOString(); }
 
 function kebab(s) {
