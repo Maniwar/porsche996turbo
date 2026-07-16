@@ -2263,6 +2263,91 @@ end $$;
 grant execute on function public.booking_report(int,text) to authenticated;
 revoke execute on function public.booking_report(int,text) from public, anon;
 
+-- ── Capacity at a glance — promise vs coverage, per offering × location ──────
+create or replace function public.capacity_matrix()
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  with wins as (
+    -- offering windows clamped inside business hours, per dow
+    select av.type_id, av.location_id, av.dow,
+           greatest(av.start_min, bh.open_min) as s,
+           least(av.end_min, bh.close_min) as e,
+           coalesce(av.step_min, t.step_min) as step, t.duration_min
+      from public.concierge_availability av
+      join public.concierge_appointment_types t on t.id = av.type_id and t.enabled
+      join public.concierge_locations l on l.id = av.location_id and l.enabled
+      join public.concierge_business_hours bh
+        on bh.location_id = av.location_id and bh.dow = av.dow
+     where greatest(av.start_min, bh.open_min) < least(av.end_min, bh.close_min)),
+  qual as (
+    -- qualified person-coverage: their hours ∩ each window
+    select w.type_id, w.location_id, w.dow, w.s, w.e, sh.staff_id,
+           greatest(w.s, sh.open_min) as cs, least(w.e, sh.close_min) as ce
+      from wins w
+      join public.concierge_staff_services ss on ss.type_id = w.type_id
+      join public.concierge_staff st on st.id = ss.staff_id and st.enabled
+      join public.concierge_staff_hours sh
+        on sh.staff_id = st.id and sh.location_id = w.location_id and sh.dow = w.dow
+     where greatest(w.s, sh.open_min) < least(w.e, sh.close_min)),
+  marks as (
+    -- every boundary minute inside a window is a candidate peak moment
+    select type_id, location_id, dow, s, e, cs as m from qual
+    union select type_id, location_id, dow, s, e, s from qual),
+  conc as (
+    select mk.type_id, mk.location_id, count(distinct q.staff_id) as n_conc
+      from marks mk
+      join qual q on q.type_id = mk.type_id and q.location_id = mk.location_id
+                 and q.dow = mk.dow and q.cs <= mk.m and q.ce > mk.m
+     group by mk.type_id, mk.location_id, mk.dow, mk.m),
+  peak as (select type_id, location_id, max(n_conc) as peak from conc group by 1, 2),
+  cover as (
+    select type_id, location_id, sum(ce - cs)::int as cover_min,
+           count(distinct staff_id) as people
+      from qual group by 1, 2),
+  shape as (
+    select type_id, location_id,
+           sum(case when e - s >= duration_min
+                 then floor((e - s - duration_min) / greatest(step, 1))::int + 1 else 0 end) as starts_week
+      from wins group by 1, 2),
+  staffed as (select distinct type_id from public.concierge_staff_services),
+  grid as (
+    select t.id as type_id, t.title as offering, t.capacity, t.duration_min, t.step_min,
+           l.id as location_id, l.title as location,
+           (t.id in (select type_id from staffed)) as is_staffed
+      from public.concierge_appointment_types t
+      cross join public.concierge_locations l
+     where t.enabled and l.enabled
+       and exists (select 1 from public.concierge_availability av
+                    where av.type_id = t.id and av.location_id = l.id))
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'offering', g.offering, 'location', g.location,
+      'capacity', g.capacity, 'duration_min', g.duration_min, 'step_min', g.step_min,
+      'staffed', g.is_staffed,
+      'people', coalesce(c.people, 0),
+      'cover_min_week', coalesce(c.cover_min, 0),
+      'starts_week', coalesce(s2.starts_week, 0),
+      'peak_concurrent', coalesce(p.peak, 0),
+      'effective', case when g.is_staffed then least(g.capacity, coalesce(p.peak, 0)) else g.capacity end,
+      'warn', case
+        when g.is_staffed and coalesce(c.people, 0) = 0 then 'no qualified person has hours here'
+        when g.is_staffed and g.capacity > coalesce(p.peak, 0)
+          then 'promises ' || g.capacity || ' at once but at best ' || coalesce(p.peak, 0) || ' can cover'
+        end) order by g.offering, g.location), '[]'::jsonb)
+    into v
+    from grid g
+    left join cover c on c.type_id = g.type_id and c.location_id = g.location_id
+    left join peak p on p.type_id = g.type_id and p.location_id = g.location_id
+    left join shape s2 on s2.type_id = g.type_id and s2.location_id = g.location_id;
+  return jsonb_build_object('ok', true, 'rows', v);
+end $$;
+grant execute on function public.capacity_matrix() to authenticated;
+revoke execute on function public.capacity_matrix() from public, anon;
+
 -- ── The queue — the merchant's actionable inbox, one call ────────────────────
 create or replace function public.appointments_queue()
 returns jsonb language plpgsql security definer set search_path = '' as $$

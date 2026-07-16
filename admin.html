@@ -2417,6 +2417,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="card-head"><h3>Offerings</h3><span class="micro">what can be booked — drafts ship disabled</span></div>
         <div id="cal-types"></div>
         <div style="margin-top:10px;"><button id="cal-add-type" class="btn ghost" type="button">Add an offering</button></div>
+        <div id="cal-capacity" style="margin-top:18px;overflow-x:auto;"></div>
       </section>
 
       <section class="card cal-quiet" style="margin-top:14px;">
@@ -10826,7 +10827,7 @@ async function loadCalendar() {
   const noteEl = $('cal-note'); noteEl.textContent = ''; noteEl.className = 'micro';
   state.apptFacetsP = null;   // actions here change the facts the badges read
   try {
-    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR, teamRep] = await Promise.all([
+    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR, teamRep, capMx] = await Promise.all([
       calRpc('appointments_queue'), calRpc('appointments_week', { p_days: 7 }),
       sb.from('concierge_locations').select('*').order('sort_order'),
       sb.from('concierge_business_hours').select('*'),
@@ -10838,6 +10839,7 @@ async function loadCalendar() {
       sb.from('concierge_staff_hours').select('*'),
       sb.from('concierge_staff_services').select('*'),
       calRpc('staff_report', { p_days: 30 }).catch(() => null),
+      calRpc('capacity_matrix').catch(() => null),
     ]);
     for (const r of [locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR]) {
       if (r.error) throw new Error(r.error.message);
@@ -11239,6 +11241,26 @@ async function loadCalendar() {
       /* the team's numbers — person | offering | location, exportable */
       state.calTeamRep = teamRep; state.calRepCache = {};
       calTeamReport(state.calRepDim || 'person');
+      /* capacity at a glance — promise vs coverage, per offering × location */
+      const capEl = $('cal-capacity');
+      if (capEl) {
+        capEl.textContent = '';
+        const cRows = (capMx && capMx.rows) || [];
+        if (cRows.length) {
+          const hm3 = (m) => (m >= 60 ? (Math.round(m / 6) / 10) + 'h' : m + 'm');
+          capEl.innerHTML =
+            '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">Capacity at a glance' +
+            '<span class="info-badge" title="What the calendar can actually promise, per offering and place. Promised is the configured how-many-at-once. Effective is what the team can really cover at the busiest moment — qualified people, on shift, inside the bookable windows. Coverage is qualified person-hours per week; starts is how many start times the visit length and spacing allow per week. A warm row means the promise outruns the people.">i</span></div>' +
+            '<table class="cal-reptable"><thead><tr><th>offering</th><th>location</th><th>promised</th><th>effective</th><th>people</th><th>peak together</th><th>coverage / wk</th><th>starts / wk</th></tr></thead><tbody>' +
+            cRows.map((r) => '<tr' + (r.warn ? ' style="color:#d08770;"' : '') + '><td>' + esc(r.offering) + '</td>' +
+              '<td>' + esc(r.location) + '</td><td>' + r.capacity + '</td>' +
+              '<td>' + (r.staffed ? r.effective : r.capacity + ' <span class="micro">(no team gate)</span>') + '</td>' +
+              '<td>' + (r.staffed ? r.people : '—') + '</td><td>' + (r.staffed ? r.peak_concurrent : '—') + '</td>' +
+              '<td>' + (r.staffed ? hm3(r.cover_min_week) : '—') + '</td><td>' + r.starts_week + '</td></tr>' +
+              (r.warn ? '<tr style="color:#d08770;"><td></td><td colspan="7" class="micro">' + esc(r.warn) + '</td></tr>' : '')).join('') +
+            '</tbody></table>';
+        }
+      }
     }
 
     /* offerings */
