@@ -3481,8 +3481,23 @@ async function judgeBeatLine(
   // sign-in process narration leaking into outreach. Catch it in code before
   // spending a judge call; the reason is prefixed so reporting can tell the
   // pre-filter from the model judge.
-  if (/\{\{[a-z]+:/i.test(line) || /\{\{\s*action/i.test(line)) {
-    return { veto: true, reason: "pre-filter: template/action token is plumbing, not customer-facing text" };
+  // Widget-renderable tokens are PRODUCT, not plumbing: the client draws
+  // {{action:signin}} / {{action:commission}} as buttons, {{form:…}} as a
+  // form, {{reply:…}} as tap-to-answer chips, {{nps}} as the survey scale,
+  // and strips any stray mid-line token harmlessly (same whitelist as
+  // stripPlumbing). Veto only what the widget does NOT render — true
+  // plumbing like {{tool:…}} or {{action:recall_context}} — or a
+  // half-formed token.
+  const renderable =
+    /^\{\{(action:(commission|signin|snooze)|form:[a-z0-9-]{2,40}(:\d{1,6})?|reply:[^{}]{1,200}|nps|img:[A-Za-z0-9_-]+|video:[A-Za-z0-9_-]+)\}\}$/i;
+  const toks = line.match(/\{\{[^{}]*\}\}/g) || [];
+  const plumbingTok = toks.find((t) => !renderable.test(t));
+  if (plumbingTok || /\{\{(?![^{}]*\}\})/.test(line)) {
+    return {
+      veto: true,
+      reason: "pre-filter: unrenderable plumbing token" +
+        (plumbingTok ? " " + plumbingTok.slice(0, 40) : " (malformed {{…)"),
+    };
   }
   if (/\b(once|when|after)\s+you('| a)?re?\s+sign(ed)?\s+in\b/i.test(line) ||
       /\bonce you sign in\b/i.test(line)) {
@@ -3529,6 +3544,10 @@ async function judgeBeatLine(
               ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
                 recentUser.slice(0, 400)
               : "") +
+            "\n\nWIDGET TOKENS (configured UI, not plumbing): {{action:signin}} renders a " +
+            "sign-in button, {{action:commission}} a commission button, {{form:…}} a form, " +
+            "{{reply:…}} tap-to-answer chips, {{nps}} the survey scale. A line carrying one of " +
+            "these is offering a real affordance — never a defect by itself." +
             "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + line,
         }],
       }),
@@ -5784,6 +5803,10 @@ async function handleChatPost(req: Request): Promise<Response> {
           const seenV = new Set<string>();
           const rowsV = [...(mine || []), ...(house || [])].filter((r) => {
             const l = (r.payload && r.payload.line) || "";
+            const why = (r.payload && r.payload.reason) || "";
+            // the retired rule that vetoed renderable widget tokens must not
+            // keep teaching the drafter to fear its own buttons
+            if (/^pre-filter: template\/action token/.test(why)) return false;
             if (!l || seenV.has(l)) return false;
             seenV.add(l); return true;
           }).slice(0, 4);
