@@ -2225,9 +2225,15 @@ async function embed(text: string): Promise<number[] | null> {
       ? out as number[]
       : (out && typeof out.length === "number" ? Array.from(out as ArrayLike<number>) : null);
     if (arr && arr.length === 384) return arr;
+    embedSession = null; // never keep a session that produces the wrong shape
     await fileEmbedFailure(`unexpected output shape (length ${arr ? arr.length : "n/a"})`);
     return null;
   } catch (e) {
+    // A failed load ("protobuf parsing failed") must not poison the isolate:
+    // drop the session so the NEXT request constructs a fresh one — transient
+    // platform failures stop being permanent per-worker outages. The studio
+    // flag still files once per isolate, so observability is unchanged.
+    embedSession = null;
     await fileEmbedFailure(e instanceof Error ? e.message : String(e));
     return null;
   }
@@ -4861,7 +4867,66 @@ async function handleGenStartersPost(req: Request): Promise<Response> {
       }
       if (trio.length) out[key] = trio;
     }
-    return jsonResponse(req, 200, { starters: out, model, count });
+    // Answerability gate (#147 / JUDGE_COACH_LOOP.md §7): the edition-count
+    // starter proved prompt rules alone don't guarantee a starter can be
+    // answered. A second cheap pass judges each candidate against the KB PLUS
+    // the live sources the concierge actually carries; unanswerable ones are
+    // dropped here, before the studio ever shows them. Fail-open.
+    let dropped = 0;
+    try {
+      const cand: { key: string; q: string }[] = [];
+      for (const k of Object.keys(out)) for (const q of out[k]) cand.push({ key: k, q });
+      if (cand.length) {
+        const res2 = await llmFetch("starters", {
+          method: "POST",
+          headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: BEAT_JUDGE_MODEL, max_tokens: 1200,
+            system: "You verify tappable starter questions for a sales concierge. The concierge can answer from: " +
+              "(a) the KNOWLEDGE BASE below; (b) LIVE business hours and a booking calendar (opening times, booking " +
+              "a visit, availability); (c) the LIVE edition register (how many exist / are claimed / remain); " +
+              "(d) a signed-in patron's own orders. Mark each question ok=true only if a substantive, factual " +
+              "answer exists in those sources — ok=false if the concierge would have to say it does not have that. " +
+              "Judge answerability only, not style. Answer via the tool call.",
+            tool_choice: { type: "tool", name: "verdicts" },
+            tools: [{
+              name: "verdicts",
+              description: "answerability verdicts, one per candidate, same order",
+              input_schema: { type: "object", properties: { verdicts: { type: "array", items: {
+                type: "object", properties: { i: { type: "integer" }, ok: { type: "boolean" } },
+                required: ["i", "ok"] } } }, required: ["verdicts"] },
+            }],
+            messages: [{ role: "user", content:
+              "===== KNOWLEDGE BASE =====\n" + kb.slice(0, 16000) +
+              "\n\n===== CANDIDATES =====\n" + cand.map((c, i) => i + ". " + c.q).join("\n") }],
+          }),
+        });
+        if (res2.ok) {
+          // deno-lint-ignore no-explicit-any
+          const j2 = await res2.json() as any;
+          logLlmUsage("starters", j2.model || BEAT_JUDGE_MODEL, j2.usage, {});
+          // deno-lint-ignore no-explicit-any
+          const tv = (j2.content || []).find((b: any) => b.type === "tool_use" && b.name === "verdicts");
+          const vs = tv && tv.input && Array.isArray(tv.input.verdicts) ? tv.input.verdicts : null;
+          if (vs) {
+            const bad = new Set<number>();
+            // deno-lint-ignore no-explicit-any
+            for (const v of vs) if (v && v.ok === false && typeof v.i === "number") bad.add(v.i);
+            if (bad.size && bad.size < cand.length) {
+              const keep: Record<string, string[]> = {};
+              cand.forEach((c, i) => {
+                if (!bad.has(i)) (keep[c.key] = keep[c.key] || []).push(c.q);
+              });
+              dropped = bad.size;
+              for (const k of Object.keys(out)) {
+                if (keep[k] && keep[k].length) out[k] = keep[k]; else delete out[k];
+              }
+            }
+          }
+        }
+      }
+    } catch { /* the gate is advisory — writer drafts stand */ }
+    return jsonResponse(req, 200, { starters: out, model, count, unanswerable_dropped: dropped });
   } catch (e) {
     return jsonError(req, 502, "Starter-writer error: " + (e instanceof Error ? e.message : String(e)));
   }
@@ -5700,7 +5765,39 @@ async function handleChatPost(req: Request): Promise<Response> {
             if (block) system.push({ type: "text", text: block });
           }
         } catch { /* coach is advisory; never blocks the beat */ }
+        // The judge's memory (JUDGE_COACH_LOOP.md §5): recent blocked drafts —
+        // this conversation's, plus the house's latest for this beat kind —
+        // ride the drafter's context so a killed shape is never drafted twice.
+        // Fail-open; lines are already model text, reasons are judge text.
+        let redrafted = false;
         try {
+          const kindStr = isNudge ? "nudge" : "opener";
+          const cidV = await conversationPromise;
+          const [mine, house] = await Promise.all([
+            cidV
+              ? pgSelect<{ payload: { line?: string; reason?: string } }>(
+                `concierge_actions?select=payload&action=eq.beat_veto&conversation_id=eq.${cidV}&order=created_at.desc&limit=3`)
+              : Promise.resolve(null),
+            pgSelect<{ payload: { line?: string; reason?: string } }>(
+              `concierge_actions?select=payload&action=eq.beat_veto&payload->>kind=eq.${kindStr}&order=created_at.desc&limit=3`),
+          ]);
+          const seenV = new Set<string>();
+          const rowsV = [...(mine || []), ...(house || [])].filter((r) => {
+            const l = (r.payload && r.payload.line) || "";
+            if (!l || seenV.has(l)) return false;
+            seenV.add(l); return true;
+          }).slice(0, 4);
+          if (rowsV.length) {
+            system.push({ type: "text", text:
+              "RECENT BLOCKED DRAFTS (a review judge killed these before sending — never repeat their shape or defect):\n" +
+              rowsV.map((r) => `- "${((r.payload && r.payload.line) || "").slice(0, 160)}" — blocked: ${((r.payload && r.payload.reason) || "").slice(0, 140)}`).join("\n") +
+              "\nDraft a line free of every defect above, or hold." });
+          }
+        } catch { /* teaching is advisory */ }
+        const draftOnce = async (extraSys: string | null): Promise<{ speak: boolean; text: string }> => {
+          let sp = false;
+          let tx = "";
+          try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
@@ -5710,7 +5807,8 @@ async function handleChatPost(req: Request): Promise<Response> {
               "content-type": "application/json",
             },
             body: JSON.stringify({
-              model, max_tokens: Math.min(maxTokens, 400), system,
+              model, max_tokens: Math.min(maxTokens, 400),
+              system: extraSys ? [...system, { type: "text", text: extraSys }] : system,
               messages: validated.messages,
               tools: [{
                 name: "beat_line",
@@ -5744,17 +5842,20 @@ async function handleChatPost(req: Request): Promise<Response> {
             // deno-lint-ignore no-explicit-any
             const tu = blocks.find((b: any) => b.type === "tool_use" && b.name === "beat_line");
             if (tu && tu.input && typeof tu.input === "object") {
-              speak = (tu.input as Record<string, unknown>).speak === true;
+              sp = (tu.input as Record<string, unknown>).speak === true;
               const l = (tu.input as Record<string, unknown>).line;
-              text = typeof l === "string" ? l.trim() : "";
+              tx = typeof l === "string" ? l.trim() : "";
             }
           }
-        } catch { /* fall through to hold */ }
-        // The decision is typed, but the line is still free text — scrub any
-        // plumbing, and keep ONE terminal defense: a merchant-era saved
-        // engagement_base override in the wild may still instruct "[HOLD]".
-        text = stripPlumbing(text).replace(/\s*\[hold\]\.?\s*$/i, "").trim();
-        if (/^\W*hold\W*$/i.test(text)) { speak = false; text = ""; }
+          } catch { /* fall through to hold */ }
+          // The decision is typed, but the line is still free text — scrub any
+          // plumbing, and keep ONE terminal defense: a merchant-era saved
+          // engagement_base override in the wild may still instruct "[HOLD]".
+          tx = stripPlumbing(tx).replace(/\s*\[hold\]\.?\s*$/i, "").trim();
+          if (/^\W*hold\W*$/i.test(tx)) { sp = false; tx = ""; }
+          return { speak: sp, text: tx };
+        };
+        ({ speak, text } = await draftOnce(null));
         const held = !speak || text.length === 0;
         // The reach-out judge: a spoken line is reviewed before it ships
         // (default ON; Engagement → House rules turns it off). Fail-open —
@@ -5762,20 +5863,37 @@ async function handleChatPost(req: Request): Promise<Response> {
         // decided action spent, so the next beat may try again with a better
         // line through the same door.
         let vetoReason: string | null = null;
+        let firstKill: { line: string; reason: string } | null = null;
         if (!held) {
           try {
             const jcfg = (await loadConciergeData()).config;
             const oj = jcfg?.outreach as Record<string, unknown> | undefined;
             if (oj?.beatJudge !== false) {
               const lastUserJ = [...validated.messages].reverse().find((m) => m.role === "user");
-              const v = await judgeBeatLine(
-                apiKey,
-                text,
-                isNudge ? "nudge" : "opener",
-                houseHonestyRules(jcfg),
-                (lastUserJ && typeof lastUserJ.content === "string") ? maskContacts(lastUserJ.content) : "",
-              );
-              if (v.veto) vetoReason = v.reason || "vetoed by the reach-out judge";
+              const recentU = (lastUserJ && typeof lastUserJ.content === "string") ? maskContacts(lastUserJ.content) : "";
+              const jk = isNudge ? "nudge" : "opener";
+              const rules = houseHonestyRules(jcfg);
+              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU);
+              if (v.veto) {
+                // One bounded redraft (approved budget: exactly one) — the block
+                // becomes a lesson instead of a silent death. Judged again; a
+                // second kill (or a retry that holds) ends as a veto, recorded
+                // with both lines so learning is measurable.
+                firstKill = { line: text, reason: v.reason || "vetoed by the reach-out judge" };
+                const second = await draftOnce(
+                  "YOUR PREVIOUS DRAFT WAS BLOCKED by a review judge before sending.\n" +
+                  `Blocked line: "${firstKill.line.slice(0, 200)}"\n` +
+                  `Reason: ${firstKill.reason.slice(0, 200)}\n` +
+                  "Draft ONE different line that fully avoids this defect — or hold. Never mention the review.");
+                redrafted = true;
+                if (second.speak && second.text) {
+                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU);
+                  text = second.text;
+                  if (v2.veto) vetoReason = v2.reason || "vetoed again after redraft";
+                } else {
+                  vetoReason = firstKill.reason;
+                }
+              }
             }
           } catch { /* fail-open */ }
         }
@@ -5795,7 +5913,8 @@ async function handleChatPost(req: Request): Promise<Response> {
                 conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
                 action: vetoReason !== null ? "beat_veto" : "beat_hold", serial: null,
                 payload: vetoReason !== null
-                  ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined, coaching: coaching ?? undefined }
+                  ? { kind: isNudge ? "nudge" : "opener", line: text, reason: vetoReason, decision: beatAudit ?? undefined, coaching: coaching ?? undefined,
+                      redraft: redrafted || undefined, first_line: firstKill ? firstKill.line : undefined, first_reason: firstKill ? firstKill.reason : undefined }
                   : { kind: isNudge ? "nudge" : "opener", decision: beatAudit ?? undefined, coaching: coaching ?? undefined },
                 result: vetoReason !== null ? "vetoed — " + vetoReason : "beat held — nothing new to say",
               }).catch(() => { /* audit failures never break the chat */ });
@@ -5819,7 +5938,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               pgInsert("concierge_actions", {
                 conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
                 action: "beat_action", serial: null,
-                payload: { ...beatAudit, outcome: "spoke", coaching: coaching ?? undefined },
+                payload: { ...beatAudit, outcome: "spoke", coaching: coaching ?? undefined, redraft: redrafted || undefined },
                 result: String(beatAudit.action ?? ""),
               }).catch(() => { /* audit failures never break the chat */ });
             }
