@@ -2313,9 +2313,11 @@ let dpr = window.devicePixelRatio || 1;
    #heroBg stays in its original position so the desktop layout is never broken. */
 let mobCanvas = null, mobCtx = null;
 
-function renderFrameTo(canvas, context, img) {
-  const w = canvas.offsetWidth;
-  const h = canvas.offsetHeight;
+/* CSS-pixel canvas sizes are cached at resize time so the draw path never
+   reads layout — an offsetWidth read after a style write forces a reflow per
+   frame, the exact thrash the steering-wheel fixes removed in May. */
+let heroCssW = 0, heroCssH = 0, mobCssW = 0, mobCssH = 0;
+function renderFrameTo(canvas, context, img, w, h) {
   if (!w || !h) return;
   const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
   const sw    = img.naturalWidth  * scale;
@@ -2326,12 +2328,16 @@ function renderFrameTo(canvas, context, img) {
 
 function resizeCanvas() {
   dpr = window.devicePixelRatio || 1;
-  heroCanvas.width  = heroCanvas.offsetWidth  * dpr;
-  heroCanvas.height = heroCanvas.offsetHeight * dpr;
+  heroCssW = heroCanvas.offsetWidth;
+  heroCssH = heroCanvas.offsetHeight;
+  heroCanvas.width  = heroCssW * dpr;
+  heroCanvas.height = heroCssH * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (mobCanvas) {
-    mobCanvas.width  = mobCanvas.offsetWidth  * dpr;
-    mobCanvas.height = mobCanvas.offsetHeight * dpr;
+    mobCssW = mobCanvas.offsetWidth;
+    mobCssH = mobCanvas.offsetHeight;
+    mobCanvas.width  = mobCssW * dpr;
+    mobCanvas.height = mobCssH * dpr;
     mobCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   drawFrame(curFrame);
@@ -2341,46 +2347,56 @@ function drawFrame(idx) {
   const img = frames[idx];
   if (!img || !img.complete || img.naturalWidth === 0) return;
   curFrame = idx;
-  renderFrameTo(heroCanvas, ctx, img);
-  if (mobCanvas && mobCtx) renderFrameTo(mobCanvas, mobCtx, img);
+  renderFrameTo(heroCanvas, ctx, img, heroCssW, heroCssH);
+  if (mobCanvas && mobCtx) renderFrameTo(mobCanvas, mobCtx, img, mobCssW, mobCssH);
 }
 
-function updateHeroFrame() {
-  let progress;
-  const stage = mobCanvas ? mobCanvas.parentElement : null;
-  if (stage) {
-    /* Mobile: scrub the full turntable across the car's whole travel through the
-       viewport — from the moment it enters at the bottom to when it leaves the
-       top. Seated low, that's a long, smooth, amplified rotation as you scroll. */
-    const r  = stage.getBoundingClientRect();
-    const vh = window.innerHeight || document.documentElement.clientHeight || 1;
-    progress = (vh - r.top) / (vh + r.height);
-  } else {
-    const rect = heroEl.getBoundingClientRect();
-    progress = -rect.top / (rect.height * 0.7);
-  }
-  progress = Math.max(0, Math.min(1, progress));
-  const idx = Math.min(FRAME_COUNT - 1, Math.round(progress * (FRAME_COUNT - 1)));
-  if (idx !== curFrame) drawFrame(idx);
-}
 
 /* Preload — show frame 0 as soon as it's ready.
    Desktop AND any landscape view pull the high-resolution set (frames-hd, 1920x1080);
    portrait phones keep the lighter 960x540 set so mobile data stays small. Rotating a
    phone into landscape upgrades the hero to the crisp set in place. */
 function wantHiRes() {
-  return window.innerWidth > 768 ||
-         (window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
+  /* Real desktops/tablets only. A phone turned landscape used to match the
+     old orientation test and pull the 22 MB hi-res set — decode churn on a
+     memory-tight device reads as the whole page flickering. */
+  const minSide = Math.min(screen.width || 0, screen.height || 0);
+  return window.innerWidth > 768 && minSide > 600;
 }
 let heroDir = null;
 function loadHeroFrames(dir) {
   if (dir === heroDir) return;
   heroDir = dir;
-  for (let i = 0; i < FRAME_COUNT; i++) {
-    const img = frames[i] || (frames[i] = new Image());
-    img.onload = () => { if (i === curFrame) drawFrame(curFrame); if (i === 0) resizeCanvas(); };
-    img.src = `${dir}/frame_${String(i + 1).padStart(3, '0')}.jpg`;
-  }
+  /* Coarse-to-fine, six fetches at a time: frame 0 paints immediately, every
+     8th frame gives a watchable scrub within seconds, the gaps fill behind —
+     and the gallery photos never fight 81 simultaneous requests. */
+  const myDir = dir;
+  const order = [];
+  const seen = new Set();
+  [8, 4, 2, 1].forEach(step => {
+    for (let i = 0; i < FRAME_COUNT; i += step) {
+      if (!seen.has(i)) { seen.add(i); order.push(i); }
+    }
+  });
+  let next = 0, inflight = 0;
+  const pump = () => {
+    if (myDir !== heroDir) return; /* a newer set superseded this run */
+    while (inflight < 6 && next < order.length) {
+      const i = order[next++];
+      const img = frames[i] || (frames[i] = new Image());
+      inflight++;
+      img.onload = img.onerror = () => {
+        inflight--;
+        if (i === curFrame) drawFrame(curFrame);
+        if (i === 0) resizeCanvas();
+        pump();
+      };
+      img.decoding = 'async';
+      if (i !== 0 && 'fetchPriority' in img) img.fetchPriority = 'low';
+      img.src = `${myDir}/frame_${String(i + 1).padStart(3, '0')}.jpg`;
+    }
+  };
+  pump();
 }
 loadHeroFrames(wantHiRes() ? 'frames-hd' : 'frames');
 ['orientationchange', 'resize'].forEach(ev => window.addEventListener(ev, () => {
@@ -2402,6 +2418,12 @@ window.addEventListener('resize', resizeCanvas, { passive: true });
 })();
 
 resizeCanvas();
+
+/* App-switch can evict the canvas's GPU texture; returning repaints the
+   current frame instead of leaving a blank layer. */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) requestAnimationFrame(() => drawFrame(curFrame));
+});
 
 /* ══════════════════════════════════
    HERO 3D PARALLAX
@@ -2496,20 +2518,38 @@ function updateNav() {
   nav.classList.toggle('lit', window.scrollY > 70);
 }
 
-/* Single scroll listener — reads first, then writes, to avoid layout thrashing */
+/* Single scroll listener — cached hero geometry (no per-event rect read) and
+   the frame raster is rAF-throttled: scroll events outrun display frames on
+   Android, and drawing per event is the steering-wheel flicker again, at
+   81-image scale. Latest index wins inside the frame. */
+let heroTop0 = heroEl.getBoundingClientRect().top + window.scrollY;
+let heroH    = heroEl.offsetHeight || 1;
+const syncHero = () => {
+  heroTop0 = heroEl.getBoundingClientRect().top + window.scrollY;
+  heroH    = heroEl.offsetHeight || 1;
+};
+window.addEventListener('load',   syncHero, { once: true, passive: true });
+window.addEventListener('resize', syncHero, { passive: true });
+
+let heroRaf = null;
 window.addEventListener('scroll', () => {
   // Reads
   const scrollY = window.scrollY;
   const max     = document.documentElement.scrollHeight - window.innerHeight;
-  const rect    = heroEl.getBoundingClientRect();
 
   // Writes
   scrollBar.style.width = (scrollY / max * 100) + '%';
   nav.classList.toggle('lit', scrollY > 70);
 
-  const progress = Math.max(0, Math.min(1, -rect.top / (rect.height * 0.7)));
+  const progress = Math.max(0, Math.min(1, (scrollY - heroTop0) / (heroH * 0.7)));
   const idx      = Math.min(FRAME_COUNT - 1, Math.round(progress * (FRAME_COUNT - 1)));
-  if (idx !== curFrame) drawFrame(idx);
+  if (idx !== curFrame && heroRaf === null) {
+    heroRaf = requestAnimationFrame(() => {
+      heroRaf = null;
+      const p = Math.max(0, Math.min(1, (window.scrollY - heroTop0) / (heroH * 0.7)));
+      drawFrame(Math.min(FRAME_COUNT - 1, Math.round(p * (FRAME_COUNT - 1))));
+    });
+  }
 }, { passive: true });
 
 /* ══════════════════════════════════
