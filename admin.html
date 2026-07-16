@@ -197,32 +197,46 @@
   .pill.live .dot{ background:var(--brass-soft); box-shadow:0 0 8px rgba(211,184,142,.7); }
   .who .email{ font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; color:var(--dim); }
 
-  nav.tabs{
+  /* Two-line nav: one line of sections, one subdued line of the open
+     section's pages. The pair stays pinned while the page scrolls; a badge
+     on a hidden page rolls up to its section button. */
+  .navwrap{ position:sticky; top:0; z-index:60; background:var(--bg-1); }
+  nav.groups{
     display:flex; gap:4px; padding:0 32px;
     border-bottom:1px solid var(--hairline-dim);
-    flex-wrap:wrap;
-    /* The register has many pages now — the tab rail stays pinned while the
-       page scrolls, and wraps instead of hiding tabs off-screen. */
-    position:sticky; top:0; z-index:60;
-    background:var(--bg-1);
   }
-  nav.tabs button{
+  nav.tabs{
+    display:flex; gap:2px; padding:0 32px;
+    border-bottom:1px solid var(--hairline-dim);
+    background:var(--ink-well);
+    flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none;
+  }
+  nav.tabs::-webkit-scrollbar{ display:none; }
+  nav.groups button, nav.tabs button{
     font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
     background:none; border:none; border-bottom:1px solid transparent; margin-bottom:-1px;
     color:var(--text-faint); padding:15px 18px; cursor:pointer; white-space:nowrap;
     transition:color .15s ease, border-color .15s ease;
   }
-  nav.tabs button:hover{ color:var(--dim); }
-  nav.tabs button.on{ color:var(--brass-soft); border-bottom-color:var(--brass); }
+  nav.groups button{ display:inline-flex; align-items:center; gap:8px; }
+  nav.groups .gcount{
+    font-size:9.5px; letter-spacing:.04em; padding:1px 7px; border-radius:8px;
+    color:var(--bg-1); background:var(--brass-soft);
+  }
+  nav.tabs button{ font-size:10.5px; letter-spacing:.13em; padding:11px 14px; }
+  nav.tabs .tab.hid{ display:none; }
+  nav.groups button:hover, nav.tabs button:hover{ color:var(--dim); }
+  nav.groups button.on, nav.tabs button.on{ color:var(--brass-soft); border-bottom-color:var(--brass); }
   /* Narrow screens: one sticky row that scrolls sideways — the wrap ate the
      whole first screen on a phone. The faded edge hints at more tabs. */
   @media (max-width:700px){
-    nav.tabs{ flex-wrap:nowrap; overflow-x:auto; padding:0 14px;
+    nav.groups, nav.tabs{ flex-wrap:nowrap; overflow-x:auto; padding:0 14px;
       -webkit-overflow-scrolling:touch; scrollbar-width:none;
       -webkit-mask-image:linear-gradient(90deg, #000 0, #000 calc(100% - 34px), transparent);
       mask-image:linear-gradient(90deg, #000 0, #000 calc(100% - 34px), transparent); }
-    nav.tabs::-webkit-scrollbar{ display:none; }
-    nav.tabs button{ flex:none; padding:14px 13px; }
+    nav.groups::-webkit-scrollbar, nav.tabs::-webkit-scrollbar{ display:none; }
+    nav.groups button{ flex:none; padding:14px 13px; }
+    nav.tabs button{ flex:none; padding:12px 12px; }
   }
 
   main{ max-width:1180px; margin:0 auto; padding:34px 32px 90px; }
@@ -500,6 +514,12 @@
   .cal-tick{ cursor:pointer; }
   .cal-tick:hover{ filter:brightness(1.25); }
   .cal-row[data-qid]{ cursor:pointer; }
+  .cal-reptable{ width:100%; border-collapse:collapse; margin-top:2px; font-family:var(--cal-mono); font-size:11px; }
+  .cal-reptable th{ text-align:left; font-weight:400; letter-spacing:.12em; text-transform:uppercase; font-size:9.5px;
+    color:var(--wool-faint); padding:4px 10px 6px 0; border-bottom:1px solid var(--hairline-dim); }
+  .cal-reptable td{ padding:7px 10px 7px 0; border-bottom:1px solid var(--hairline-dim);
+    color:var(--wool-dim); font-variant-numeric:tabular-nums; }
+  .cal-reptable td:first-child{ color:var(--wool); font-family:var(--cal-body); font-size:13px; }
   .cal-pop{ position:fixed; z-index:420; min-width:240px; max-width:330px; background:var(--loden);
     border:1px solid var(--hairline); border-radius:3px; padding:13px 15px;
     box-shadow:0 10px 30px rgba(0,0,0,.45); font-size:13px; }
@@ -998,7 +1018,7 @@
 
   @media (max-width:860px){
     header.bar{ padding:16px 18px; }
-    nav.tabs{ padding:0 18px; }
+    nav.groups, nav.tabs{ padding:0 18px; }
     main{ padding:24px 18px 70px; }
     .grid-3{ grid-template-columns:1fr; gap:16px; }
     .metrics, .metrics.two, #cv-tiles, #cv-tiles2{ grid-template-columns:1fr; }
@@ -1142,23 +1162,26 @@
     </div>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab on" data-tab="tuning" role="tab">Tuning</button>
-    <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
-    <button class="tab" data-tab="procedures" role="tab">Procedures</button>
-    <button class="tab" data-tab="cache" role="tab">Cache</button>
-    <button class="tab" data-tab="customers" role="tab">Orders &amp; Customers</button>
+  <div class="navwrap">
+  <nav class="groups" role="tablist" aria-label="Sections"></nav>
+  <nav class="tabs" role="tablist" aria-label="Pages">
     <button class="tab" data-tab="conversations" role="tab">Conversations</button>
+    <button class="tab" data-tab="calendar" role="tab">Calendar</button>
+    <button class="tab" data-tab="customers" role="tab">Orders &amp; Customers</button>
+    <button class="tab" data-tab="actions" role="tab">Actions</button>
     <button class="tab" data-tab="conversion" role="tab">Conversion</button>
     <button class="tab" data-tab="nps" role="tab">NPS</button>
     <button class="tab" data-tab="spend" role="tab">Spend</button>
-    <button class="tab" data-tab="calendar" role="tab">Calendar</button>
-    <button class="tab" data-tab="actions" role="tab">Actions</button>
-    <button class="tab" data-tab="website" role="tab">Website</button>
-    <button class="tab" data-tab="tools" role="tab">Tools</button>
+    <button class="tab on" data-tab="tuning" role="tab">Tuning</button>
+    <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
+    <button class="tab" data-tab="procedures" role="tab">Procedures</button>
     <button class="tab" data-tab="evals" role="tab">Evals</button>
+    <button class="tab" data-tab="tools" role="tab">Tools</button>
+    <button class="tab" data-tab="cache" role="tab">Cache</button>
+    <button class="tab" data-tab="website" role="tab">Website</button>
     <button class="tab" data-tab="edition" role="tab">Edition &amp; access</button>
   </nav>
+  </div>
 
   <main>
 
@@ -2363,11 +2386,11 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <section class="card cal-quiet" id="cal-rules-card">
         <div class="card-head"><h3>House rules</h3><span class="micro">the master switch and its guardrails</span></div>
         <div class="cal-rules">
-          <label class="micro"><input type="checkbox" id="cal-on"> Bookings <span id="cal-on-state" class="cal-state-off">off</span></label>
-          <label class="micro"><input type="checkbox" id="cal-cb" checked> Callbacks <span id="cal-cb-state" class="cal-state-on">on</span></label>
-          <label class="micro">Owner email <input type="email" id="cal-owner" style="width:220px;margin-left:6px;"></label>
-          <label class="micro">Open bookings per contact <select id="cal-cap" class="mono-field" style="width:120px;margin-left:6px;"><option value="">default (2)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></label>
-          <label class="micro">Unconfirmed requests expire after <select id="cal-ttl" class="mono-field" style="width:130px;margin-left:6px;"><option value="">default (24h)</option><option value="6">6 hours</option><option value="12">12 hours</option><option value="24">24 hours</option><option value="48">2 days</option><option value="0">never</option></select></label>
+          <label class="micro"><input type="checkbox" id="cal-on"> Bookings <span id="cal-on-state" class="cal-state-off">off</span><span class="info-badge" title="The master switch. Off: the concierge stops offering visits and the booking tools go dark — every standing booking survives and stays in this queue.">i</span></label>
+          <label class="micro"><input type="checkbox" id="cal-cb" checked> Callbacks <span id="cal-cb-state" class="cal-state-on">on</span><span class="info-badge" title="When someone would rather be called, the concierge can take a callback request — name, number, preferred window — instead of a booking. Off: it never offers one.">i</span></label>
+          <label class="micro">Owner email <span class="info-badge" title="Every new request, booking, cancellation and callback lands in this inbox, with links straight back to this queue. Blank: no owner mail.">i</span> <input type="email" id="cal-owner" style="width:220px;margin-left:6px;"></label>
+          <label class="micro">Open bookings per contact <span class="info-badge" title="How many future visits one guest (same email or phone) may hold at once — the polite cap that keeps one person from carpeting the calendar.">i</span> <select id="cal-cap" class="mono-field" style="width:120px;margin-left:6px;"><option value="">default (2)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></label>
+          <label class="micro">Unconfirmed requests expire after <span class="info-badge" title="Applies where you confirm each request yourself: a request left unanswered this long cancels itself and frees the slot — the guest was never promised anything. Never keeps requests open until you act.">i</span> <select id="cal-ttl" class="mono-field" style="width:130px;margin-left:6px;"><option value="">default (24h)</option><option value="6">6 hours</option><option value="12">12 hours</option><option value="24">24 hours</option><option value="48">2 days</option><option value="0">never</option></select></label>
           <button id="cal-save-rules" class="btn" type="button">Save rules</button>
         </div>
         <p class="note" style="margin-top:8px;">The switch refuses to turn on until at least one enabled location has
@@ -2389,6 +2412,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           capacity rules, exactly as before.</p>
         <div id="cal-staff"></div>
         <div style="margin-top:10px;"><button id="cal-add-staff" class="btn ghost" type="button">Add a person</button></div>
+        <div id="cal-team-report" style="margin-top:18px;overflow-x:auto;"></div>
       </section>
 
       <section class="card cal-quiet" style="margin-top:14px;">
@@ -3265,14 +3289,74 @@ async function doSignOut() {
 }
 
 const TAB_NAMES = ['tuning', 'knowledge', 'procedures', 'cache', 'customers', 'conversations', 'conversion', 'nps', 'spend', 'calendar', 'actions', 'website', 'tools', 'evals', 'edition'];
+/* The fifteen pages hang off four sections — one calm line up top. A badge
+   on a hidden page (Calendar's pending count) rolls up to its section, so
+   nothing urgent hides behind a fold. */
+const TAB_GROUPS = [
+  { key: 'desk', label: 'Front desk', tabs: ['conversations', 'calendar', 'customers', 'actions'] },
+  { key: 'results', label: 'Results', tabs: ['conversion', 'nps', 'spend'] },
+  { key: 'training', label: 'Training', tabs: ['tuning', 'knowledge', 'procedures', 'evals', 'tools', 'cache'] },
+  { key: 'house', label: 'The house', tabs: ['website', 'edition'] },
+];
+function groupOf(tab) {
+  const g = TAB_GROUPS.find(function (x) { return x.tabs.indexOf(tab) >= 0; });
+  return g ? g.key : TAB_GROUPS[0].key;
+}
+const lastTabInGroup = {};
+function syncTabChrome(name) {
+  const gk = groupOf(name);
+  lastTabInGroup[gk] = name;
+  document.querySelectorAll('nav.groups button').forEach(function (b) {
+    b.classList.toggle('on', b.dataset.group === gk);
+  });
+  document.querySelectorAll('nav.tabs .tab').forEach(function (b) {
+    b.classList.toggle('hid', groupOf(b.dataset.tab) !== gk);
+  });
+}
+function syncGroupCounts() {
+  TAB_GROUPS.forEach(function (g) {
+    let n = 0;
+    g.tabs.forEach(function (t) {
+      const b = document.querySelector('nav.tabs .tab[data-tab="' + t + '"]');
+      const m = b && b.textContent.match(/\((\d+)\)/);
+      if (m) n += +m[1];
+    });
+    const c = document.querySelector('nav.groups .gcount[data-for="' + g.key + '"]');
+    if (c) { c.textContent = n; c.style.display = n > 0 ? '' : 'none'; }
+  });
+}
+(function renderGroups() {
+  const nav = document.querySelector('nav.groups');
+  if (!nav) return;
+  nav.innerHTML = TAB_GROUPS.map(function (g) {
+    return '<button type="button" role="tab" data-group="' + g.key + '">' + g.label +
+      '<span class="gcount" data-for="' + g.key + '" style="display:none;"></span></button>';
+  }).join('');
+  nav.querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      const g = TAB_GROUPS.find(function (x) { return x.key === b.dataset.group; });
+      activateTab(lastTabInGroup[g.key] || g.tabs[0]);
+    });
+  });
+  new MutationObserver(syncGroupCounts)
+    .observe(document.querySelector('nav.tabs'), { subtree: true, childList: true, characterData: true });
+  syncGroupCounts();
+  const on = document.querySelector('nav.tabs .tab.on');
+  syncTabChrome(on ? on.dataset.tab : 'tuning');
+})();
 function activateTab(name, fromHistory) {
   document.querySelectorAll('nav.tabs .tab').forEach(function (b) {
     b.classList.toggle('on', b.dataset.tab === name);
   });
-  // Keep the active tab in view when the rail scrolls sideways (phones).
+  syncTabChrome(name);
+  // Keep the active tab and its section in view when a rail scrolls (phones).
   const onBtn = document.querySelector('nav.tabs .tab.on');
   if (onBtn && onBtn.scrollIntoView) {
     try { onBtn.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (eS) { /* older engines */ }
+  }
+  const onGrp = document.querySelector('nav.groups button.on');
+  if (onGrp && onGrp.scrollIntoView) {
+    try { onGrp.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (eG) { /* older engines */ }
   }
   TAB_NAMES.forEach(function (p) {
     $('panel-' + p).classList.toggle('on', p === name);
@@ -10267,8 +10351,33 @@ function calStaffHoursGrid(staffId, locId) {
         const c = document.createElement('span'); c.className = 'cal-closed'; c.textContent = 'Off';
         day.insertBefore(c, day.querySelector('[data-add-range]'));
       }
+    } else if (t.hasAttribute && t.hasAttribute('data-add-break')) {
+      const bf = box.querySelector('[data-brk="from"]').value;
+      const bt = box.querySelector('[data-brk="to"]').value;
+      if (!bf || !bt || bt <= bf) { calFail(new Error('The break ends before it starts.')); return; }
+      let hits = 0;
+      box.querySelectorAll('.cal-hr-day').forEach((day) => {
+        day.querySelectorAll('.cal-hr-range').forEach((rg) => {
+          const a = rg.querySelector('[data-hr="from"]').value;
+          const b = rg.querySelector('[data-hr="to"]').value;
+          if (a && b && a < bf && b > bt) {
+            const span = document.createElement('span');
+            span.innerHTML = rangeHtml(a, bf) + rangeHtml(bt, b);
+            while (span.firstChild) day.insertBefore(span.firstChild, rg);
+            rg.remove(); hits++;
+          }
+        });
+      });
+      if (!hits) calFail(new Error('No working day spans that break — nothing to split.'));
     }
   });
+  const brk = document.createElement('div'); brk.className = 'cal-frow'; brk.style.marginTop = '6px';
+  brk.innerHTML = '<span class="micro">daily break</span>' +
+    '<input type="time" data-brk="from" value="12:00"><span class="micro">to</span>' +
+    '<input type="time" data-brk="to" value="13:00">' +
+    '<button class="btn ghost mini" type="button" data-add-break>Split their days around it</button>' +
+    '<span class="info-badge" title="Lunches and breaks: every day whose hours span the break is split in two — 9:00 to 17:00 with a 12 to 1 break becomes 9:00-12:00 and 13:00-17:00 — and no visit can be offered across the gap. Days that do not span it are left alone; adjust any single day by hand afterwards. Remember to save.">i</span>';
+  box.appendChild(brk);
   return box;
 }
 async function calSaveStaff(holder, st) {
@@ -10334,6 +10443,9 @@ function calStaffCard(st) {
   const mySvcs = st ? (state.calStaffSvcs || []).filter((s2) => s2.staff_id === st.id) : [];
   const svcNames = mySvcs.map((s2) => (((state.calTypes || []).find((t) => t.id === s2.type_id)) || {}).title).filter(Boolean);
   const offRows = st ? (state.calExcAll || []).filter((x) => x.staff_id === st.id) : [];
+  const todayKey = (function () { const x = new Date();
+    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); })();
+  const offAhead = offRows.filter((x) => String(x.on_date) >= todayKey);
   const per = [];
   for (let d = 0; d < 7; d++) {
     per.push(myHours.filter((h) => h.dow === d).sort((a, b) => a.open_min - b.open_min)
@@ -10349,7 +10461,7 @@ function calStaffCard(st) {
   const worksTxt = outd.join(' · ');
   const digest = isNew ? 'New person — unsaved'
     : [worksTxt || null, svcNames.length ? 'does ' + svcNames.join(', ') : null,
-       offRows.length ? offRows.length + ' day' + (offRows.length === 1 ? '' : 's') + ' off' : null]
+       offAhead.length ? offAhead.length + ' day' + (offAhead.length === 1 ? '' : 's') + ' off ahead' : null]
       .filter(Boolean).join(' · ');
   const warnTxt = !isNew && st.enabled
     ? (!myHours.length ? "no working hours — they can't be booked"
@@ -10373,7 +10485,7 @@ function calStaffCard(st) {
     '<label class="cal-field"><span>name</span><input data-f="stname" value="' + esc(st ? st.name : '') + '" placeholder="e.g. Maya" style="width:150px;"></label>' +
     '<label class="cal-field"><span>email — booking alerts land here</span><input type="email" data-f="stemail" value="' + esc(st ? (st.email || '') : '') + '" placeholder="maya@example.com" style="width:210px;"></label>' +
     '<label class="cal-field"><span>phone (optional)</span><input type="tel" data-f="stphone" value="' + esc(st ? (st.phone || '') : '') + '" placeholder="" style="width:140px;"></label>' +
-    '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="stenabled"' + (isNew || st.enabled ? ' checked' : '') + '> takes bookings</label>' +
+    '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="stenabled"' + (isNew || st.enabled ? ' checked' : '') + '> takes bookings<span class="info-badge" title="Off: no new visits land on them — anything already booked stays theirs. If they are leaving for good, use the hand-over button below instead.">i</span></label>' +
     locPick +
     '</div>' +
     '<div class="micro" style="margin-top:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Their working hours</div>' +
@@ -10389,27 +10501,81 @@ function calStaffCard(st) {
   ed.appendChild(svcWrap);
   if (!isNew) {
     const offWrap = document.createElement('div');
-    offWrap.innerHTML = '<div class="micro" style="margin-top:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Time off</div>';
-    const offList = document.createElement('div');
-    ((state.calExcAll || []).filter((x) => x.staff_id === st.id)).forEach((x) => {
-      const row = document.createElement('div'); row.className = 'cal-frow';
-      row.innerHTML = '<span class="micro mono">' + esc(x.on_date) + '</span>' +
-        '<span class="micro">' + (x.closed ? 'all day' : calHm(x.start_min) + '–' + calHm(x.end_min)) + '</span>' +
-        (x.note ? '<span class="micro">' + esc(x.note) + '</span>' : '') +
-        '<button class="btn ghost mini" type="button" data-del-off="' + x.id + '">×</button>';
-      row.querySelector('[data-del-off]').addEventListener('click', async () => {
-        try { const r = await sb.from('concierge_availability_exceptions').delete().eq('id', x.id);
-          if (r.error) throw new Error(r.error.message);
-          state.calFolds.add(foldKey); loadCalendar(); } catch (e) { calFail(e); }
-      });
-      offList.appendChild(row);
+    offWrap.innerHTML = '<div class="micro" style="margin-top:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Time off' +
+      '<span class="info-badge" title="Days or windows this person is away — vacations, appointments, anything. The calendar simply never offers them during it. A whole vacation is one entry with an end date; anything can be edited or removed later, and long-past entries tidy themselves away.">i</span></div>';
+    const dKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const nextDay = (s) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + 1); return dKey(d); };
+    /* consecutive all-day entries with one reason read as one stretch */
+    const mine = offRows.slice().sort((a, b) => String(a.on_date).localeCompare(String(b.on_date)));
+    const runs = [];
+    mine.forEach((x) => {
+      const last = runs[runs.length - 1];
+      if (x.closed && last && last.closed && (last.note || '') === (x.note || '') && nextDay(last.to) === String(x.on_date)) {
+        last.to = String(x.on_date); last.ids.push(x.id);
+      } else {
+        runs.push({ from: String(x.on_date), to: String(x.on_date), closed: !!x.closed,
+          start_min: x.start_min, end_min: x.end_min, note: x.note || '', ids: [x.id] });
+      }
     });
+    const fmtRun = (r) => (r.from === r.to ? r.from : r.from + ' → ' + r.to) + ' · ' +
+      (r.closed ? 'away' : calHm(r.start_min) + '–' + calHm(r.end_min)) + (r.note ? ' · ' + r.note : '');
+    const upcoming = runs.filter((r) => r.to >= todayKey);
+    const past = runs.filter((r) => r.to < todayKey);
+    const offList = document.createElement('div');
+    const rowFor = (r, dim) => {
+      const row = document.createElement('div'); row.className = 'cal-frow';
+      if (dim) row.style.opacity = '.55';
+      row.innerHTML = '<span class="micro mono">' + esc(fmtRun(r)) + '</span>' +
+        (dim ? '' : '<button class="btn ghost mini" type="button" data-edit-off>edit</button>') +
+        '<button class="btn ghost mini" type="button" data-del-off aria-label="Remove this time off">×</button>';
+      row.querySelector('[data-del-off]').addEventListener('click', async () => {
+        try {
+          for (const id of r.ids) {
+            const res = await sb.from('concierge_availability_exceptions').delete().eq('id', id);
+            if (res.error) throw new Error(res.error.message);
+          }
+          state.calFolds.add(foldKey); loadCalendar();
+        } catch (e) { calFail(e); }
+      });
+      const eb = row.querySelector('[data-edit-off]');
+      if (eb) eb.addEventListener('click', () => {
+        addOff.querySelector('[data-f="offdate"]').value = r.from;
+        addOff.querySelector('[data-f="offend"]').value = r.from === r.to ? '' : r.to;
+        addOff.querySelector('[data-f="offall"]').checked = r.closed;
+        addOff.querySelector('[data-f="offwrap"]').style.display = r.closed ? 'none' : 'inline-flex';
+        if (!r.closed) {
+          addOff.querySelector('[data-f="offfrom"]').value = calT(r.start_min);
+          addOff.querySelector('[data-f="offto"]').value = calT(r.end_min);
+        }
+        addOff.querySelector('[data-f="offnote"]').value = r.note;
+        addOff.dataset.editing = JSON.stringify(r.ids);
+        addOff.querySelector('[data-add-off]').textContent = 'Save the change';
+      });
+      return row;
+    };
+    upcoming.forEach((r) => offList.appendChild(rowFor(r, false)));
+    if (past.length) {
+      const fold = document.createElement('div');
+      const pbtn = document.createElement('button'); pbtn.className = 'btn ghost mini'; pbtn.type = 'button';
+      pbtn.setAttribute('data-past-off', '');
+      pbtn.textContent = past.length + ' past ' + (past.length === 1 ? 'entry' : 'entries') + ' — show';
+      const hold = document.createElement('div'); hold.style.display = 'none';
+      past.slice().reverse().forEach((r) => hold.appendChild(rowFor(r, true)));
+      pbtn.addEventListener('click', () => {
+        const vis = hold.style.display !== 'none';
+        hold.style.display = vis ? 'none' : '';
+        pbtn.textContent = past.length + ' past ' + (past.length === 1 ? 'entry' : 'entries') + (vis ? ' — show' : ' — hide');
+      });
+      fold.appendChild(pbtn); fold.appendChild(hold); offList.appendChild(fold);
+    }
     offWrap.appendChild(offList);
     const addOff = document.createElement('div'); addOff.className = 'cal-frow';
     addOff.innerHTML = '<input type="date" data-f="offdate">' +
+      '<span class="micro">to</span><input type="date" data-f="offend" title="Leave empty for a single day — set it for a whole vacation.">' +
       '<label class="micro"><input type="checkbox" data-f="offall" checked> all day</label>' +
       '<span data-f="offwrap" style="display:none;align-items:center;gap:6px;">' +
       '<input type="time" data-f="offfrom"> <span class="micro">to</span> <input type="time" data-f="offto"></span>' +
+      '<input data-f="offnote" placeholder="reason (optional)" style="width:130px;">' +
       '<button class="btn ghost mini" type="button" data-add-off>+ time off</button>';
     addOff.querySelector('[data-f="offall"]').addEventListener('change', () => {
       addOff.querySelector('[data-f="offwrap"]').style.display =
@@ -10419,16 +10585,35 @@ function calStaffCard(st) {
       try {
         const date = addOff.querySelector('[data-f="offdate"]').value;
         if (!date) throw new Error('Pick a date.');
+        const end = addOff.querySelector('[data-f="offend"]').value || date;
+        if (end < date) throw new Error('Time off ends before it starts.');
         const all = addOff.querySelector('[data-f="offall"]').checked;
-        const row = { on_date: date, closed: all, staff_id: st.id, note: '' };
-        if (!all) {
-          const a = calMin(addOff.querySelector('[data-f="offfrom"]').value || '');
-          const b = calMin(addOff.querySelector('[data-f="offto"]').value || '');
-          if (a === null || b === null) throw new Error('Time off needs both times.');
-          if (b <= a) throw new Error('Time off ends before it starts.');
-          row.closed = false; row.start_min = a; row.end_min = b;
+        const note = (addOff.querySelector('[data-f="offnote"]').value || '').trim();
+        if (!all && end !== date) throw new Error('A time window fits a single day — leave the end date empty.');
+        const days = [];
+        for (let d2 = date; d2 <= end; d2 = nextDay(d2)) {
+          days.push(d2);
+          if (days.length > 62) throw new Error('That is over two months of days — check the dates.');
         }
-        const r = await sb.from('concierge_availability_exceptions').insert([row]);
+        const rows = days.map((d2) => {
+          const row = { on_date: d2, closed: true, staff_id: st.id, note: note };
+          if (!all) {
+            const a = calMin(addOff.querySelector('[data-f="offfrom"]').value || '');
+            const b = calMin(addOff.querySelector('[data-f="offto"]').value || '');
+            if (a === null || b === null) throw new Error('Time off needs both times.');
+            if (b <= a) throw new Error('Time off ends before it starts.');
+            row.closed = false; row.start_min = a; row.end_min = b;
+          }
+          return row;
+        });
+        const editing = addOff.dataset.editing ? JSON.parse(addOff.dataset.editing) : null;
+        if (editing) {
+          for (const id of editing) {
+            const res = await sb.from('concierge_availability_exceptions').delete().eq('id', id);
+            if (res.error) throw new Error(res.error.message);
+          }
+        }
+        const r = await sb.from('concierge_availability_exceptions').insert(rows);
         if (r.error) throw new Error(r.error.message);
         state.calFolds.add(foldKey); loadCalendar();
       } catch (e) { calFail(e); }
@@ -10561,7 +10746,7 @@ async function loadCalendar() {
   const noteEl = $('cal-note'); noteEl.textContent = ''; noteEl.className = 'micro';
   state.apptFacetsP = null;   // actions here change the facts the badges read
   try {
-    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR] = await Promise.all([
+    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR, teamRep] = await Promise.all([
       calRpc('appointments_queue'), calRpc('appointments_week', { p_days: 7 }),
       sb.from('concierge_locations').select('*').order('sort_order'),
       sb.from('concierge_business_hours').select('*'),
@@ -10572,6 +10757,7 @@ async function loadCalendar() {
       sb.from('concierge_staff').select('*').order('sort_order'),
       sb.from('concierge_staff_hours').select('*'),
       sb.from('concierge_staff_services').select('*'),
+      calRpc('staff_report', { p_days: 30 }).catch(() => null),
     ]);
     for (const r of [locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR]) {
       if (r.error) throw new Error(r.error.message);
@@ -10934,9 +11120,9 @@ async function loadCalendar() {
       const ed = document.createElement('div'); ed.className = 'cal-editor' + (open ? '' : ' is-collapsed');
       ed.innerHTML =
         '<div class="cal-frow">' +
-        '<label class="cal-field"><span>timezone</span>' + calTzSelect('data-f="timezone"', l.timezone) + '</label>' +
+        '<label class="cal-field"><span>timezone<span class="info-badge" title="Each location keeps its own clock: the hours below are read in this zone, slots expand in it (daylight saving handled), and guests see times in their own zone alongside.">i</span></span>' + calTzSelect('data-f="timezone"', l.timezone) + '</label>' +
         '<label class="cal-field"><span>address</span><input value="' + esc(l.address || '') + '" data-f="address" style="width:230px;"></label>' +
-        '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> open for booking</label>' +
+        '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> open for booking<span class="info-badge" title="Off: this location offers no future slots, but every standing booking here survives and stays visible in the queue.">i</span></label>' +
         '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button></div>' +
         '<div class="micro" style="margin-top:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Business hours</div>' +
         '<div class="micro" style="opacity:.7;">A day with no hours is closed. Add a second row to a day for split shifts.</div>';
@@ -10969,6 +11155,31 @@ async function loadCalendar() {
       state.calStaff.forEach((stf) => stEl.appendChild(calStaffCard(stf)));
       const addBtn = $('cal-add-staff');
       if (addBtn) addBtn.onclick = () => stEl.appendChild(calStaffCard(null));
+      /* the team's numbers — same tables the calendar sells from */
+      const repEl = $('cal-team-report');
+      if (repEl) {
+        repEl.textContent = '';
+        const ppl = ((teamRep && teamRep.people) || []).filter((p) =>
+          p.enabled || p.booked_min > 0 || p.upcoming > 0);
+        if (ppl.length && state.calStaff.length) {
+          const hm2 = (m) => (m >= 60 ? (Math.round(m / 6) / 10) + 'h' : m + 'm');
+          const heat = (p) => (p.show_rate != null && p.show_rate < 80 ? ' style="color:#d08770;"' : '');
+          repEl.innerHTML =
+            '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">The last 30 days' +
+            '<span class="info-badge" title="Adherence and productivity, computed from the same tables the calendar sells from. Scheduled: their working hours across the window minus time off. Booked: visit minutes on their book — kept, no-show, or still standing. Utilization: booked over scheduled. Kept rate: kept against kept plus no-shows. A dash means nothing to measure yet — never a fake zero.">i</span></div>' +
+            '<table class="cal-reptable"><thead><tr>' +
+            '<th>person</th><th>scheduled</th><th>booked</th><th>utilization</th><th>kept</th><th>no-shows</th><th>kept rate</th><th>days off</th><th>ahead</th>' +
+            '</tr></thead><tbody>' +
+            ppl.map((p) => '<tr' + (p.enabled ? '' : ' style="opacity:.55;"') + '><td>' + esc(p.name) +
+              (p.enabled ? '' : ' <span class="micro">(away)</span>') + '</td>' +
+              '<td>' + hm2(p.sched_min) + '</td><td>' + hm2(p.booked_min) + '</td>' +
+              '<td>' + (p.utilization == null ? '—' : p.utilization + '%') + '</td>' +
+              '<td>' + p.done + '</td><td' + heat(p) + '>' + p.no_show + '</td>' +
+              '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
+              '<td>' + p.days_off + '</td><td>' + p.upcoming + '</td></tr>').join('') +
+            '</tbody></table>';
+        }
+      }
     }
 
     /* offerings */
@@ -11090,21 +11301,21 @@ function calTypeRow(t) {
     'spacing — a 60-minute visit that can start every 15 minutes is normal.</p>' +
     '<div class="cal-frow">' +
     fld('offering', '<input data-f="title" value="' + esc(t.title) + '" placeholder="e.g. Viewing" style="width:170px;">') +
-    fld('visit length', sel('duration_min', calOpts([15, 20, 30, 45, 60, 90, 120, 180, 240], t.duration_min,
+    fld('visit length<span class="info-badge" title="How long each visit runs. The end time is what other bookings overlap against — nobody can hold two visits that touch.">i</span>', sel('duration_min', calOpts([15, 20, 30, 45, 60, 90, 120, 180, 240], t.duration_min,
       { 15: '15 min', 20: '20 min', 30: '30 min', 45: '45 min', 60: '1 hour', 90: '1½ hours', 120: '2 hours', 180: '3 hours', 240: '4 hours' }))) +
-    fld('starts every', sel('step_min', calOpts([5, 10, 15, 20, 30, 45, 60], t.step_min,
+    fld('starts every<span class="info-badge" title="Spacing of the offered start times, independent of length: a 60-minute visit starting every 15 is four possible doors into each hour.">i</span>', sel('step_min', calOpts([5, 10, 15, 20, 30, 45, 60], t.step_min,
       { 5: '5 min', 10: '10 min', 15: '15 min', 20: '20 min', 30: '30 min', 45: '45 min', 60: '1 hour' }))) +
-    fld('mode', sel('mode', calOpts(['in-person', 'video', 'phone'], t.mode, { 'in-person': 'in person', video: 'video call', phone: 'phone call' }))) +
-    '<label class="micro" style="padding-bottom:6px;"><input data-f="confirm_manual" type="checkbox"' + (t.confirm_mode === 'manual' ? ' checked' : '') + '> I confirm each request myself</label>' +
-    '<label class="micro" style="padding-bottom:6px;"><input data-f="enabled" type="checkbox"' + (t.enabled ? ' checked' : '') + '> bookable</label>' +
+    fld('mode<span class="info-badge" title="How the visit happens. In person carries the location address into confirmations; video and phone still occupy the same calendar.">i</span>', sel('mode', calOpts(['in-person', 'video', 'phone'], t.mode, { 'in-person': 'in person', video: 'video call', phone: 'phone call' }))) +
+    '<label class="micro" style="padding-bottom:6px;"><input data-f="confirm_manual" type="checkbox"' + (t.confirm_mode === 'manual' ? ' checked' : '') + '> I confirm each request myself<span class="info-badge" title="Nothing is promised until you press Confirm in the queue — guests are told the house will come back to them. Requests left unanswered expire after the House-rules timer and free their slot. Untick and slots book instantly.">i</span></label>' +
+    '<label class="micro" style="padding-bottom:6px;"><input data-f="enabled" type="checkbox"' + (t.enabled ? ' checked' : '') + '> bookable<span class="info-badge" title="Whether the concierge offers this at all. Unticking removes future slots the moment you save — standing bookings are never cancelled by a toggle.">i</span></label>' +
     '</div><div class="cal-frow">' +
-    fld('how many at the same time', sel('capacity', calOpts([1, 2, 3, 4, 5, 6], t.capacity))) +
-    fld('party size up to', sel('max_party', calOpts([0, 2, 4, 6, 8, 10, 12], t.max_party, { 0: "don't ask" }))) +
-    fld('gap after each visit', sel('buffer_min', calOpts([0, 10, 15, 30, 60], t.buffer_min,
+    fld('how many at the same time<span class="info-badge" title="How many bookings may share one start time — rooms, chairs, lanes. With a team on, who is actually free caps this further.">i</span>', sel('capacity', calOpts([1, 2, 3, 4, 5, 6], t.capacity))) +
+    fld('party size up to<span class="info-badge" title="If guests bring company, the concierge asks how many and declines parties above this, naming the cap. The first choice skips the question entirely.">i</span>', sel('max_party', calOpts([0, 2, 4, 6, 8, 10, 12], t.max_party, { 0: "don't ask" }))) +
+    fld('gap after each visit<span class="info-badge" title="Breathing room added after every visit — notes, reset, travel. The next offered slot starts after the gap, for the offering and for the person taking it.">i</span>', sel('buffer_min', calOpts([0, 10, 15, 30, 60], t.buffer_min,
       { 0: 'none', 10: '10 min', 15: '15 min', 30: '30 min', 60: '1 hour' }))) +
-    fld('minimum notice', sel('lead_time_min', calOpts([0, 60, 240, 720, 1440, 2880], t.lead_time_min,
+    fld('minimum notice<span class="info-badge" title="How close to now a visit may start. Four hours means a morning visitor sees nothing before the afternoon.">i</span>', sel('lead_time_min', calOpts([0, 60, 240, 720, 1440, 2880], t.lead_time_min,
       { 0: 'none', 60: '1 hour', 240: '4 hours', 720: '12 hours', 1440: '1 day', 2880: '2 days' }))) +
-    fld('bookable up to', sel('horizon_days', calOpts([7, 14, 21, 30, 60, 90], t.horizon_days,
+    fld('bookable up to<span class="info-badge" title="How far ahead the diary is open. Beyond the horizon the concierge says booking is not open yet rather than guessing.">i</span>', sel('horizon_days', calOpts([7, 14, 21, 30, 60, 90], t.horizon_days,
       { 7: '1 week ahead', 14: '2 weeks ahead', 21: '3 weeks ahead', 30: '1 month ahead', 60: '2 months ahead', 90: '3 months ahead' }))) +
     '</div>' +
     '<div class="micro" style="margin-top:8px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">When it can start' + (locs.length > 1 ? ' — per location' : '') + '</div>' +
@@ -11112,7 +11323,7 @@ function calTypeRow(t) {
     '<div data-wins>' + winRows + '</div>' +
     '<div class="cal-frow" style="margin-top:4px;">' +
     '<button class="btn ghost mini" type="button" data-add-win>+ Add hours window</button>' +
-    fld('extra question (optional)', '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="asked once while booking" style="width:230px;">') +
+    fld('extra question (optional)<span class="info-badge" title="Asked once during booking. The answer rides the request into the queue and the owner email — never used for anything else.">i</span>', '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="asked once while booking" style="width:230px;">') +
     '<button class="btn ghost" data-save-type>Save</button></div>';
   holder.appendChild(box);
   sum.querySelector('.edit').addEventListener('click', () => {

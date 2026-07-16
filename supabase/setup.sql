@@ -836,6 +836,11 @@ begin
   get diagnostics c_appt = row_count;
   delete from public.rate_limits where window_start < now() - interval '2 hours';
   get diagnostics c_rate = row_count;
+  -- Dated calendar exceptions (closures, special hours, personal time off)
+  -- mean nothing 400+ days after the date passed — but stay long enough for
+  -- any staff_report window. Fixed floor: p_days never shortens this.
+  delete from public.concierge_availability_exceptions
+    where on_date < current_date - greatest(coalesce(p_days, 180), 400);
   return jsonb_build_object('cutoff', cutoff, 'conversations_deleted', c_convos,
     'actions_deleted', c_actions, 'email_log_deleted', c_email,
     'site_events_deleted', c_events, 'rate_limits_deleted', c_rate,
@@ -2069,6 +2074,80 @@ begin
 end $$;
 grant execute on function public.staff_departure(bigint) to authenticated;
 revoke execute on function public.staff_departure(bigint) from public, anon;
+
+-- ── The team's numbers — adherence & productivity, computed never guessed ────
+-- Scheduled minutes come from the same rows the slot engine reads (their
+-- weekly hours expanded over the window, minus personal time off), so the
+-- report can never disagree with what was actually offerable. Booked/kept/
+-- no-show cover the window's past; 'upcoming' looks forward. Rates are NULL
+-- when the denominator is zero — never a fake 0%.
+create or replace function public.staff_report(p_days int default 30)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare v jsonb; v_days int := greatest(coalesce(p_days, 30), 1);
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  with days as (
+    select d::date as day
+      from generate_series(current_date - v_days + 1, current_date, interval '1 day') d),
+  sched as (
+    select st.id,
+           sum(greatest(0, (sh.close_min - sh.open_min)
+             - coalesce((select sum(case when e.closed then sh.close_min - sh.open_min
+                       else greatest(0, least(sh.close_min, e.end_min)
+                                     - greatest(sh.open_min, e.start_min)) end)::int
+                 from public.concierge_availability_exceptions e
+                 where e.staff_id = st.id and e.on_date = days.day), 0))) as sched_min
+      from public.concierge_staff st
+      join public.concierge_staff_hours sh on sh.staff_id = st.id
+      join days on extract(dow from days.day)::int = sh.dow
+     group by st.id),
+  appts as (
+    select a.staff_id,
+           coalesce(sum(extract(epoch from (a.ends_at - a.starts_at)) / 60)
+             filter (where a.starts_at >= current_date - v_days + 1 and a.starts_at < now()
+                       and a.status in ('booked','completed','no_show')), 0)::int as booked_min,
+           count(*) filter (where a.starts_at >= current_date - v_days + 1 and a.starts_at < now()
+                              and a.status = 'completed') as done,
+           count(*) filter (where a.starts_at >= current_date - v_days + 1 and a.starts_at < now()
+                              and a.status = 'no_show') as no_show,
+           count(*) filter (where a.starts_at >= current_date - v_days + 1
+                              and a.status = 'cancelled') as cancelled,
+           count(*) filter (where a.starts_at > now()
+                              and a.status in ('requested','booked')) as upcoming
+      from public.concierge_appointments a
+     where a.kind = 'appointment' and not a.qa and a.staff_id is not null
+     group by a.staff_id),
+  offs as (
+    select e.staff_id,
+           count(distinct e.on_date) filter (where e.closed) as days_off
+      from public.concierge_availability_exceptions e
+     where e.staff_id is not null
+       and e.on_date between current_date - v_days + 1 and current_date
+     group by e.staff_id)
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'name', st.name, 'enabled', st.enabled,
+      'sched_min', coalesce(s.sched_min, 0),
+      'booked_min', coalesce(a.booked_min, 0),
+      'utilization', case when coalesce(s.sched_min, 0) > 0
+        then round(coalesce(a.booked_min, 0) * 100.0 / s.sched_min) end,
+      'done', coalesce(a.done, 0), 'no_show', coalesce(a.no_show, 0),
+      'cancelled', coalesce(a.cancelled, 0),
+      'show_rate', case when coalesce(a.done, 0) + coalesce(a.no_show, 0) > 0
+        then round(coalesce(a.done, 0) * 100.0 / (coalesce(a.done, 0) + coalesce(a.no_show, 0))) end,
+      'days_off', coalesce(o.days_off, 0),
+      'upcoming', coalesce(a.upcoming, 0)) order by st.enabled desc, st.sort_order, st.id), '[]'::jsonb)
+    into v
+    from public.concierge_staff st
+    left join sched s on s.id = st.id
+    left join appts a on a.staff_id = st.id
+    left join offs o on o.staff_id = st.id;
+  return jsonb_build_object('ok', true, 'days', v_days, 'people', v);
+end $$;
+grant execute on function public.staff_report(int) to authenticated;
+revoke execute on function public.staff_report(int) from public, anon;
 
 -- ── The queue — the merchant's actionable inbox, one call ────────────────────
 create or replace function public.appointments_queue()
