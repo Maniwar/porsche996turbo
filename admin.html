@@ -2355,6 +2355,16 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div id="cal-add-loc" style="margin-top:10px;"></div>
       </section>
 
+      <section class="card cal-quiet" style="margin-top:14px;" id="cal-team-card">
+        <div class="card-head"><h3>The team</h3><span class="micro">optional — add people and bookings assign to whoever is free</span></div>
+        <p class="note">Give a person working hours and tick what they offer, and the calendar only
+          sells times someone can actually cover. Visitors can ask for a person by name; unnamed
+          bookings go to whoever is free with the lightest day. No people = the offering's own
+          capacity rules, exactly as before.</p>
+        <div id="cal-staff"></div>
+        <div style="margin-top:10px;"><button id="cal-add-staff" class="btn ghost" type="button">Add a person</button></div>
+      </section>
+
       <section class="card cal-quiet" style="margin-top:14px;">
         <div class="card-head"><h3>Offerings</h3><span class="micro">what can be booked — drafts ship disabled</span></div>
         <div id="cal-types"></div>
@@ -10196,11 +10206,230 @@ function calPreview(holder, t) {
         '</div>';
     });
 }
+/* ── The team — people, their hours, what they offer, their time off ───────── */
+function calStaffHoursGrid(staffId, locId) {
+  const box = document.createElement('div');
+  box.setAttribute('data-sthrs', ''); box.setAttribute('data-staff', staffId); box.setAttribute('data-stloc', locId);
+  const rangeHtml = (from, to) =>
+    '<span class="cal-hr-range"><input type="time" data-hr="from" value="' + from + '">' +
+    '<span class="micro">to</span><input type="time" data-hr="to" value="' + to + '">' +
+    '<button class="btn ghost mini" type="button" data-del-range aria-label="Remove these hours">×</button></span>';
+  for (let d = 0; d < 7; d++) {
+    const row = document.createElement('div'); row.className = 'cal-hr-day'; row.setAttribute('data-dow', d);
+    const ranges = (state.calStaffHours || []).filter((h) => h.staff_id === staffId && h.location_id === locId && h.dow === d)
+      .sort((a, b) => a.open_min - b.open_min);
+    row.innerHTML = '<span class="micro mono">' + CAL_DAYS[d] + '</span>' +
+      ranges.map((h) => rangeHtml(calT(h.open_min), calT(h.close_min))).join('') +
+      (ranges.length ? '' : '<span class="cal-closed">Off</span>') +
+      '<button class="btn ghost mini" type="button" data-add-range>+ hours</button>';
+    box.appendChild(row);
+  }
+  box.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (t.hasAttribute && t.hasAttribute('data-add-range')) {
+      const span = document.createElement('span');
+      span.innerHTML = rangeHtml('09:00', '17:00');
+      t.parentElement.insertBefore(span.firstChild, t);
+      const off = t.parentElement.querySelector('.cal-closed'); if (off) off.remove();
+    } else if (t.hasAttribute && t.hasAttribute('data-del-range')) {
+      const day = t.closest('.cal-hr-day');
+      t.closest('.cal-hr-range').remove();
+      if (!day.querySelector('.cal-hr-range')) {
+        const c = document.createElement('span'); c.className = 'cal-closed'; c.textContent = 'Off';
+        day.insertBefore(c, day.querySelector('[data-add-range]'));
+      }
+    }
+  });
+  return box;
+}
+async function calSaveStaff(holder, st) {
+  try {
+    const name = holder.querySelector('[data-f="stname"]').value.trim();
+    if (!name) throw new Error('Give them a name.');
+    const enabled = holder.querySelector('[data-f="stenabled"]').checked;
+    let sid = st ? st.id : null;
+    if (sid) {
+      const r = await sb.from('concierge_staff').update({ name: name, enabled: enabled }).eq('id', sid);
+      if (r.error) throw new Error(r.error.message);
+    } else {
+      const r = await sb.from('concierge_staff').insert([{ name: name, enabled: enabled }]).select('id');
+      if (r.error) throw new Error(r.error.message);
+      sid = r.data && r.data[0] && r.data[0].id;
+    }
+    if (!sid) throw new Error('The person did not save.');
+    // hours for the grid's location
+    const grid = holder.querySelector('[data-sthrs]');
+    if (grid) {
+      const locId = +grid.getAttribute('data-stloc');
+      const rows = [];
+      grid.querySelectorAll('.cal-hr-day').forEach((day) => {
+        const d = +day.getAttribute('data-dow');
+        day.querySelectorAll('.cal-hr-range').forEach((rg) => {
+          const from = rg.querySelector('[data-hr="from"]').value;
+          const to = rg.querySelector('[data-hr="to"]').value;
+          if (!from && !to) return;
+          if (!from || !to) throw new Error('Hours on ' + CAL_DAYS[d] + ' are missing a time.');
+          const a = calMin(from), b = calMin(to);
+          if (a === null || b === null || b <= a) throw new Error('Hours on ' + CAL_DAYS[d] + ' end before they start.');
+          rows.push({ staff_id: sid, location_id: locId, dow: d, open_min: a, close_min: b });
+        });
+      });
+      const del = await sb.from('concierge_staff_hours').delete().eq('staff_id', sid).eq('location_id', locId);
+      if (del.error) throw new Error(del.error.message);
+      if (rows.length) {
+        const ins = await sb.from('concierge_staff_hours').insert(rows);
+        if (ins.error) throw new Error(ins.error.message);
+      }
+    }
+    // what they offer
+    const picks = Array.from(holder.querySelectorAll('[data-svc]:checked')).map((c) => +c.getAttribute('data-svc'));
+    const delS = await sb.from('concierge_staff_services').delete().eq('staff_id', sid);
+    if (delS.error) throw new Error(delS.error.message);
+    if (picks.length) {
+      const insS = await sb.from('concierge_staff_services').insert(picks.map((tid) => ({ staff_id: sid, type_id: tid })));
+      if (insS.error) throw new Error(insS.error.message);
+    }
+    state.calFolds.add('staff:' + sid);
+    loadCalendar();
+  } catch (e) { calFail(e); }
+}
+function calStaffCard(st) {
+  const locs = state.calLocs || [];
+  const isNew = !st;
+  const holder = document.createElement('div');
+  const foldKey = 'staff:' + (st ? st.id : '—new—');
+  const open = isNew || state.calFolds.has(foldKey);
+  const myHours = st ? (state.calStaffHours || []).filter((h) => h.staff_id === st.id) : [];
+  const mySvcs = st ? (state.calStaffSvcs || []).filter((s2) => s2.staff_id === st.id) : [];
+  const svcNames = mySvcs.map((s2) => (((state.calTypes || []).find((t) => t.id === s2.type_id)) || {}).title).filter(Boolean);
+  const offRows = st ? (state.calExcAll || []).filter((x) => x.staff_id === st.id) : [];
+  const per = [];
+  for (let d = 0; d < 7; d++) {
+    per.push(myHours.filter((h) => h.dow === d).sort((a, b) => a.open_min - b.open_min)
+      .map((h) => calHm(h.open_min) + '–' + calHm(h.close_min)).join(', '));
+  }
+  const outd = []; let i2 = 0;
+  while (i2 < 7) {
+    if (!per[i2]) { i2++; continue; }
+    let j2 = i2; while (j2 + 1 < 7 && per[j2 + 1] === per[i2]) j2++;
+    outd.push((i2 === j2 ? CAL_DAYS[i2] : CAL_DAYS[i2] + '–' + CAL_DAYS[j2]) + ' ' + per[i2]);
+    i2 = j2 + 1;
+  }
+  const worksTxt = outd.join(' · ');
+  const digest = isNew ? 'New person — unsaved'
+    : [worksTxt || null, svcNames.length ? 'does ' + svcNames.join(', ') : null,
+       offRows.length ? offRows.length + ' day' + (offRows.length === 1 ? '' : 's') + ' off' : null]
+      .filter(Boolean).join(' · ');
+  const warnTxt = !isNew && st.enabled
+    ? (!myHours.length ? "no working hours — they can't be booked"
+       : (!mySvcs.length ? 'does nothing yet — tick what they offer' : ''))
+    : '';
+  const dot = isNew ? '' : (st.enabled ? (warnTxt ? ' warn' : ' on') : '');
+  const sum = document.createElement('div'); sum.className = 'cal-sum';
+  sum.innerHTML = '<span class="cal-dot' + dot + '"></span><b>' + esc(isNew ? 'New person' : st.name) + '</b>' +
+    (isNew || st.enabled ? '' : '<span class="sl">away</span>') +
+    '<span class="dig' + (warnTxt ? ' warn' : '') + '">' + esc(warnTxt || digest) + '</span>' +
+    '<button class="btn ghost edit" type="button" aria-expanded="' + (open ? 'true' : 'false') + '">' + (open ? 'Close' : 'Edit') + '</button>';
+  holder.appendChild(sum);
+  const ed = document.createElement('div'); ed.className = 'cal-editor' + (open ? '' : ' is-collapsed');
+  const locId = locs[0] ? locs[0].id : 0;
+  const locPick = locs.length > 1
+    ? '<label class="cal-field"><span>working at</span><select data-f="stloc">' +
+      locs.map((l) => '<option value="' + l.id + '">' + esc(l.title) + '</option>').join('') + '</select></label>'
+    : '';
+  ed.innerHTML =
+    '<div class="cal-frow">' +
+    '<label class="cal-field"><span>name</span><input data-f="stname" value="' + esc(st ? st.name : '') + '" placeholder="e.g. Maya" style="width:170px;"></label>' +
+    '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="stenabled"' + (isNew || st.enabled ? ' checked' : '') + '> takes bookings</label>' +
+    locPick +
+    '</div>' +
+    '<div class="micro" style="margin-top:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Their working hours</div>' +
+    '<div class="micro" style="opacity:.7;">A day with no hours is a day off. These sit inside business hours.</div>';
+  ed.appendChild(calStaffHoursGrid(st ? st.id : -1, locId));
+  const svcWrap = document.createElement('div');
+  svcWrap.innerHTML = '<div class="micro" style="margin-top:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">What they offer</div>' +
+    ((state.calTypes || []).length
+      ? '<div class="cal-frow" style="margin-top:4px;">' + (state.calTypes || []).map((t) =>
+          '<label class="micro"><input type="checkbox" data-svc="' + t.id + '"' +
+          (mySvcs.some((s2) => s2.type_id === t.id) ? ' checked' : '') + '> ' + esc(t.title) + '</label>').join('') + '</div>'
+      : '<div class="cal-empty">Add an offering below first, then tick it here.</div>');
+  ed.appendChild(svcWrap);
+  if (!isNew) {
+    const offWrap = document.createElement('div');
+    offWrap.innerHTML = '<div class="micro" style="margin-top:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Time off</div>';
+    const offList = document.createElement('div');
+    ((state.calExcAll || []).filter((x) => x.staff_id === st.id)).forEach((x) => {
+      const row = document.createElement('div'); row.className = 'cal-frow';
+      row.innerHTML = '<span class="micro mono">' + esc(x.on_date) + '</span>' +
+        '<span class="micro">' + (x.closed ? 'all day' : calHm(x.start_min) + '–' + calHm(x.end_min)) + '</span>' +
+        (x.note ? '<span class="micro">' + esc(x.note) + '</span>' : '') +
+        '<button class="btn ghost mini" type="button" data-del-off="' + x.id + '">×</button>';
+      row.querySelector('[data-del-off]').addEventListener('click', async () => {
+        try { const r = await sb.from('concierge_availability_exceptions').delete().eq('id', x.id);
+          if (r.error) throw new Error(r.error.message);
+          state.calFolds.add(foldKey); loadCalendar(); } catch (e) { calFail(e); }
+      });
+      offList.appendChild(row);
+    });
+    offWrap.appendChild(offList);
+    const addOff = document.createElement('div'); addOff.className = 'cal-frow';
+    addOff.innerHTML = '<input type="date" data-f="offdate">' +
+      '<label class="micro"><input type="checkbox" data-f="offall" checked> all day</label>' +
+      '<span data-f="offwrap" style="display:none;align-items:center;gap:6px;">' +
+      '<input type="time" data-f="offfrom"> <span class="micro">to</span> <input type="time" data-f="offto"></span>' +
+      '<button class="btn ghost mini" type="button" data-add-off>+ time off</button>';
+    addOff.querySelector('[data-f="offall"]').addEventListener('change', () => {
+      addOff.querySelector('[data-f="offwrap"]').style.display =
+        addOff.querySelector('[data-f="offall"]').checked ? 'none' : 'inline-flex';
+    });
+    addOff.querySelector('[data-add-off]').addEventListener('click', async () => {
+      try {
+        const date = addOff.querySelector('[data-f="offdate"]').value;
+        if (!date) throw new Error('Pick a date.');
+        const all = addOff.querySelector('[data-f="offall"]').checked;
+        const row = { on_date: date, closed: all, staff_id: st.id, note: '' };
+        if (!all) {
+          const a = calMin(addOff.querySelector('[data-f="offfrom"]').value || '');
+          const b = calMin(addOff.querySelector('[data-f="offto"]').value || '');
+          if (a === null || b === null) throw new Error('Time off needs both times.');
+          if (b <= a) throw new Error('Time off ends before it starts.');
+          row.closed = false; row.start_min = a; row.end_min = b;
+        }
+        const r = await sb.from('concierge_availability_exceptions').insert([row]);
+        if (r.error) throw new Error(r.error.message);
+        state.calFolds.add(foldKey); loadCalendar();
+      } catch (e) { calFail(e); }
+    });
+    offWrap.appendChild(addOff);
+    ed.appendChild(offWrap);
+  }
+  const foot = document.createElement('div'); foot.className = 'cal-frow'; foot.style.marginTop = '10px';
+  const sv = document.createElement('button'); sv.className = 'btn ghost'; sv.type = 'button';
+  sv.textContent = 'Save person'; sv.setAttribute('data-save-staff', '');
+  sv.addEventListener('click', () => calSaveStaff(holder, st));
+  foot.appendChild(sv);
+  ed.appendChild(foot);
+  holder.appendChild(ed);
+  sum.querySelector('.edit').addEventListener('click', () => {
+    const collapsed = ed.classList.toggle('is-collapsed');
+    const b2 = sum.querySelector('.edit');
+    b2.textContent = collapsed ? 'Edit' : 'Close';
+    b2.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    if (collapsed) state.calFolds.delete(foldKey); else state.calFolds.add(foldKey);
+  });
+  const lp = ed.querySelector('[data-f="stloc"]');
+  if (lp) lp.addEventListener('change', () => {
+    const old = ed.querySelector('[data-sthrs]');
+    const fresh = calStaffHoursGrid(st ? st.id : -1, +lp.value);
+    old.replaceWith(fresh);
+  });
+  return holder;
+}
 async function loadCalendar() {
   const noteEl = $('cal-note'); noteEl.textContent = ''; noteEl.className = 'micro';
   state.apptFacetsP = null;   // actions here change the facts the badges read
   try {
-    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR] = await Promise.all([
+    const [q, week, locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR] = await Promise.all([
       calRpc('appointments_queue'), calRpc('appointments_week', { p_days: 7 }),
       sb.from('concierge_locations').select('*').order('sort_order'),
       sb.from('concierge_business_hours').select('*'),
@@ -10208,14 +10437,19 @@ async function loadCalendar() {
       sb.from('concierge_availability').select('*'),
       sb.from('concierge_availability_exceptions').select('*').order('on_date'),
       sb.from('concierge_config').select('value').eq('key', 'bookings'),
+      sb.from('concierge_staff').select('*').order('sort_order'),
+      sb.from('concierge_staff_hours').select('*'),
+      sb.from('concierge_staff_services').select('*'),
     ]);
-    for (const r of [locsR, hoursR, typesR, availR, excR, cfgR]) {
+    for (const r of [locsR, hoursR, typesR, availR, excR, cfgR, staffR, sthR, stsR]) {
       if (r.error) throw new Error(r.error.message);
     }
     const locs = locsR.data || [], hours = hoursR.data || [], types = typesR.data || [];
     const avail = availR.data || [], exc = excR.data || [];
     const bcfg = (cfgR.data && cfgR.data[0] && cfgR.data[0].value) || {};
     state.calLocs = locs; state.calHours = hours; state.calTypes = types; state.calAvail = avail;
+    state.calStaff = staffR.data || []; state.calStaffHours = sthR.data || [];
+    state.calStaffSvcs = stsR.data || [];
     state.calFolds = state.calFolds || new Set();
 
     /* masthead — the dateline + the master switch's truth */
@@ -10228,8 +10462,13 @@ async function loadCalendar() {
     const stepA = locs.some((l) => l.enabled && hours.some((h) => h.location_id === l.id));
     const stepB = types.some((t) => t.enabled && avail.some((a) => a.type_id === t.id));
     const isOn = bcfg.enabled === true;
+    const staffReady = (stf) => stf.enabled && state.calStaffHours.some((h) => h.staff_id === stf.id);
+    const typeStaffed = (t) => state.calStaffSvcs.some((s2) => s2.type_id === t.id);
+    const typeCovered = (t) => state.calStaffSvcs.some((s2) => s2.type_id === t.id &&
+      state.calStaff.some((stf) => stf.id === s2.staff_id && staffReady(stf)));
     const warns = (isOn ? locs.filter((l) => l.enabled && !hours.some((h) => h.location_id === l.id)).length +
-      types.filter((t) => t.enabled && !avail.some((a) => a.type_id === t.id)).length : 0);
+      types.filter((t) => t.enabled && !avail.some((a) => a.type_id === t.id)).length +
+      types.filter((t) => t.enabled && typeStaffed(t) && !typeCovered(t)).length : 0);
     const mhs = $('cal-mh-status');
     if (mhs) {
       mhs.classList.toggle('off', !isOn);
@@ -10349,7 +10588,8 @@ async function loadCalendar() {
       '<div class="cal-badge"><span class="cal-tag">' + (r.is_move ? 'move' : 'new request') + '</span>' + ttlHtml(r) + '</div>' +
       '<div class="cal-l1"><span class="cal-when">' + calWhen(r.starts_at) + '</span><b>' + esc(r.name) + '</b>' +
       '<span class="type">' + esc(r.type || '') + '</span></div>' +
-      l2([r.location ? '<span>at ' + esc(r.location) + '</span>' : '',
+      l2([r.staff ? '<span>with ' + esc(r.staff) + '</span>' : '',
+          r.location ? '<span>at ' + esc(r.location) + '</span>' : '',
           r.party ? '<span>party of ' + r.party + '</span>' : '',
           '<span class="mono">' + esc(r.contact) + '</span>',
           r.notes ? '<span class="quote">“' + esc(r.notes) + '”</span>' : '', convoLink(r)]) +
@@ -10375,7 +10615,8 @@ async function loadCalendar() {
         '<div class="cal-badge"><span class="cal-tag">' + (un ? 'unconfirmed' : 'confirmed') + '</span></div>' +
         '<div class="cal-l1"><span class="cal-when">' + calWhen(r.starts_at).split(', ').pop() + '</span>' +
         '<b>' + esc(r.name) + '</b><span class="type">' + esc(r.type || '') + '</span></div>' +
-        l2([r.location ? '<span>at ' + esc(r.location) + '</span>' : '',
+        l2([r.staff ? '<span>with ' + esc(r.staff) + '</span>' : '',
+            r.location ? '<span>at ' + esc(r.location) + '</span>' : '',
             r.party ? '<span>party of ' + r.party + '</span>' : '',
             r.notes ? '<span class="quote">“' + esc(r.notes) + '”</span>' : '',
             (r.open_notes || []).length ? '<span class="due">DUE: ' + r.open_notes.map(esc).join(' · ') + '</span>' : '',
@@ -10410,7 +10651,7 @@ async function loadCalendar() {
       const dow = dt.getDay();
       const wins = [];
       enabledLocs.forEach((L) => {
-        const exs = exc.filter((x) => x.on_date === key && (x.location_id == null || x.location_id === L.id) && x.type_id == null);
+        const exs = exc.filter((x) => x.on_date === key && x.staff_id == null && (x.location_id == null || x.location_id === L.id) && x.type_id == null);
         if (exs.some((x) => x.closed)) return;                      // any closed wins
         if (exs.length) { const x = exs[0]; if (x.start_min != null && x.end_min != null) wins.push([x.start_min, x.end_min]); return; }
         hours.filter((h) => h.location_id === L.id && h.dow === dow).forEach((h) => wins.push([h.open_min, h.close_min]));
@@ -10453,7 +10694,8 @@ async function loadCalendar() {
         d.wins.map((w) => '<span class="cal-open" style="left:' + X(w[0]) + '%;width:' + (X(w[1]) - X(w[0])) + '%;"></span>').join('') +
         d.rows.map((b) => {
           const t = b.r;
-          const ttl = esc((t.type || '') + (t.location ? ' at ' + t.location : '') + ' · ' + (t.contact || '') +
+          const ttl = esc((t.type || '') + (t.staff ? ' with ' + t.staff : '') +
+            (t.location ? ' at ' + t.location : '') + ' · ' + (t.contact || '') +
             (t.status === 'requested' ? ' · awaiting confirmation' : ''));
           return '<span class="cal-tick' + (t.status === 'requested' ? ' req' : '') + '" title="' + ttl +
             '" style="left:' + X(b.m) + '%;width:' + Math.max(X(b.m + b.dur) - X(b.m), 1) + '%;"></span>';
@@ -10493,7 +10735,7 @@ async function loadCalendar() {
       const dot = l.enabled ? (hasHours ? ' on' : ' warn') : '';
       const sum = document.createElement('div'); sum.className = 'cal-sum';
       sum.innerHTML = '<span class="cal-dot' + dot + '"></span><b>' + esc(l.title) + '</b>' +
-        '<span class="sl">' + esc(l.slug) + ' · ' + esc(l.timezone) + (l.enabled ? '' : ' · off') + '</span>' +
+        '<span class="sl">' + esc(l.timezone) + (l.enabled ? '' : ' · off') + '</span>' +
         '<span class="dig' + (hasHours || !l.enabled ? '' : ' warn') + '">' + esc(digest) + '</span>' +
         '<button class="btn ghost edit" type="button" aria-expanded="' + (open ? 'true' : 'false') + '">' + (open ? 'Close' : 'Edit') + '</button>';
       holder.appendChild(sum);
@@ -10524,6 +10766,19 @@ async function loadCalendar() {
     const addEl = $('cal-add-loc'); addEl.textContent = '';
     addEl.appendChild(calNewLocRow());
 
+    /* the team */
+    state.calExcAll = exc;
+    const stEl = $('cal-staff');
+    if (stEl) {
+      stEl.textContent = '';
+      if (!state.calStaff.length) {
+        stEl.appendChild(el('div', 'cal-empty', 'No people yet — optional. Without a team, offerings use their own capacity.'));
+      }
+      state.calStaff.forEach((stf) => stEl.appendChild(calStaffCard(stf)));
+      const addBtn = $('cal-add-staff');
+      if (addBtn) addBtn.onclick = () => stEl.appendChild(calStaffCard(null));
+    }
+
     /* offerings */
     const tEl = $('cal-types'); tEl.textContent = '';
     if (!types.length) tEl.appendChild(el('div', 'cal-empty', 'Nothing bookable yet. An offering defines what a visit is and when it can start.'));
@@ -10532,10 +10787,11 @@ async function loadCalendar() {
 
     /* exceptions — a small ledger in the same rail language */
     const eEl = $('cal-exc'); eEl.textContent = '';
-    if (!exc.length) eEl.appendChild(el('div', 'cal-empty', 'No dated overrides. One-off closures and special hours land here.'));
+    const shopExc = exc.filter((x) => x.staff_id == null);
+    if (!shopExc.length) eEl.appendChild(el('div', 'cal-empty', 'No dated overrides. One-off closures and special hours land here.'));
     else {
       const board = document.createElement('div'); board.className = 'cal-board';
-      exc.forEach((x) => {
+      shopExc.forEach((x) => {
         const loc = locs.find((l) => l.id === x.location_id);
         const typ = types.find((t2) => t2.id === x.type_id);
         board.appendChild(calRow(x.closed ? 'red' : 'amber',
@@ -10566,14 +10822,13 @@ function calNewLocRow() {
   const d = document.createElement('div'); d.className = 'cal-frow';
   d.innerHTML =
     '<label class="cal-field"><span>new location — name</span><input id="cal-nl-title" placeholder="Downtown studio" style="width:170px;"></label>' +
-    '<label class="cal-field"><span>slug</span><input id="cal-nl-slug" placeholder="downtown" style="width:120px;"></label>' +
     '<label class="cal-field"><span>timezone</span>' + calTzSelect('id="cal-nl-tz"', '') + '</label>' +
     '<button id="cal-nl-add" class="btn ghost" type="button">＋ Add location</button>';
   d.querySelector('#cal-nl-add').addEventListener('click', async () => {
-    const slug = d.querySelector('#cal-nl-slug').value.trim().toLowerCase();
     const title = d.querySelector('#cal-nl-title').value.trim();
+    const slug = calSlug(title);
     const tz = d.querySelector('#cal-nl-tz').value.trim();
-    if (!/^[a-z0-9-]{2,40}$/.test(slug) || !title || !tz) { calFail(new Error('A slug (a-z0-9-), a name, and a timezone are needed.')); return; }
+    if (!title || !/^[a-z0-9-]{2,40}$/.test(slug) || !tz) { calFail(new Error('Give the location a name.')); return; }
     try { const r = await sb.from('concierge_locations').insert([{ slug, title, timezone: tz }]);
       if (r.error) throw new Error(r.error.message); loadCalendar(); } catch (e) { calFail(e); }
   });
@@ -10596,15 +10851,22 @@ function calTypeRow(t) {
   const open = isNew || state.calFolds.has(foldKey);
   const winRecs = isNew ? [] : (state.calAvail || []).filter((a) => a.type_id === t.id && a.location_id === (locs[0] ? locs[0].id : 0));
   const availTxt = isNew ? '' : calAvailText(t.id, locs[0] ? locs[0].id : 0);
+  const who = isNew ? [] : (state.calStaffSvcs || []).filter((s2) => s2.type_id === t.id)
+    .map((s2) => ((state.calStaff || []).find((x) => x.id === s2.staff_id) || {}).name).filter(Boolean);
+  const whoReady = isNew ? true : !who.length || (state.calStaffSvcs || []).some((s2) => s2.type_id === t.id &&
+    (state.calStaff || []).some((x) => x.id === s2.staff_id && x.enabled &&
+      (state.calStaffHours || []).some((h) => h.staff_id === x.id)));
   const digest = isNew ? 'New offering — unsaved'
     : [t.duration_min + ' min', 'starts every ' + t.step_min, t.mode,
-       (t.confirm_mode === 'manual' ? 'you confirm' : 'instant'), availTxt || null].filter(Boolean).join(' · ');
+       (t.confirm_mode === 'manual' ? 'you confirm' : 'instant'),
+       who.length ? 'with ' + who.join(', ') : null, availTxt || null].filter(Boolean).join(' · ');
   const sum = document.createElement('div'); sum.className = 'cal-sum';
   sum.innerHTML = '<span class="cal-dot' + (t.enabled ? ' on' : '') + '"></span>' +
     '<b>' + esc(t.title || 'New offering') + '</b>' +
     (t.enabled || isNew ? '' : '<span class="sl">draft</span>') +
-    '<span class="dig' + (!isNew && t.enabled && !availTxt ? ' warn' : '') + '">' +
-    esc(!isNew && t.enabled && !availTxt ? 'no availability — nothing to offer' : digest) + '</span>' +
+    '<span class="dig' + (!isNew && t.enabled && (!availTxt || !whoReady) ? ' warn' : '') + '">' +
+    esc(!isNew && t.enabled && !availTxt ? 'no availability — nothing to offer'
+        : (!isNew && t.enabled && !whoReady ? digest + " — their people have no working hours yet" : digest)) + '</span>' +
     (isNew ? '' : '<button class="btn ghost mini pv" type="button">Preview</button>') +
     '<button class="btn ghost edit" type="button" aria-expanded="' + (open ? 'true' : 'false') + '">' + (open ? 'Close' : 'Edit') + '</button>';
   holder.appendChild(sum);

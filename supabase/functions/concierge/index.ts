@@ -1002,7 +1002,9 @@ const REGISTER_TOOLS: any[] = [
       "several locations, the locations — ask WHERE before WHEN and never assume). Then call again " +
       "with the type (and location) to get real slots. Present AT MOST THREE, using each slot's " +
       "lead_label EXACTLY as given — the labels already speak the visitor's timezone; never convert " +
-      "or rephrase times yourself. Offer 'more times' rather than a wall of options.",
+      "or rephrase times yourself. Offer 'more times' rather than a wall of options. When a slot " +
+      "carries a 'staff' list, those are the ONLY people you may name — offer 'with <name>' when the " +
+      "visitor cares who, and never invent or guess a person.",
     input_schema: {
       type: "object",
       properties: {
@@ -1024,7 +1026,9 @@ const REGISTER_TOOLS: any[] = [
       "you'll have an email either way'), never present it as a done deal. If the result says " +
       "'taken', the slot just went to someone else: say so plainly and warmly, then offer the " +
       "alternatives the result carries. Never restate their contact details — 'the number you gave' " +
-      "is as specific as you get.",
+      "is as specific as you get. When the result carries staff_name, the confirmation may say who " +
+      "('with Maya'); when the visitor asked for a specific person, pass staff_name exactly as a " +
+      "slot's staff list gave it.",
     input_schema: {
       type: "object",
       properties: {
@@ -1036,6 +1040,7 @@ const REGISTER_TOOLS: any[] = [
         contact_kind: { type: "string", enum: ["email", "phone"], description: "Which kind the contact is." },
         party_size: { type: "integer", description: "How many people, when the offering asks for it." },
         notes: { type: "string", description: "Their answer to the offering's question, or a short line in their words." },
+        staff_name: { type: "string", description: "The person the visitor asked for, exactly as a slot's staff list named them. Omit when they don't mind who." },
       },
       required: ["type_slug", "starts_at", "name", "contact", "contact_kind"],
     },
@@ -1572,7 +1577,9 @@ async function runRegisterTool(
         p_party: Number.isFinite(Number(input.party_size)) ? Number(input.party_size) : null,
         p_notes: typeof input.notes === "string" ? input.notes.slice(0, 500) : "",
         p_visitor_tz: visTz, p_customer: customer?.id ?? null,
-        p_conversation: cid, p_session: sessKey });
+        p_conversation: cid, p_session: sessKey,
+        p_staff: typeof input.staff_name === "string" && input.staff_name.trim()
+          ? input.staff_name.trim() : null });
       if (!r) return "ERROR: the calendar is unreachable right now.";
       await logAction(cid, safeCust, "book_appointment", null,
         { type: input.type_slug, starts_at: input.starts_at, status: r.status ?? r.reason },
@@ -1589,7 +1596,7 @@ async function runRegisterTool(
           await sendEmail(contact,
             isReq ? `Request received — ${r.type_title}` : `Confirmed — ${r.type_title}, ${r.shop_label}`,
             emailShell(isReq ? "Your request is with the house" : "You're booked",
-              [String(r.lead_label || r.shop_label),
+              [String(r.lead_label || r.shop_label) + (r.staff_name ? ` — with ${r.staff_name}` : ""),
                [locTitle, locAddr].filter(Boolean).join(" — "),
                isReq ? "The house confirms shortly; you'll have an email either way."
                      : "A calendar invite is attached. Need to change it? Just ask the concierge."]),
@@ -3381,7 +3388,7 @@ const BEAT_JUDGE_CRITERION =
   "(8) selling past a problem — the shopper's latest message (given below when available) raises an " +
   "unresolved complaint, error, or trust issue, and the line pitches, nudges, or changes the subject " +
   "instead of serving it. " +
-  "(9) inventing availability — naming a time, an opening hour, or a bookable slot the register did " +
+  "(9) inventing availability — naming a time, an opening hour, a bookable slot, or a STAFF MEMBER the register did " +
   "not provide this turn. " +
   "AGAINST THE HOUSE RULES: also veto if the line asserts a price, figure, count, product, guarantee, " +
   "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
