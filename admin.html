@@ -10475,10 +10475,10 @@ function calStaffCard(st) {
     '<button class="btn ghost edit" type="button" aria-expanded="' + (open ? 'true' : 'false') + '">' + (open ? 'Close' : 'Edit') + '</button>';
   holder.appendChild(sum);
   const ed = document.createElement('div'); ed.className = 'cal-editor' + (open ? '' : ' is-collapsed');
-  const locId = locs[0] ? locs[0].id : 0;
+  const locId = myHours[0] ? myHours[0].location_id : (locs[0] ? locs[0].id : 0);
   const locPick = locs.length > 1
     ? '<label class="cal-field"><span>working at</span><select data-f="stloc">' +
-      locs.map((l) => '<option value="' + l.id + '">' + esc(l.title) + '</option>').join('') + '</select></label>'
+      locs.map((l) => '<option value="' + l.id + '"' + (l.id === locId ? ' selected' : '') + '>' + esc(l.title) + '</option>').join('') + '</select></label>'
     : '';
   ed.innerHTML =
     '<div class="cal-frow">' +
