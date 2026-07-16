@@ -11638,16 +11638,77 @@ async function loadCalendar() {
     const stEl = $('cal-staff');
     if (stEl) {
       stEl.textContent = '';
-      const oldPend = document.querySelector('[data-off-pending]');
-      if (oldPend) oldPend.remove();
-      const pendOff = [...new Set((exc || []).filter((x) => x.staff_id && x.status === 'requested'
-        && String(x.on_date) >= new Date().toISOString().slice(0, 10)).map((x) => x.staff_id))].length;
-      if (pendOff) {
-        const n2 = el('div', 'micro', 'Time off requested by ' + pendOff + ' ' +
-          (pendOff === 1 ? 'person' : 'people') + ' — open their card to approve or decline.');
-        n2.style.cssText = 'color:#c9a15f;margin:2px 0 6px;';
-        n2.setAttribute('data-off-pending', '');
-        stEl.parentElement.insertBefore(n2, stEl);
+      const oldRoll = document.querySelector('[data-off-rollup]');
+      if (oldRoll) oldRoll.remove();
+      const todayK = (function () { const x = new Date();
+        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); })();
+      const dayAfter = (s) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+      const offFuture = (exc || []).filter((x) => x.staff_id && String(x.on_date) >= todayK)
+        .sort((a, b) => (a.staff_id - b.staff_id) || String(a.on_date).localeCompare(String(b.on_date)));
+      if (offFuture.length) {
+        /* consecutive same-person/status/reason days read as one stretch —
+           the same rule the person editor uses */
+        const runs2 = [];
+        offFuture.forEach((x) => {
+          const xs = x.status || 'approved';
+          const last = runs2[runs2.length - 1];
+          if (last && last.staff_id === x.staff_id && last.status === xs && x.closed && last.closed &&
+              (last.note || '') === (x.note || '') && dayAfter(last.to) === String(x.on_date)) {
+            last.to = String(x.on_date); last.ids.push(x.id);
+          } else {
+            runs2.push({ staff_id: x.staff_id, from: String(x.on_date), to: String(x.on_date),
+              closed: !!x.closed, start_min: x.start_min, end_min: x.end_min,
+              note: x.note || '', status: xs, ids: [x.id] });
+          }
+        });
+        runs2.sort((a, b) => a.from.localeCompare(b.from));
+        const pend2 = runs2.filter((r) => r.status === 'requested').length;
+        const roll = document.createElement('div');
+        roll.setAttribute('data-off-rollup', '');
+        roll.style.cssText = 'border:1px solid var(--hairline-dim);border-radius:3px;padding:10px 12px;margin:2px 0 12px;';
+        roll.innerHTML = '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">Time off ahead — the whole team' +
+          (pend2 ? ' <span style="color:#c9a15f;">· ' + pend2 + ' awaiting a decision</span>' : '') +
+          '<span class="info-badge" title="Every submitted entry across the team, soonest first. Approved time the calendar never sells; a request blocks nothing until you approve it. Decide right here, or open the person for their full history and to add or move entries.">i</span></div>';
+        runs2.slice(0, 20).forEach((r) => {
+          const who = (state.calStaff || []).find((p) => p.id === r.staff_id);
+          const row = document.createElement('div'); row.className = 'cal-frow';
+          if (r.status === 'denied' || r.status === 'returned') row.style.opacity = '.55';
+          const when = (r.from === r.to ? r.from : r.from + ' → ' + r.to) + ' · ' +
+            (r.closed ? 'away' : calHm(r.start_min) + '–' + calHm(r.end_min));
+          const chip2 = r.status === 'requested' ? '<span class="micro" style="color:#c9a15f;">needs a decision</span>'
+            : r.status === 'denied' ? '<span class="micro">declined</span>'
+            : r.status === 'returned' ? '<span class="micro">time returned</span>' : '';
+          const acts2 = r.status === 'requested'
+            ? '<button class="btn ghost mini" type="button" data-ro-ok title="The calendar stops offering them for these days.">Approve</button>' +
+              '<button class="btn ghost mini" type="button" data-ro-no title="Declines the request — it blocks nothing and the record stays.">Decline</button>'
+            : r.status === 'approved'
+            ? '<button class="btn ghost mini" type="button" data-ro-back title="Plans changed — puts these days back on the schedule.">Return the time</button>'
+            : '<button class="btn ghost mini" type="button" data-ro-re title="Puts this back as approved time off.">Restore</button>';
+          row.innerHTML = '<b style="min-width:70px;">' + esc(who ? who.name : '?') + '</b>' +
+            '<span class="micro mono">' + esc(when + (r.note ? ' · ' + r.note : '')) + '</span>' +
+            chip2 + acts2;
+          const setSt = async (s2) => {
+            try {
+              for (const id of r.ids) {
+                const res = await sb.from('concierge_availability_exceptions').update({ status: s2 }).eq('id', id);
+                if (res.error) throw new Error(res.error.message);
+              }
+              loadCalendar();
+            } catch (e2) { calFail(e2); }
+          };
+          [['[data-ro-ok]', 'approved'], ['[data-ro-no]', 'denied'],
+           ['[data-ro-back]', 'returned'], ['[data-ro-re]', 'approved']].forEach(([sel, s2]) => {
+            const b2 = row.querySelector(sel);
+            if (b2) b2.addEventListener('click', () => setSt(s2));
+          });
+          roll.appendChild(row);
+        });
+        if (runs2.length > 20) {
+          roll.appendChild(el('div', 'micro', '+' + (runs2.length - 20) +
+            ' more further out — open the person for the rest.'));
+        }
+        stEl.parentElement.insertBefore(roll, stEl);
       }
       if (!state.calStaff.length) {
         stEl.appendChild(el('div', 'cal-empty', 'No people yet — optional. Without a team, offerings use their own capacity.'));
