@@ -10952,32 +10952,38 @@ function calStaffCard(st) {
    ledger with who acted. Honest empty sections stay present, labeled. */
 async function calOpsExport() {
   state.calRepCache = state.calRepCache || {};
-  const need = ['offering', 'location', 'callbacks'].filter((d2) => !state.calRepCache[d2]);
-  const got = await Promise.all(need.map((d2) => calRpc('booking_report', { p_days: 30, p_dim: d2 })));
-  need.forEach((d2, i2) => { state.calRepCache[d2] = got[i2]; });
+  const days = state.calRepDays || 30;
+  const need = ['offering', 'location', 'callbacks'].filter((d2) => !state.calRepCache[d2 + ':' + days]);
+  const got = await Promise.all(need.map((d2) => calRpc('booking_report', { p_days: days, p_dim: d2 })));
+  need.forEach((d2, i2) => { state.calRepCache[d2 + ':' + days] = got[i2]; });
+  let peopleRep = days === 30 ? state.calTeamRep : state.calRepCache['person:' + days];
+  if (!peopleRep) {
+    peopleRep = await calRpc('staff_report', { p_days: days });
+    state.calRepCache['person:' + days] = peopleRep;
+  }
   const q2 = (v) => { const s2 = v == null ? '' : String(v); return /[",\n]/.test(s2) ? '"' + s2.replace(/"/g, '""') + '"' : s2; };
   const line = (arr) => arr.map(q2).join(',');
   const out = [];
-  out.push(line(['OPERATIONS REVIEW', 'last 30 days', 'generated', new Date().toISOString()]));
+  out.push(line(['OPERATIONS REVIEW', 'last ' + days + ' days', 'generated', new Date().toISOString()]));
   out.push('');
   out.push('PEOPLE');
   out.push(line(['name', 'scheduled_min', 'booked_min', 'utilization_pct', 'kept', 'no_shows', 'kept_rate_pct', 'days_off', 'upcoming']));
-  (((state.calTeamRep || {}).people) || []).forEach((p) =>
+  (((peopleRep || {}).people) || []).forEach((p) =>
     out.push(line([p.name, p.sched_min, p.booked_min, p.utilization, p.done, p.no_show, p.show_rate, p.days_off, p.upcoming])));
   const dimSec = (title, key) => {
     out.push(''); out.push(title);
     out.push(line(['name', 'booked_min', 'kept', 'no_shows', 'cancelled', 'kept_rate_pct', 'upcoming']));
-    (((state.calRepCache[key] || {}).rows) || []).forEach((r) =>
+    (((state.calRepCache[key + ':' + days] || {}).rows) || []).forEach((r) =>
       out.push(line([r.name, r.booked_min, r.done, r.no_show, r.cancelled, r.show_rate, r.upcoming])));
   };
   dimSec('OFFERINGS', 'offering');
   dimSec('LOCATIONS', 'location');
   out.push(''); out.push('CALLBACKS');
   out.push(line(['handled_by', 'handled', 'cancelled', 'median_min_to_done']));
-  (((state.calRepCache.callbacks || {}).rows) || []).forEach((r) =>
+  (((state.calRepCache['callbacks:' + days] || {}).rows) || []).forEach((r) =>
     out.push(line([r.name, r.done, r.cancelled, r.median_min])));
-  out.push(line(['open_now', (state.calRepCache.callbacks || {}).open_now || 0,
-    'oldest_open_min', (state.calRepCache.callbacks || {}).oldest_open_min || '']));
+  out.push(line(['open_now', (state.calRepCache['callbacks:' + days] || {}).open_now || 0,
+    'oldest_open_min', (state.calRepCache['callbacks:' + days] || {}).oldest_open_min || '']));
   out.push(''); out.push('CLOSED OUT (last 7 days)');
   out.push(line(['closed_at', 'name', 'kind', 'offering', 'outcome', 'acted_by', 'contact']));
   (state.calRecentClosed || []).forEach((r) =>
@@ -10986,7 +10992,7 @@ async function calOpsExport() {
   window.__lastOpsCsv = csv;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = 'operations-review-30d.csv'; a.click();
+  a.download = 'operations-review-' + days + 'd.csv'; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 /* the team's numbers — person | offering | location, exportable. Person rows
@@ -10995,18 +11001,25 @@ async function calOpsExport() {
 async function calTeamReport(dim) {
   const repEl = $('cal-team-report'); if (!repEl) return;
   state.calRepDim = dim;
+  const days = state.calRepDays || 30;
+  state.calRepCache = state.calRepCache || {};
   let rows;
   if (dim === 'person') {
-    rows = ((state.calTeamRep && state.calTeamRep.people) || []).filter((p) =>
+    let rep = days === 30 ? state.calTeamRep : state.calRepCache['person:' + days];
+    if (!rep) {
+      try { rep = await calRpc('staff_report', { p_days: days }); state.calRepCache['person:' + days] = rep; }
+      catch (e) { calFail(e); return; }
+    }
+    rows = (((rep || {}).people) || []).filter((p) =>
       p.enabled || p.booked_min > 0 || p.upcoming > 0);
     if (!rows.length && !(state.calStaff || []).length) { repEl.textContent = ''; return; }
   } else {
-    state.calRepCache = state.calRepCache || {};
-    if (!state.calRepCache[dim]) {
-      try { state.calRepCache[dim] = await calRpc('booking_report', { p_days: 30, p_dim: dim }); }
+    const ck = dim + ':' + days;
+    if (!state.calRepCache[ck]) {
+      try { state.calRepCache[ck] = await calRpc('booking_report', { p_days: days, p_dim: dim }); }
       catch (e) { calFail(e); return; }
     }
-    rows = (state.calRepCache[dim].rows || []);
+    rows = (state.calRepCache[ck].rows || []);
   }
   const hm2 = (m) => (m >= 60 ? (Math.round(m / 6) / 10) + 'h' : m + 'm');
   const heat = (p) => (p.show_rate != null && p.show_rate < 80 ? ' style="color:#d08770;"' : '');
@@ -11032,22 +11045,29 @@ async function calTeamReport(dim) {
         '<td' + heat(p) + '>' + p.no_show + '</td><td>' + p.cancelled + '</td>' +
         '<td' + heat(p) + '>' + (p.show_rate == null ? '—' : p.show_rate + '%') + '</td>' +
         '<td>' + p.upcoming + '</td></tr>').join('');
+  const dayBtn = (n, lab) => '<button type="button" class="btn ghost mini" data-repdays="' + n + '"' +
+    (days === n ? ' style="color:var(--brass-soft);border-color:var(--brass);"' : '') +
+    ' title="Recompute every table over the last ' + n + ' days.">' + lab + '</button>';
   repEl.innerHTML =
-    '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">The last 30 days' +
+    '<div class="micro" style="letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin-bottom:6px;">The last ' + days + ' days' +
     '<span class="info-badge" title="Adherence and productivity, computed from the same tables the calendar sells from. People rows: scheduled = working hours minus time off; utilization = booked over scheduled. All rows: kept counts completed visits; the rate is kept against kept plus no-shows. A dash means nothing to measure yet — never a fake zero. Export downloads exactly what you see, as CSV.">i</span> ' +
+    dayBtn(7, 'week') + dayBtn(30, '30 days') + dayBtn(90, 'quarter') + dayBtn(365, 'year') +
+    '<span style="opacity:.4;padding:0 2px;">·</span>' +
     dimBtn('person', 'people') + dimBtn('offering', 'offerings') + dimBtn('location', 'locations') + dimBtn('callbacks', 'callbacks') +
     '<button type="button" class="btn ghost mini" data-repcsv>Export CSV</button>' +
     '<button type="button" class="btn ghost mini" data-repops title="One file: people, offerings, locations, callbacks, and the closed-out ledger with who acted.">Export the operations review</button></div>' +
     (rows.length
       ? '<table class="cal-reptable"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>'
       : '<div class="cal-empty">Nothing on the books in this window yet.</div>') +
-    (dim === 'callbacks' && state.calRepCache && state.calRepCache.callbacks
-      ? '<div class="micro" style="margin-top:6px;">' + (state.calRepCache.callbacks.open_now || 0) + ' open now' +
-        (state.calRepCache.callbacks.oldest_open_min
-          ? ' · oldest waiting ' + hm2(state.calRepCache.callbacks.oldest_open_min) : '') + '</div>'
+    (dim === 'callbacks' && state.calRepCache && state.calRepCache['callbacks:' + days]
+      ? '<div class="micro" style="margin-top:6px;">' + (state.calRepCache['callbacks:' + days].open_now || 0) + ' open now' +
+        (state.calRepCache['callbacks:' + days].oldest_open_min
+          ? ' · oldest waiting ' + hm2(state.calRepCache['callbacks:' + days].oldest_open_min) : '') + '</div>'
       : '');
   repEl.querySelectorAll('[data-repdim]').forEach((b) =>
     b.addEventListener('click', () => calTeamReport(b.getAttribute('data-repdim'))));
+  repEl.querySelectorAll('[data-repdays]').forEach((b) =>
+    b.addEventListener('click', () => { state.calRepDays = +b.getAttribute('data-repdays'); calTeamReport(dim); }));
   const ox = repEl.querySelector('[data-repops]');
   if (ox) ox.addEventListener('click', () => calOpsExport().catch((e) => calFail(e)));
   const ex = repEl.querySelector('[data-repcsv]');
@@ -11063,7 +11083,7 @@ async function calTeamReport(dim) {
     }).join(','))).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'adherence-' + dim + '-30d.csv'; a.click();
+    a.download = 'adherence-' + dim + '-' + days + 'd.csv'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   });
 }
