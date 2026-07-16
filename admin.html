@@ -464,6 +464,38 @@
   .cal-field{ display:inline-flex; flex-direction:column; gap:3px; }
   .cal-field>span{ font-size:.64rem; letter-spacing:.09em; text-transform:uppercase; opacity:.7; white-space:nowrap; }
   .cal-frow{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  #panel-calendar select{ width:auto; }
+  #panel-calendar input[type=time], #panel-calendar input[type=date]{
+    background:var(--ink-well); border:1px solid var(--hairline-dim); border-radius:2px;
+    color:var(--wool); padding:6px 8px; font-family:var(--cal-mono); font-size:13px; color-scheme:dark; }
+  /* setup checklist */
+  .cal-setupcard{ border:1px solid var(--hairline); border-radius:3px; padding:16px 18px; margin:0 0 22px;
+    background:var(--ink-well); }
+  .cal-step{ display:flex; gap:12px; align-items:center; padding:7px 0; }
+  .cal-step + .cal-step{ border-top:1px solid var(--hairline-dim); }
+  .cal-step .st{ width:20px; height:20px; border-radius:50%; border:1px solid var(--hairline); flex:none;
+    display:inline-flex; align-items:center; justify-content:center; font-family:var(--cal-mono); font-size:11px;
+    color:var(--wool-dim); }
+  .cal-step.done .st{ background:var(--st-green); border-color:var(--st-green); color:#171F1A; }
+  .cal-step .tx{ flex:1; font-size:14px; }
+  .cal-step.done .tx{ color:var(--wool-dim); text-decoration:line-through; text-decoration-color:var(--hairline); }
+  /* structured hours */
+  .cal-hr-day{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:5px 0; }
+  .cal-hr-day > .micro.mono{ width:34px; }
+  .cal-hr-range{ display:inline-flex; align-items:center; gap:5px; }
+  .cal-closed{ font-size:12px; color:var(--wool-faint); }
+  .cal-tpl{ display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 2px; }
+  /* availability windows */
+  .cal-win{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:6px 0; }
+  .cal-days{ display:inline-flex; gap:3px; }
+  .dchip{ width:26px; height:26px; border-radius:50%; border:1px solid var(--hairline-dim); background:none;
+    color:var(--wool-faint); font-family:var(--cal-mono); font-size:10px; cursor:pointer; padding:0; }
+  .dchip.on{ border-color:var(--brass-soft); color:var(--brass-soft); background:var(--ink-well); }
+  /* preview */
+  .cal-preview{ padding:10px 2px 4px; font-size:12.5px; color:var(--wool-dim); flex-basis:100%; }
+  .cal-pv-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .cal-pv{ font-family:var(--cal-mono); font-size:11.5px; padding:4px 9px; border:1px solid var(--hairline-dim);
+    border-radius:999px; color:var(--wool); white-space:nowrap; }
   #panel-calendar :is(button,a,input,select):focus-visible{ outline:1px solid var(--brass-soft); outline-offset:2px; }
   @media (prefers-reduced-motion: no-preference){
     .cal-pulse-t, .cal-row{ transition:border-color .15s ease, background-color .15s ease; }
@@ -2288,6 +2320,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div><span class="micro">the day book</span><span class="cal-date" id="cal-mh-date"></span></div>
         <a href="#" class="cal-status off" id="cal-mh-status" title="The master switch lives under House rules"><span class="dot"></span><span class="micro">bookings off</span></a>
       </div>
+      <div id="cal-setup"></div>
 
       <section class="card">
         <div class="card-head"><h3>The queue</h3><span class="micro">act first, browse second</span></div>
@@ -2307,8 +2340,8 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <label class="micro"><input type="checkbox" id="cal-on"> Bookings <span id="cal-on-state" class="cal-state-off">off</span></label>
           <label class="micro"><input type="checkbox" id="cal-cb" checked> Callbacks <span id="cal-cb-state" class="cal-state-on">on</span></label>
           <label class="micro">Owner email <input type="email" id="cal-owner" style="width:220px;margin-left:6px;"></label>
-          <label class="micro">Max open per contact <input type="number" id="cal-cap" min="1" class="mono-field" style="width:60px;margin-left:6px;" placeholder="2"></label>
-          <label class="micro">Request TTL (hours) <input type="number" id="cal-ttl" min="0" class="mono-field" style="width:60px;margin-left:6px;" placeholder="24"></label>
+          <label class="micro">Open bookings per contact <select id="cal-cap" class="mono-field" style="width:120px;margin-left:6px;"><option value="">default (2)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select></label>
+          <label class="micro">Unconfirmed requests expire after <select id="cal-ttl" class="mono-field" style="width:130px;margin-left:6px;"><option value="">default (24h)</option><option value="6">6 hours</option><option value="12">12 hours</option><option value="24">24 hours</option><option value="48">2 days</option><option value="0">never</option></select></label>
           <button id="cal-save-rules" class="btn" type="button">Save rules</button>
         </div>
         <p class="note" style="margin-top:8px;">The switch refuses to turn on until at least one enabled location has
@@ -2334,7 +2367,9 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;">
           <input type="date" id="cal-exc-date">
           <label class="micro"><input type="checkbox" id="cal-exc-closed" checked> Closed all day</label>
-          <input type="text" id="cal-exc-win" placeholder="or window 10:00-14:00" style="width:170px;">
+          <span id="cal-exc-winwrap" style="display:none;align-items:center;gap:6px;">
+            <span class="micro">open</span> <input type="time" id="cal-exc-from"> <span class="micro">to</span> <input type="time" id="cal-exc-to">
+          </span>
           <input type="text" id="cal-exc-note" placeholder="note (shown only here)" style="width:200px;">
           <button id="cal-exc-add" class="btn ghost" type="button">Add</button>
         </div>
@@ -3027,6 +3062,10 @@ function wireStatic() {
       $('cal-note').textContent = on ? 'Bookings are ON.' : 'Saved (bookings off).';
     } catch (e) { calFail(e); }
   });
+  if ($('cal-exc-closed')) $('cal-exc-closed').addEventListener('change', function () {
+    const w = $('cal-exc-winwrap');
+    if (w) w.style.display = $('cal-exc-closed').checked ? 'none' : 'inline-flex';
+  });
   if ($('cal-exc-add')) $('cal-exc-add').addEventListener('click', async function () {
     try {
       const date = $('cal-exc-date').value;
@@ -3034,9 +3073,10 @@ function wireStatic() {
       const closed = $('cal-exc-closed').checked;
       const row = { on_date: date, closed: closed, note: $('cal-exc-note').value.trim() };
       if (!closed) {
-        const rg = calParseRanges($('cal-exc-win').value);
-        if (rg.length !== 1) throw new Error('An open exception needs exactly one window, e.g. 10:00-14:00.');
-        row.start_min = rg[0][0]; row.end_min = rg[0][1];
+        const a = calMin($('cal-exc-from').value || ''), b = calMin($('cal-exc-to').value || '');
+        if (a === null || b === null) throw new Error('Special hours need both times.');
+        if (b <= a) throw new Error('Special hours end before they start.');
+        row.start_min = a; row.end_min = b;
       }
       const r = await sb.from('concierge_availability_exceptions').insert([row]);
       if (r.error) throw new Error(r.error.message);
@@ -10035,6 +10075,127 @@ function ensureApptFacets() {
   });
   return state.apptFacetsP;
 }
+/* HH:MM of a minute count for time inputs (native pickers speak this) */
+function calT(min) { return calHm(min); }
+function calSlug(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+/* a <select> of every IANA zone the browser knows, current/browser first */
+function calTzSelect(attrs, current) {
+  let zones = [];
+  try { zones = Intl.supportedValuesOf('timeZone'); } catch (e) { zones = []; }
+  const mine = (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || '';
+  const cur = current || mine;
+  if (!zones.length) {
+    return '<input ' + attrs + ' value="' + esc(cur) + '" placeholder="America/Chicago" style="width:200px;">';
+  }
+  if (cur && zones.indexOf(cur) < 0) zones = [cur].concat(zones);
+  return '<select ' + attrs + '>' + zones.map((z) =>
+    '<option value="' + esc(z) + '"' + (z === cur ? ' selected' : '') + '>' + esc(z) + '</option>').join('') + '</select>';
+}
+/* options with human labels; keeps an off-list saved value visible */
+function calOpts(vals, cur, labels) {
+  let html = vals.map((v) => '<option value="' + v + '"' + (String(cur) === String(v) ? ' selected' : '') + '>' +
+    ((labels && labels[v] !== undefined) ? labels[v] : v) + '</option>').join('');
+  if (!vals.some((v) => String(v) === String(cur))) html += '<option value="' + cur + '" selected>' + cur + ' (current)</option>';
+  return html;
+}
+/* the structured business-hours editor: per-day range rows of time pickers */
+function calHoursEditor(locId) {
+  const box = document.createElement('div');
+  box.setAttribute('data-hrs', ''); box.setAttribute('data-loc', locId);
+  const rangeHtml = (from, to) =>
+    '<span class="cal-hr-range"><input type="time" data-hr="from" value="' + from + '">' +
+    '<span class="micro">to</span><input type="time" data-hr="to" value="' + to + '">' +
+    '<button class="btn ghost mini" type="button" data-del-range aria-label="Remove these hours">×</button></span>';
+  const dayRow = (d) => {
+    const row = document.createElement('div'); row.className = 'cal-hr-day'; row.setAttribute('data-dow', d);
+    const ranges = state.calHours.filter((h) => h.location_id === locId && h.dow === d)
+      .sort((a, b) => a.open_min - b.open_min);
+    row.innerHTML = '<span class="micro mono">' + CAL_DAYS[d] + '</span>' +
+      ranges.map((h) => rangeHtml(calT(h.open_min), calT(h.close_min))).join('') +
+      (ranges.length ? '' : '<span class="cal-closed">Closed</span>') +
+      '<button class="btn ghost mini" type="button" data-add-range>+ hours</button>';
+    return row;
+  };
+  for (let d = 0; d < 7; d++) box.appendChild(dayRow(d));
+  const hasAny = state.calHours.some((h) => h.location_id === locId);
+  if (!hasAny) {
+    const tpl = document.createElement('div'); tpl.className = 'cal-tpl';
+    tpl.innerHTML = '<span class="micro" style="align-self:center;">quick start</span>' +
+      '<button class="btn ghost mini" type="button" data-tpl="wk">Mon–Fri 9–5</button>' +
+      '<button class="btn ghost mini" type="button" data-tpl="all">Every day 10–6</button>';
+    box.insertBefore(tpl, box.firstChild);
+  }
+  box.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (t.hasAttribute && t.hasAttribute('data-add-range')) {
+      const span = document.createElement('span'); span.innerHTML = rangeHtml('09:00', '17:00');
+      t.parentElement.insertBefore(span.firstChild, t);
+      const closed = t.parentElement.querySelector('.cal-closed'); if (closed) closed.remove();
+    } else if (t.hasAttribute && t.hasAttribute('data-del-range')) {
+      const day = t.closest('.cal-hr-day');
+      t.closest('.cal-hr-range').remove();
+      if (!day.querySelector('.cal-hr-range')) {
+        const c = document.createElement('span'); c.className = 'cal-closed'; c.textContent = 'Closed';
+        day.insertBefore(c, day.querySelector('[data-add-range]'));
+      }
+    } else if (t.hasAttribute && t.hasAttribute('data-tpl')) {
+      const days = t.getAttribute('data-tpl') === 'wk' ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
+      const from = t.getAttribute('data-tpl') === 'wk' ? '09:00' : '10:00';
+      const to = t.getAttribute('data-tpl') === 'wk' ? '17:00' : '18:00';
+      box.querySelectorAll('.cal-hr-day').forEach((row) => {
+        const d = +row.getAttribute('data-dow');
+        row.querySelectorAll('.cal-hr-range').forEach((r2) => r2.remove());
+        const closed = row.querySelector('.cal-closed'); if (closed) closed.remove();
+        if (days.indexOf(d) >= 0) {
+          const span = document.createElement('span'); span.innerHTML = rangeHtml(from, to);
+          row.insertBefore(span.firstChild, row.querySelector('[data-add-range]'));
+        } else {
+          const c = document.createElement('span'); c.className = 'cal-closed'; c.textContent = 'Closed';
+          row.insertBefore(c, row.querySelector('[data-add-range]'));
+        }
+      });
+    }
+  });
+  return box;
+}
+/* preview — the same appointment_slots() the chat calls, shown to the owner */
+function calPreview(holder, t) {
+  const old = holder.querySelector('.cal-preview');
+  if (old) { old.remove(); return; }
+  const box = document.createElement('div'); box.className = 'cal-preview';
+  holder.appendChild(box);
+  if (!t.enabled) { box.textContent = 'This offering is still a draft — tick “bookable”, save, then preview.'; return; }
+  const loc = (state.calLocs || []).find((l) => l.enabled);
+  if (!loc) { box.textContent = 'No open location yet — enable a location first.'; return; }
+  box.textContent = 'Asking the live register…';
+  const tzv = (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || null;
+  const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const d0 = new Date(), d1 = new Date(); d1.setDate(d1.getDate() + 7);
+  sb.rpc('appointment_slots', { p_type: t.slug, p_location: loc.slug, p_from: iso(d0), p_to: iso(d1), p_visitor_tz: tzv })
+    .then((r) => {
+      if (!document.contains(box)) return;
+      if (r.error) { box.textContent = 'Preview failed — ' + r.error.message; return; }
+      const d = r.data || {};
+      if (d.ok === false) {
+        const why = { unknown_type: 'the offering is off or unsaved', unknown_location: 'the location is off',
+          no_hours: 'no business hours yet' }[d.reason] || d.reason;
+        box.textContent = 'Nothing to offer — ' + why + '.';
+        return;
+      }
+      const slots = d.slots || [];
+      if (!slots.length) {
+        box.textContent = 'No open times in the next 7 days — check hours, availability windows, and minimum notice.';
+        return;
+      }
+      box.innerHTML = '<span class="micro">what a visitor is offered right now — from the live register</span>' +
+        '<div class="cal-pv-row">' +
+        slots.slice(0, 12).map((s2) => '<span class="cal-pv">' + esc(s2.shop_label || s2.lead_label || '') + '</span>').join('') +
+        (slots.length > 12 ? '<span class="micro" style="align-self:center;">+' + (slots.length - 12) + ' more</span>' : '') +
+        '</div>';
+    });
+}
 async function loadCalendar() {
   const noteEl = $('cal-note'); noteEl.textContent = ''; noteEl.className = 'micro';
   state.apptFacetsP = null;   // actions here change the facts the badges read
@@ -10062,14 +10223,46 @@ async function loadCalendar() {
       $('cal-mh-date').textContent =
         new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
     }
+    /* readiness + the setup path: the switch is DISABLED (with the reason on
+       it) until the calendar has something real to offer — never refused. */
+    const stepA = locs.some((l) => l.enabled && hours.some((h) => h.location_id === l.id));
+    const stepB = types.some((t) => t.enabled && avail.some((a) => a.type_id === t.id));
+    const isOn = bcfg.enabled === true;
+    const warns = (isOn ? locs.filter((l) => l.enabled && !hours.some((h) => h.location_id === l.id)).length +
+      types.filter((t) => t.enabled && !avail.some((a) => a.type_id === t.id)).length : 0);
     const mhs = $('cal-mh-status');
     if (mhs) {
-      const on = bcfg.enabled === true;
-      mhs.classList.toggle('off', !on);
-      mhs.querySelector('span.micro').textContent = on ? 'taking bookings' : 'bookings off';
+      mhs.classList.toggle('off', !isOn);
+      mhs.querySelector('span.micro').textContent = isOn
+        ? ('taking bookings' + (warns ? ' · ' + warns + ' warning' + (warns === 1 ? '' : 's') : ''))
+        : 'bookings off';
       mhs.onclick = (ev) => { ev.preventDefault();
-        const c = $('cal-rules-card'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+        const c = $(isOn && warns ? 'cal-locs' : 'cal-rules-card');
+        if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
     }
+    const setup = $('cal-setup');
+    if (setup) {
+      setup.textContent = '';
+      if (!isOn) {
+        const card = document.createElement('div'); card.className = 'cal-setupcard';
+        const step = (done, n, tx, target, cta) =>
+          '<div class="cal-step' + (done ? ' done' : '') + '"><span class="st">' + (done ? '✓' : n) + '</span>' +
+          '<span class="tx">' + tx + '</span>' +
+          (done ? '' : '<button class="btn ghost mini" type="button" data-go="' + target + '">' + cta + '</button>') + '</div>';
+        card.innerHTML = '<div class="micro" style="margin-bottom:6px;">three steps to live</div>' +
+          step(stepA, '1', 'Tell us when you\'re open — confirm the timezone and set business hours.', 'cal-locs', 'Set hours') +
+          step(stepB, '2', 'Add something people can book, with the times it can start.', 'cal-types', 'Add an offering') +
+          step(false, '3', stepA && stepB ? 'Turn it on — the concierge starts offering visits.' :
+            'Turn it on (unlocks when 1 and 2 are done).', 'cal-rules-card', 'Open the switch');
+        card.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+          const c = $(b.getAttribute('data-go')); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }));
+        setup.appendChild(card);
+      }
+    }
+    $('cal-on').disabled = !isOn && !(stepA && stepB);
+    $('cal-on').title = $('cal-on').disabled
+      ? 'Unlocks when an open location has hours and an offering has availability.' : '';
 
     /* house rules */
     $('cal-on').checked = bcfg.enabled === true;
@@ -10307,23 +10500,13 @@ async function loadCalendar() {
       const ed = document.createElement('div'); ed.className = 'cal-editor' + (open ? '' : ' is-collapsed');
       ed.innerHTML =
         '<div class="cal-frow">' +
-        '<label class="cal-field"><span>timezone (IANA)</span><input value="' + esc(l.timezone) + '" data-f="timezone" style="width:200px;"></label>' +
+        '<label class="cal-field"><span>timezone</span>' + calTzSelect('data-f="timezone"', l.timezone) + '</label>' +
         '<label class="cal-field"><span>address</span><input value="' + esc(l.address || '') + '" data-f="address" style="width:230px;"></label>' +
         '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> open for booking</label>' +
         '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button></div>' +
         '<div class="micro" style="margin-top:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Business hours</div>' +
-        '<div class="micro" style="opacity:.7;">Leave a day blank to stay closed; comma-separate split shifts (09:00-13:00, 14:00-18:00).</div>';
-      const hoursGrid = document.createElement('div'); hoursGrid.className = 'cal-hours';
-      for (let d = 0; d < 7; d++) {
-        const ranges = state.calHours.filter((h) => h.location_id === l.id && h.dow === d)
-          .map((h) => calHm(h.open_min) + '-' + calHm(h.close_min)).join(', ');
-        const lab = document.createElement('span'); lab.className = 'micro mono'; lab.textContent = CAL_DAYS[d];
-        const inp = document.createElement('input');
-        inp.value = ranges; inp.placeholder = 'closed';
-        inp.setAttribute('data-hours-day', d); inp.setAttribute('data-loc', l.id);
-        hoursGrid.appendChild(lab); hoursGrid.appendChild(inp);
-      }
-      ed.appendChild(hoursGrid);
+        '<div class="micro" style="opacity:.7;">A day with no hours is closed. Add a second row to a day for split shifts.</div>';
+      ed.appendChild(calHoursEditor(l.id));
       const sv = document.createElement('button'); sv.className = 'btn ghost'; sv.type = 'button';
       sv.style.marginTop = '8px';
       sv.textContent = 'Save hours'; sv.addEventListener('click', () => calSaveHours(l.id));
@@ -10384,7 +10567,7 @@ function calNewLocRow() {
   d.innerHTML =
     '<label class="cal-field"><span>new location — name</span><input id="cal-nl-title" placeholder="Downtown studio" style="width:170px;"></label>' +
     '<label class="cal-field"><span>slug</span><input id="cal-nl-slug" placeholder="downtown" style="width:120px;"></label>' +
-    '<label class="cal-field"><span>timezone (IANA)</span><input id="cal-nl-tz" placeholder="America/Chicago" style="width:200px;"></label>' +
+    '<label class="cal-field"><span>timezone</span>' + calTzSelect('id="cal-nl-tz"', '') + '</label>' +
     '<button id="cal-nl-add" class="btn ghost" type="button">＋ Add location</button>';
   d.querySelector('#cal-nl-add').addEventListener('click', async () => {
     const slug = d.querySelector('#cal-nl-slug').value.trim().toLowerCase();
@@ -10411,46 +10594,70 @@ function calTypeRow(t) {
   const holder = document.createElement('div');
   const foldKey = 'type:' + (t.slug || '—new—');
   const open = isNew || state.calFolds.has(foldKey);
+  const winRecs = isNew ? [] : (state.calAvail || []).filter((a) => a.type_id === t.id && a.location_id === (locs[0] ? locs[0].id : 0));
   const availTxt = isNew ? '' : calAvailText(t.id, locs[0] ? locs[0].id : 0);
   const digest = isNew ? 'New offering — unsaved'
-    : [t.duration_min + 'm', 'grid ' + t.step_min, t.mode, t.confirm_mode + ' confirm',
-       availTxt || null].filter(Boolean).join(' · ');
+    : [t.duration_min + ' min', 'starts every ' + t.step_min, t.mode,
+       (t.confirm_mode === 'manual' ? 'you confirm' : 'instant'), availTxt || null].filter(Boolean).join(' · ');
   const sum = document.createElement('div'); sum.className = 'cal-sum';
   sum.innerHTML = '<span class="cal-dot' + (t.enabled ? ' on' : '') + '"></span>' +
     '<b>' + esc(t.title || 'New offering') + '</b>' +
     (t.enabled || isNew ? '' : '<span class="sl">draft</span>') +
     '<span class="dig' + (!isNew && t.enabled && !availTxt ? ' warn' : '') + '">' +
     esc(!isNew && t.enabled && !availTxt ? 'no availability — nothing to offer' : digest) + '</span>' +
+    (isNew ? '' : '<button class="btn ghost mini pv" type="button">Preview</button>') +
     '<button class="btn ghost edit" type="button" aria-expanded="' + (open ? 'true' : 'false') + '">' + (open ? 'Close' : 'Edit') + '</button>';
   holder.appendChild(sum);
   const box = document.createElement('div'); box.className = 'cal-editor' + (open ? '' : ' is-collapsed');
-  const sel = (f, opts, cur) => '<select data-f="' + f + '">' +
-    opts.map((o) => '<option value="' + o + '"' + (String(cur) === String(o) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>';
   const fld = (label, inner) => '<label class="cal-field"><span>' + label + '</span>' + inner + '</label>';
+  const sel = (f, opts) => '<select data-f="' + f + '">' + opts + '</select>';
   const locSel = locs.length > 1
-    ? fld('location', sel('loc', locs.map((l) => l.slug), locs[0].slug)) : '';
+    ? fld('location', sel('loc', calOpts(locs.map((l) => l.slug), locs[0].slug))) : '';
+  const winHtml = (days, from, to, step) =>
+    '<div class="cal-win" data-win>' +
+    '<span class="cal-days">' + CAL_DAYS.map((d2, k) =>
+      '<button type="button" class="dchip' + (days.indexOf(k) >= 0 ? ' on' : '') + '" data-dow="' + k + '">' + d2[0] + '</button>').join('') + '</span>' +
+    '<input type="time" data-w="from" value="' + from + '"><span class="micro">to</span><input type="time" data-w="to" value="' + to + '">' +
+    '<label class="cal-field"><span>starts every</span><select data-w="step">' +
+    '<option value=""' + (step == null ? ' selected' : '') + '>offering default</option>' +
+    [5, 10, 15, 20, 30, 45, 60].map((v) => '<option value="' + v + '"' + (step === v ? ' selected' : '') + '>' + v + ' min</option>').join('') +
+    '</select></label>' +
+    '<button class="btn ghost mini" type="button" data-del-win aria-label="Remove this window">×</button></div>';
+  // group identical (from,to,step) records into one window row with day chips
+  const groups = {};
+  winRecs.forEach((a) => {
+    const k = a.start_min + '|' + a.end_min + '|' + (a.step_min == null ? '' : a.step_min);
+    (groups[k] = groups[k] || { days: [], from: calT(a.start_min), to: calT(a.end_min), step: a.step_min == null ? null : a.step_min }).days.push(a.dow);
+  });
+  const winRows = Object.values(groups).map((g) => winHtml(g.days, g.from, g.to, g.step)).join('');
   box.innerHTML =
-    '<p class="note" style="margin-bottom:10px;">Duration is how long a visit lasts; the <b>start grid</b> is the ' +
-    'start-time increment (a 60-minute session on a 10-minute grid is normal). Availability lines read like speech: ' +
-    '<span class="mono">Sat 10:00-16:00; Tue 09:00-13:00 @15</span> (the <span class="mono">@15</span> overrides the ' +
-    'grid for that window). Windows outside business hours yield nothing and warn on save.</p>' +
+    '<p class="note" style="margin-bottom:10px;">Availability windows say when this can <b>start</b>; business hours ' +
+    'clamp everything, so a window outside them offers nothing and warns on save. “Starts every” is the start-time ' +
+    'spacing — a 60-minute visit that can start every 15 minutes is normal.</p>' +
     '<div class="cal-frow">' +
     fld('offering', '<input data-f="title" value="' + esc(t.title) + '" placeholder="e.g. Viewing" style="width:170px;">') +
-    fld('slug', '<input data-f="slug" value="' + esc(t.slug) + '" placeholder="viewing" style="width:120px;"' + (isNew ? '' : ' readonly') + '>') +
-    fld('duration (min)', sel('duration_min', [5,10,15,20,30,45,60,90,120,180,240], t.duration_min)) +
-    fld('start grid (min)', sel('step_min', [5,10,15,20,30,45,60], t.step_min)) +
-    fld('mode', sel('mode', ['in-person','video','phone'], t.mode)) +
-    fld('confirmation', sel('confirm_mode', ['auto','manual'], t.confirm_mode)) +
+    fld('visit length', sel('duration_min', calOpts([15, 20, 30, 45, 60, 90, 120, 180, 240], t.duration_min,
+      { 15: '15 min', 20: '20 min', 30: '30 min', 45: '45 min', 60: '1 hour', 90: '1½ hours', 120: '2 hours', 180: '3 hours', 240: '4 hours' }))) +
+    fld('starts every', sel('step_min', calOpts([5, 10, 15, 20, 30, 45, 60], t.step_min,
+      { 5: '5 min', 10: '10 min', 15: '15 min', 20: '20 min', 30: '30 min', 45: '45 min', 60: '1 hour' }))) +
+    fld('mode', sel('mode', calOpts(['in-person', 'video', 'phone'], t.mode, { 'in-person': 'in person', video: 'video call', phone: 'phone call' }))) +
+    '<label class="micro" style="padding-bottom:6px;"><input data-f="confirm_manual" type="checkbox"' + (t.confirm_mode === 'manual' ? ' checked' : '') + '> I confirm each request myself</label>' +
     '<label class="micro" style="padding-bottom:6px;"><input data-f="enabled" type="checkbox"' + (t.enabled ? ' checked' : '') + '> bookable</label>' +
     '</div><div class="cal-frow">' +
-    fld('concurrent slots', '<input data-f="capacity" type="number" min="1" value="' + t.capacity + '" style="width:64px;">') +
-    fld('party up to', '<input data-f="max_party" type="number" min="0" value="' + t.max_party + '" style="width:64px;">') +
-    fld('buffer after (min)', '<input data-f="buffer_min" type="number" min="0" value="' + t.buffer_min + '" style="width:64px;">') +
-    fld('notice needed (min)', '<input data-f="lead_time_min" type="number" min="0" value="' + t.lead_time_min + '" style="width:74px;">') +
-    fld('bookable ahead (days)', '<input data-f="horizon_days" type="number" min="1" value="' + t.horizon_days + '" style="width:64px;">') +
-    '</div><div class="cal-frow">' + locSel +
-    fld('weekly availability', '<input data-f="avail" value="' + esc(availTxt) +
-      '" placeholder="Sat 10:00-16:00; Tue 09:00-13:00 @15" style="width:330px;">') +
+    fld('how many at the same time', sel('capacity', calOpts([1, 2, 3, 4, 5, 6], t.capacity))) +
+    fld('party size up to', sel('max_party', calOpts([0, 2, 4, 6, 8, 10, 12], t.max_party, { 0: "don't ask" }))) +
+    fld('gap after each visit', sel('buffer_min', calOpts([0, 10, 15, 30, 60], t.buffer_min,
+      { 0: 'none', 10: '10 min', 15: '15 min', 30: '30 min', 60: '1 hour' }))) +
+    fld('minimum notice', sel('lead_time_min', calOpts([0, 60, 240, 720, 1440, 2880], t.lead_time_min,
+      { 0: 'none', 60: '1 hour', 240: '4 hours', 720: '12 hours', 1440: '1 day', 2880: '2 days' }))) +
+    fld('bookable up to', sel('horizon_days', calOpts([7, 14, 21, 30, 60, 90], t.horizon_days,
+      { 7: '1 week ahead', 14: '2 weeks ahead', 21: '3 weeks ahead', 30: '1 month ahead', 60: '2 months ahead', 90: '3 months ahead' }))) +
+    '</div>' +
+    '<div class="micro" style="margin-top:8px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">When it can start' + (locs.length > 1 ? ' — per location' : '') + '</div>' +
+    '<div class="cal-frow" style="margin-top:2px;">' + locSel + '</div>' +
+    '<div data-wins>' + winRows + '</div>' +
+    '<div class="cal-frow" style="margin-top:4px;">' +
+    '<button class="btn ghost mini" type="button" data-add-win>+ Add hours window</button>' +
     fld('extra question (optional)', '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="asked once while booking" style="width:230px;">') +
     '<button class="btn ghost" data-save-type>Save</button></div>';
   holder.appendChild(box);
@@ -10461,21 +10668,40 @@ function calTypeRow(t) {
     b2.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     if (collapsed) state.calFolds.delete(foldKey); else state.calFolds.add(foldKey);
   });
+  const pv = sum.querySelector('.pv');
+  if (pv) pv.addEventListener('click', () => calPreview(holder, t));
+  box.addEventListener('click', (ev) => {
+    const el2 = ev.target;
+    if (el2.classList && el2.classList.contains('dchip')) { el2.classList.toggle('on'); return; }
+    if (el2.hasAttribute && el2.hasAttribute('data-del-win')) { el2.closest('[data-win]').remove(); return; }
+    if (el2.hasAttribute && el2.hasAttribute('data-add-win')) {
+      const d = document.createElement('div'); d.innerHTML = winHtml([], '10:00', '16:00', null);
+      box.querySelector('[data-wins]').appendChild(d.firstChild);
+    }
+  });
   const locSelEl = box.querySelector('[data-f="loc"]');
   if (locSelEl) locSelEl.addEventListener('change', () => {
     const loc = locs.find((l) => l.slug === locSelEl.value);
-    box.querySelector('[data-f="avail"]').value = isNew ? '' : calAvailText(t.id, loc ? loc.id : 0);
+    const recs = isNew ? [] : (state.calAvail || []).filter((a) => a.type_id === t.id && a.location_id === (loc ? loc.id : 0));
+    const gs = {};
+    recs.forEach((a) => {
+      const k = a.start_min + '|' + a.end_min + '|' + (a.step_min == null ? '' : a.step_min);
+      (gs[k] = gs[k] || { days: [], from: calT(a.start_min), to: calT(a.end_min), step: a.step_min == null ? null : a.step_min }).days.push(a.dow);
+    });
+    box.querySelector('[data-wins]').innerHTML = Object.values(gs).map((g) => winHtml(g.days, g.from, g.to, g.step)).join('');
   });
   box.querySelector('[data-save-type]').addEventListener('click', async () => {
     try {
       const g = (f) => box.querySelector('[data-f="' + f + '"]');
-      const row = { slug: g('slug').value.trim().toLowerCase(), title: g('title').value.trim(),
+      const title = g('title').value.trim();
+      const slug = t.slug || calSlug(title);
+      const row = { slug: slug, title: title,
         duration_min: +g('duration_min').value, step_min: +g('step_min').value, mode: g('mode').value,
         buffer_min: +g('buffer_min').value || 0, lead_time_min: +g('lead_time_min').value || 0,
         horizon_days: +g('horizon_days').value || 21, capacity: +g('capacity').value || 1,
-        max_party: +g('max_party').value || 0, confirm_mode: g('confirm_mode').value,
+        max_party: +g('max_party').value || 0, confirm_mode: g('confirm_manual').checked ? 'manual' : 'auto',
         intake_prompt: g('intake_prompt').value.trim(), enabled: g('enabled').checked };
-      if (!/^[a-z0-9-]{2,40}$/.test(row.slug) || !row.title) throw new Error('An offering needs a name and a slug (a-z0-9-).');
+      if (!row.title || !/^[a-z0-9-]{2,40}$/.test(row.slug)) throw new Error('Give the offering a name.');
       const up = await sb.from('concierge_appointment_types').upsert([row], { onConflict: 'slug' }).select('id');
       if (up.error) throw new Error(up.error.message);
       const typeId = up.data && up.data[0] && up.data[0].id;
@@ -10483,20 +10709,20 @@ function calTypeRow(t) {
         ? state.calLocs.find((l) => l.slug === locSelEl.value) : state.calLocs[0];
       let warn = '';
       if (typeId && loc) {
-        const lines = g('avail').value.trim();
         const rows = [];
-        if (lines) {
-          for (const part of lines.split(';')) {
-            const p = part.trim(); if (!p) continue;
-            const m = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})(?:\s*@(\d+))?$/i.exec(p);
-            if (!m) throw new Error('Bad availability line: "' + p + '"');
-            const step = m[4] ? +m[4] : null;
-            if (step !== null && [5,10,15,20,30,45,60].indexOf(step) < 0) throw new Error('Increment must be 5/10/15/20/30/45/60');
-            rows.push({ type_id: typeId, location_id: loc.id,
-              dow: CAL_DAYS.findIndex((d2) => d2.toLowerCase() === m[1].toLowerCase()),
-              start_min: calMin(m[2]), end_min: calMin(m[3]), step_min: step });
-          }
-        }
+        box.querySelectorAll('[data-win]').forEach((w) => {
+          const days = Array.from(w.querySelectorAll('.dchip.on')).map((c) => +c.getAttribute('data-dow'));
+          const from = w.querySelector('[data-w="from"]').value;
+          const to = w.querySelector('[data-w="to"]').value;
+          const stepV = w.querySelector('[data-w="step"]').value;
+          if (!days.length && !from && !to) return;   // an untouched empty row
+          if (!days.length) throw new Error('A window needs at least one day — tap the day circles.');
+          if (!from || !to) throw new Error('A window needs both times.');
+          const a = calMin(from), b = calMin(to);
+          if (a === null || b === null || b <= a) throw new Error('A window ends before it starts.');
+          days.forEach((d) => rows.push({ type_id: typeId, location_id: loc.id,
+            dow: d, start_min: a, end_min: b, step_min: stepV === '' ? null : +stepV }));
+        });
         const del = await sb.from('concierge_availability').delete().eq('type_id', typeId).eq('location_id', loc.id);
         if (del.error) throw new Error(del.error.message);
         if (rows.length) {
@@ -10521,10 +10747,18 @@ function calTypeRow(t) {
 async function calSaveHours(locId) {
   try {
     const rows = [];
-    document.querySelectorAll('[data-hours-day][data-loc="' + locId + '"]').forEach((inp) => {
-      for (const [a, b] of calParseRanges(inp.value)) {
-        rows.push({ location_id: locId, dow: +inp.dataset.hoursDay, open_min: a, close_min: b });
-      }
+    const box = document.querySelector('[data-hrs][data-loc="' + locId + '"]');
+    (box ? box.querySelectorAll('.cal-hr-day') : []).forEach((day) => {
+      const d = +day.getAttribute('data-dow');
+      day.querySelectorAll('.cal-hr-range').forEach((rg) => {
+        const from = rg.querySelector('[data-hr="from"]').value;
+        const to = rg.querySelector('[data-hr="to"]').value;
+        if (!from && !to) return;
+        if (!from || !to) throw new Error('Hours on ' + CAL_DAYS[d] + ' are missing a time.');
+        const a = calMin(from), b = calMin(to);
+        if (a === null || b === null || b <= a) throw new Error('Hours on ' + CAL_DAYS[d] + ' end before they start.');
+        rows.push({ location_id: locId, dow: d, open_min: a, close_min: b });
+      });
     });
     const del = await sb.from('concierge_business_hours').delete().eq('location_id', locId);
     if (del.error) throw new Error(del.error.message);
