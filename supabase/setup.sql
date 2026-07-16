@@ -1416,9 +1416,12 @@ create trigger staff_hours_history after insert or update on public.concierge_st
 -- Seed one location so a single-location house never thinks about the
 -- dimension. The admin edits the timezone on first setup (the master switch
 -- refuses to enable until hours exist and the timezone is confirmed).
+-- FRESH INSTALLS ONLY: once any location exists (or ever existed and was
+-- deliberately removed while others remain), this never fires again — a
+-- deploy must not resurrect what the merchant removed.
 insert into public.concierge_locations (slug, title, timezone)
-  values ('main', 'Main', 'America/Los_Angeles')
-  on conflict (slug) do nothing;
+  select 'main', 'Main', 'America/Los_Angeles'
+  where not exists (select 1 from public.concierge_locations);
 
 -- ── The slot engine — the ONE source of "available" ─────────────────────────
 -- Expands weekly availability ∩ business hours in the location's wall-clock
