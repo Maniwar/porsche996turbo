@@ -536,6 +536,8 @@
   .cal-lane-track .cal-tick{ top:2px; bottom:2px; }
   .cal-off{ position:absolute; top:0; bottom:0;
     background:repeating-linear-gradient(45deg, rgba(208,135,112,.35) 0 4px, transparent 4px 8px); }
+  .cal-off.pend{ opacity:.55;
+    background:repeating-linear-gradient(45deg, rgba(201,161,95,.5) 0 3px, transparent 3px 7px); }
   .cal-wk-n.lane-n{ font-size:10px; }
   @media (prefers-reduced-motion: no-preference){
     @keyframes calflash { 0%{ outline:2px solid var(--brass-soft); outline-offset:3px; }
@@ -10580,7 +10582,8 @@ function calStaffCard(st) {
   const offRows = st ? (state.calExcAll || []).filter((x) => x.staff_id === st.id) : [];
   const todayKey = (function () { const x = new Date();
     return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); })();
-  const offAhead = offRows.filter((x) => String(x.on_date) >= todayKey);
+  const offAhead = offRows.filter((x) => String(x.on_date) >= todayKey && (x.status || 'approved') === 'approved');
+  const offAsked = offRows.filter((x) => String(x.on_date) >= todayKey && x.status === 'requested');
   const per = [];
   for (let d = 0; d < 7; d++) {
     per.push(myHours.filter((h) => h.dow === d).sort((a, b) => a.open_min - b.open_min)
@@ -10596,7 +10599,8 @@ function calStaffCard(st) {
   const worksTxt = outd.join(' · ');
   const digest = isNew ? 'New person — unsaved'
     : [worksTxt || null, svcNames.length ? 'does ' + svcNames.join(', ') : null,
-       offAhead.length ? offAhead.length + ' day' + (offAhead.length === 1 ? '' : 's') + ' off ahead' : null]
+       offAhead.length ? offAhead.length + ' day' + (offAhead.length === 1 ? '' : 's') + ' off ahead' : null,
+       offAsked.length ? offAsked.length + ' day' + (offAsked.length === 1 ? '' : 's') + ' requested' : null]
       .filter(Boolean).join(' · ');
   const warnTxt = !isNew && st.enabled
     ? (!myHours.length ? "no working hours — they can't be booked"
@@ -10637,7 +10641,7 @@ function calStaffCard(st) {
   if (!isNew) {
     const offWrap = document.createElement('div');
     offWrap.innerHTML = '<div class="micro" style="margin-top:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Time off' +
-      '<span class="info-badge" title="Days or windows this person is away — vacations, appointments, anything. The calendar simply never offers them during it. A whole vacation is one entry with an end date; anything can be edited or removed later, and long-past entries tidy themselves away.">i</span></div>';
+      '<span class="info-badge" title="Days or windows this person is away — vacations, appointments, anything. Approved entries the calendar simply never offers; a request blocks nothing until you approve it here. Approve, decline, move, or return the time whenever plans change — the record stays. A whole vacation is one entry with an end date; long-past entries tidy themselves away.">i</span></div>';
     const dKey = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     const nextDay = (s) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + 1); return dKey(d); };
     /* consecutive all-day entries with one reason read as one stretch */
@@ -10645,24 +10649,70 @@ function calStaffCard(st) {
     const runs = [];
     mine.forEach((x) => {
       const last = runs[runs.length - 1];
-      if (x.closed && last && last.closed && (last.note || '') === (x.note || '') && nextDay(last.to) === String(x.on_date)) {
+      const xs = x.status || 'approved';
+      if (x.closed && last && last.closed && (last.note || '') === (x.note || '') && last.status === xs && nextDay(last.to) === String(x.on_date)) {
         last.to = String(x.on_date); last.ids.push(x.id);
       } else {
         runs.push({ from: String(x.on_date), to: String(x.on_date), closed: !!x.closed,
-          start_min: x.start_min, end_min: x.end_min, note: x.note || '', ids: [x.id] });
+          start_min: x.start_min, end_min: x.end_min, note: x.note || '', status: xs, ids: [x.id] });
       }
     });
     const fmtRun = (r) => (r.from === r.to ? r.from : r.from + ' → ' + r.to) + ' · ' +
       (r.closed ? 'away' : calHm(r.start_min) + '–' + calHm(r.end_min)) + (r.note ? ' · ' + r.note : '');
     const upcoming = runs.filter((r) => r.to >= todayKey);
     const past = runs.filter((r) => r.to < todayKey);
+    /* who ELSE is off (approved or requested) between two dates — the
+       approve/deny decision needs the coverage picture in view */
+    const offOverlap = (fromD, toD) => {
+      const seen = {};
+      (state.calExcAll || []).forEach((x) => {
+        const s2 = x.status || 'approved';
+        if (!x.staff_id || x.staff_id === st.id) return;
+        if (s2 !== 'approved' && s2 !== 'requested') return;
+        if (String(x.on_date) < fromD || String(x.on_date) > toD) return;
+        const who = (state.calStaff || []).find((p) => p.id === x.staff_id);
+        if (who) seen[who.name] = (s2 === 'approved' || seen[who.name] === 'approved') ? 'approved' : 'requested';
+      });
+      return Object.keys(seen).map((n) => n + ' (' + seen[n] + ')');
+    };
     const offList = document.createElement('div');
+    const OFF_CHIP = { requested: ['needs a decision', '#c9a15f'], denied: ['declined', ''], returned: ['time returned', ''] };
     const rowFor = (r, dim) => {
       const row = document.createElement('div'); row.className = 'cal-frow';
-      if (dim) row.style.opacity = '.55';
-      row.innerHTML = '<span class="micro mono">' + esc(fmtRun(r)) + '</span>' +
+      if (dim || r.status === 'denied' || r.status === 'returned') row.style.opacity = '.55';
+      const chip = OFF_CHIP[r.status]
+        ? '<span class="micro"' + (OFF_CHIP[r.status][1] ? ' style="color:' + OFF_CHIP[r.status][1] + ';"' : '') +
+          ' data-off-chip="' + r.status + '">' + OFF_CHIP[r.status][0] + '</span>'
+        : '';
+      const others = dim ? [] : offOverlap(r.from, r.to);
+      const overlap = others.length
+        ? '<span class="micro" style="opacity:.75;" data-off-others title="' + esc(others.join(', ')) + '">also off then: ' +
+          esc(others.slice(0, 3).join(', ')) + (others.length > 3 ? ' +' + (others.length - 3) : '') + '</span>'
+        : '';
+      const acts = dim ? '' :
+        (r.status === 'requested'
+          ? '<button class="btn ghost mini" type="button" data-ok-off title="The calendar stops offering them for these days.">Approve</button>' +
+            '<button class="btn ghost mini" type="button" data-no-off title="Declines the request — it blocks nothing and the record stays.">Decline</button>'
+          : r.status === 'denied' || r.status === 'returned'
+          ? '<button class="btn ghost mini" type="button" data-re-off title="Puts this back as approved time off.">Restore</button>'
+          : '<button class="btn ghost mini" type="button" data-back-off title="Plans changed — puts these days back on the schedule. The record stays.">Return the time</button>');
+      row.innerHTML = '<span class="micro mono">' + esc(fmtRun(r)) + '</span>' + chip + overlap + acts +
         (dim ? '' : '<button class="btn ghost mini" type="button" data-edit-off>edit</button>') +
         '<button class="btn ghost mini" type="button" data-del-off aria-label="Remove this time off">×</button>';
+      const setStatus = async (s2) => {
+        try {
+          for (const id of r.ids) {
+            const res = await sb.from('concierge_availability_exceptions').update({ status: s2 }).eq('id', id);
+            if (res.error) throw new Error(res.error.message);
+          }
+          state.calFolds.add(foldKey); loadCalendar();
+        } catch (e) { calFail(e); }
+      };
+      [['[data-ok-off]', 'approved'], ['[data-no-off]', 'denied'],
+       ['[data-re-off]', 'approved'], ['[data-back-off]', 'returned']].forEach(([sel, s2]) => {
+        const b2 = row.querySelector(sel);
+        if (b2) b2.addEventListener('click', () => setStatus(s2));
+      });
       row.querySelector('[data-del-off]').addEventListener('click', async () => {
         try {
           for (const id of r.ids) {
@@ -10683,7 +10733,9 @@ function calStaffCard(st) {
           addOff.querySelector('[data-f="offto"]').value = calT(r.end_min);
         }
         addOff.querySelector('[data-f="offnote"]').value = r.note;
+        addOff.querySelector('[data-f="offstatus"]').value = r.status === 'requested' ? 'requested' : 'approved';
         addOff.dataset.editing = JSON.stringify(r.ids);
+        addOff.dataset.editStatus = r.status;
         addOff.querySelector('[data-add-off]').textContent = 'Save the change';
       });
       return row;
@@ -10711,6 +10763,8 @@ function calStaffCard(st) {
       '<span data-f="offwrap" style="display:none;align-items:center;gap:6px;">' +
       '<input type="time" data-f="offfrom"> <span class="micro">to</span> <input type="time" data-f="offto"></span>' +
       '<input data-f="offnote" placeholder="reason (optional)" style="width:130px;">' +
+      '<select data-f="offstatus" title="Approved takes effect immediately — the calendar stops offering them. A request is only logged: it blocks nothing until it is approved.">' +
+      '<option value="approved">approved</option><option value="requested">a request — decide later</option></select>' +
       '<button class="btn ghost mini" type="button" data-add-off>+ time off</button>';
     addOff.querySelector('[data-f="offall"]').addEventListener('change', () => {
       addOff.querySelector('[data-f="offwrap"]').style.display =
@@ -10724,6 +10778,10 @@ function calStaffCard(st) {
         if (end < date) throw new Error('Time off ends before it starts.');
         const all = addOff.querySelector('[data-f="offall"]').checked;
         const note = (addOff.querySelector('[data-f="offnote"]').value || '').trim();
+        /* a MOVE keeps its decision state; the select only sets new entries */
+        const stat = addOff.dataset.editing
+          ? (addOff.dataset.editStatus || 'approved')
+          : addOff.querySelector('[data-f="offstatus"]').value;
         if (!all && end !== date) throw new Error('A time window fits a single day — leave the end date empty.');
         const days = [];
         for (let d2 = date; d2 <= end; d2 = nextDay(d2)) {
@@ -10731,7 +10789,7 @@ function calStaffCard(st) {
           if (days.length > 62) throw new Error('That is over two months of days — check the dates.');
         }
         const rows = days.map((d2) => {
-          const row = { on_date: d2, closed: true, staff_id: st.id, note: note };
+          const row = { on_date: d2, closed: true, staff_id: st.id, note: note, status: stat };
           if (!all) {
             const a = calMin(addOff.querySelector('[data-f="offfrom"]').value || '');
             const b = calMin(addOff.querySelector('[data-f="offto"]').value || '');
@@ -10754,6 +10812,18 @@ function calStaffCard(st) {
       } catch (e) { calFail(e); }
     });
     offWrap.appendChild(addOff);
+    const oHint = document.createElement('div'); oHint.className = 'micro';
+    oHint.style.cssText = 'opacity:.75;margin-top:2px;';
+    oHint.setAttribute('data-off-overlap', '');
+    const refreshOHint = () => {
+      const d1 = addOff.querySelector('[data-f="offdate"]').value;
+      const d2 = addOff.querySelector('[data-f="offend"]').value || d1;
+      const others = d1 ? offOverlap(d1, d2) : [];
+      oHint.textContent = others.length ? 'Also off then: ' + others.join(', ') : '';
+    };
+    addOff.querySelector('[data-f="offdate"]').addEventListener('change', refreshOHint);
+    addOff.querySelector('[data-f="offend"]').addEventListener('change', refreshOHint);
+    offWrap.appendChild(oHint);
     ed.appendChild(offWrap);
   }
   const foot = document.createElement('div'); foot.className = 'cal-frow'; foot.style.marginTop = '10px';
@@ -10987,9 +11057,19 @@ function calTickPop(x, y, r) {
 /* the lane card: give a person time off on the day you clicked */
 function calLanePop(x, y, stf, dateStr) {
   calPop(x, y, (pop) => {
+    const offToday = [];
+    (state.calExcAll || []).forEach((e2) => {
+      if (!e2.staff_id || String(e2.on_date) !== dateStr) return;
+      const s2 = e2.status || 'approved';
+      if (s2 !== 'approved' && s2 !== 'requested') return;
+      const who = (state.calStaff || []).find((p) => p.id === e2.staff_id);
+      if (who) offToday.push(who.name + (s2 === 'requested' ? ' (requested)' : ''));
+    });
     pop.innerHTML =
       '<span class="micro">time off — ' + esc(stf.name) + '</span>' +
       '<b>' + esc(dateStr) + '</b>' +
+      (offToday.length ? '<div class="micro" style="opacity:.8;" data-off-today>already off: ' +
+        esc([...new Set(offToday)].join(', ')) + '</div>' : '') +
       '<div class="cal-frow"><label class="micro"><input type="checkbox" data-p="all" checked> all day</label>' +
       '<span data-p="win" style="display:none;align-items:center;gap:6px;">' +
       '<input type="time" data-p="from"> <span class="micro">to</span> <input type="time" data-p="to"></span></div>' +
@@ -11001,7 +11081,7 @@ function calLanePop(x, y, stf, dateStr) {
     pop.querySelector('[data-p="go"]').addEventListener('click', async () => {
       try {
         const all = pop.querySelector('[data-p="all"]').checked;
-        const row = { on_date: dateStr, closed: all, staff_id: stf.id, note: '' };
+        const row = { on_date: dateStr, closed: all, staff_id: stf.id, note: '', status: 'approved' };
         if (!all) {
           const a = calMin(pop.querySelector('[data-p="from"]').value || '');
           const b = calMin(pop.querySelector('[data-p="to"]').value || '');
@@ -11358,10 +11438,16 @@ async function loadCalendar() {
           const lane = document.createElement('div'); lane.className = 'cal-wk-row lane';
           const wins2 = (state.calStaffHours || []).filter((h) => h.staff_id === stf.id && h.dow === d.dt.getDay())
             .map((h) => '<span class="cal-open" style="left:' + X(h.open_min) + '%;width:' + (X(h.close_min) - X(h.open_min)) + '%;"></span>').join('');
-          const offs = exc.filter((x) => x.staff_id === stf.id && x.on_date === dayKey)
-            .map((x) => x.closed
-              ? '<span class="cal-off" style="left:0;width:100%;" title="' + esc(stf.name) + ' — day off"></span>'
-              : '<span class="cal-off" style="left:' + X(x.start_min) + '%;width:' + (X(x.end_min) - X(x.start_min)) + '%;" title="' + esc(stf.name) + ' — off ' + calHm(x.start_min) + '–' + calHm(x.end_min) + '"></span>').join('');
+          const offs = exc.filter((x) => x.staff_id === stf.id && x.on_date === dayKey
+              && ['requested', 'approved'].includes(x.status || 'approved'))
+            .map((x) => {
+              const pend = (x.status || 'approved') === 'requested';
+              const cls = 'cal-off' + (pend ? ' pend' : '');
+              const tag = pend ? ' — asked for time off (awaiting your decision)' : '';
+              return x.closed
+                ? '<span class="' + cls + '" style="left:0;width:100%;" title="' + esc(stf.name) + (pend ? tag : ' — day off') + '"></span>'
+                : '<span class="' + cls + '" style="left:' + X(x.start_min) + '%;width:' + (X(x.end_min) - X(x.start_min)) + '%;" title="' + esc(stf.name) + ' — off ' + calHm(x.start_min) + '–' + calHm(x.end_min) + tag + '"></span>';
+            }).join('');
           const mine = d.rows.filter((b) => b.r.staff === stf.name);
           const ticks2 = mine.map((b) => {
             const t = b.r;
@@ -11457,6 +11543,17 @@ async function loadCalendar() {
     const stEl = $('cal-staff');
     if (stEl) {
       stEl.textContent = '';
+      const oldPend = document.querySelector('[data-off-pending]');
+      if (oldPend) oldPend.remove();
+      const pendOff = [...new Set((exc || []).filter((x) => x.staff_id && x.status === 'requested'
+        && String(x.on_date) >= new Date().toISOString().slice(0, 10)).map((x) => x.staff_id))].length;
+      if (pendOff) {
+        const n2 = el('div', 'micro', 'Time off requested by ' + pendOff + ' ' +
+          (pendOff === 1 ? 'person' : 'people') + ' — open their card to approve or decline.');
+        n2.style.cssText = 'color:#c9a15f;margin:2px 0 6px;';
+        n2.setAttribute('data-off-pending', '');
+        stEl.parentElement.insertBefore(n2, stEl);
+      }
       if (!state.calStaff.length) {
         stEl.appendChild(el('div', 'cal-empty', 'No people yet — optional. Without a team, offerings use their own capacity.'));
       }

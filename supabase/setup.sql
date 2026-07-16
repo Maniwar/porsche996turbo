@@ -1361,6 +1361,18 @@ create table if not exists public.concierge_staff_services (
 -- must never close the house)
 alter table public.concierge_availability_exceptions
   add column if not exists staff_id bigint references public.concierge_staff(id) on delete cascade;
+-- Time-off lifecycle: a REQUEST is visible everywhere but blocks nothing;
+-- only APPROVED time off hides a person from the slot engine and the
+-- adherence math. 'denied' keeps a declined request's record; 'returned' is
+-- approved time given back to the schedule (plans changed). Shop-level rows
+-- (staff_id null) stay 'approved' — the merchant writes them directly.
+alter table public.concierge_availability_exceptions
+  add column if not exists status text not null default 'approved';
+do $$ begin
+  alter table public.concierge_availability_exceptions
+    add constraint concierge_avail_exc_status_chk
+    check (status in ('requested','approved','denied','returned'));
+exception when duplicate_object then null; end $$;
 alter table public.concierge_appointments
   add column if not exists staff_id bigint references public.concierge_staff(id) on delete set null;
 create index if not exists concierge_appt_staff_idx
@@ -1545,7 +1557,7 @@ begin
                       and sh.open_min <= v_m
                       and sh.close_min >= v_m + v_type.duration_min)
                   and not exists (select 1 from public.concierge_availability_exceptions e3
-                    where e3.staff_id = st.id and e3.on_date = v_day
+                    where e3.staff_id = st.id and e3.status = 'approved' and e3.on_date = v_day
                       and (e3.closed or (e3.start_min is not null
                            and e3.start_min < v_m + v_type.duration_min
                            and e3.end_min > v_m)))
@@ -1684,7 +1696,7 @@ begin
               and sh.dow = extract(dow from (p_starts_at at time zone v_loc.timezone))::int
               and sh.open_min <= v_min and sh.close_min >= v_min + v_type.duration_min)
           and not exists (select 1 from public.concierge_availability_exceptions e3
-            where e3.staff_id = st.id
+            where e3.staff_id = st.id and e3.status = 'approved'
               and e3.on_date = (p_starts_at at time zone v_loc.timezone)::date
               and (e3.closed or (e3.start_min is not null
                    and e3.start_min < v_min + v_type.duration_min and e3.end_min > v_min)))
@@ -1805,7 +1817,7 @@ begin
               and sh.dow = extract(dow from (p_new_starts_at at time zone v_loc.timezone))::int
               and sh.open_min <= v_min and sh.close_min >= v_min + v_type.duration_min)
           and not exists (select 1 from public.concierge_availability_exceptions e3
-            where e3.staff_id = st.id
+            where e3.staff_id = st.id and e3.status = 'approved'
               and e3.on_date = (p_new_starts_at at time zone v_loc.timezone)::date
               and (e3.closed or (e3.start_min is not null
                    and e3.start_min < v_min + v_type.duration_min and e3.end_min > v_min)))
@@ -2014,7 +2026,7 @@ begin
             and sh.dow = extract(dow from (v_row.starts_at at time zone v_loc.timezone))::int
             and sh.open_min <= v_min and sh.close_min >= v_min + v_type.duration_min)
         and not exists (select 1 from public.concierge_availability_exceptions e3
-          where e3.staff_id = st.id
+          where e3.staff_id = st.id and e3.status = 'approved'
             and e3.on_date = (v_row.starts_at at time zone v_loc.timezone)::date
             and (e3.closed or (e3.start_min is not null
                  and e3.start_min < v_min + v_type.duration_min and e3.end_min > v_min)))
@@ -2105,7 +2117,8 @@ begin
                        else greatest(0, least(sh.close_min, e.end_min)
                                      - greatest(sh.open_min, e.start_min)) end)::int
                  from public.concierge_availability_exceptions e
-                 where e.staff_id = st.id and e.on_date = days.day), 0))) as sched_min
+                 where e.staff_id = st.id and e.status = 'approved'
+                   and e.on_date = days.day), 0))) as sched_min
       from public.concierge_staff st
       join public.concierge_staff_hours sh on sh.staff_id = st.id
       join days on extract(dow from days.day)::int = sh.dow
@@ -2130,7 +2143,7 @@ begin
     select e.staff_id,
            count(distinct e.on_date) filter (where e.closed) as days_off
       from public.concierge_availability_exceptions e
-     where e.staff_id is not null
+     where e.staff_id is not null and e.status = 'approved'
        and e.on_date between current_date - v_days + 1 and current_date
      group by e.staff_id)
   select coalesce(jsonb_agg(jsonb_build_object(
