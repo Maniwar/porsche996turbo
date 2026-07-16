@@ -1316,12 +1316,55 @@ create index if not exists concierge_appt_slot_idx
   on public.concierge_appointments (type_id, location_id, starts_at)
   where kind = 'appointment' and status in ('requested','booked') and not qa;
 
+-- ── The team ─────────────────────────────────────────────────────────────────
+-- People make an offering staff-aware the moment one is assigned to it: a slot
+-- then exists only when a QUALIFIED PERSON is free (their hours ∩ the window ∩
+-- business hours, minus personal time off and their other bookings), and every
+-- booking is assigned to someone — named by the visitor or least-loaded.
+-- No staff assigned = the offering behaves exactly as before. No slugs: people
+-- are referred to by name.
+create table if not exists public.concierge_staff (
+  id         bigint generated always as identity primary key,
+  name       text not null,
+  enabled    boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.concierge_staff_hours (
+  id          bigint generated always as identity primary key,
+  staff_id    bigint not null references public.concierge_staff(id) on delete cascade,
+  location_id bigint not null references public.concierge_locations(id) on delete cascade,
+  dow         smallint not null check (dow between 0 and 6),
+  open_min    smallint not null check (open_min between 0 and 1439),
+  close_min   smallint not null check (close_min between 1 and 1440),
+  check (close_min > open_min)
+);
+create index if not exists concierge_staff_hours_idx
+  on public.concierge_staff_hours (staff_id, location_id, dow);
+create table if not exists public.concierge_staff_services (
+  staff_id bigint not null references public.concierge_staff(id) on delete cascade,
+  type_id  bigint not null references public.concierge_appointment_types(id) on delete cascade,
+  primary key (staff_id, type_id)
+);
+-- personal time off rides the exceptions table, scoped to a person; the
+-- shop-level precedence queries EXCLUDE these rows (one person's day off
+-- must never close the house)
+alter table public.concierge_availability_exceptions
+  add column if not exists staff_id bigint references public.concierge_staff(id) on delete cascade;
+alter table public.concierge_appointments
+  add column if not exists staff_id bigint references public.concierge_staff(id) on delete set null;
+create index if not exists concierge_appt_staff_idx
+  on public.concierge_appointments (staff_id, starts_at) where staff_id is not null;
+
 alter table public.concierge_locations               enable row level security;
 alter table public.concierge_business_hours          enable row level security;
 alter table public.concierge_appointment_types       enable row level security;
 alter table public.concierge_availability            enable row level security;
 alter table public.concierge_availability_exceptions enable row level security;
 alter table public.concierge_appointments            enable row level security;
+alter table public.concierge_staff                   enable row level security;
+alter table public.concierge_staff_hours             enable row level security;
+alter table public.concierge_staff_services          enable row level security;
 -- appointments carry PII: no policies — service role writes; admins read via RPCs.
 
 -- Admin policies + edit-history for the calendar config tables live HERE —
@@ -1332,7 +1375,8 @@ declare t text;
 begin
   foreach t in array array[
     'concierge_locations','concierge_business_hours','concierge_appointment_types',
-    'concierge_availability','concierge_availability_exceptions'
+    'concierge_availability','concierge_availability_exceptions',
+    'concierge_staff','concierge_staff_hours','concierge_staff_services'
   ] loop
     execute format('drop policy if exists "admin all" on public.%I', t);
     execute format($f$create policy "admin all" on public.%I for all to authenticated
@@ -1351,6 +1395,12 @@ create trigger appt_types_history after insert or update on public.concierge_app
   for each row execute function public.log_edit_history();
 drop trigger if exists availability_history on public.concierge_availability;
 create trigger availability_history after insert or update on public.concierge_availability
+  for each row execute function public.log_edit_history();
+drop trigger if exists staff_history on public.concierge_staff;
+create trigger staff_history after insert or update on public.concierge_staff
+  for each row execute function public.log_edit_history();
+drop trigger if exists staff_hours_history on public.concierge_staff_hours;
+create trigger staff_hours_history after insert or update on public.concierge_staff_hours
   for each row execute function public.log_edit_history();
 
 -- Seed one location so a single-location house never thinks about the
@@ -1389,6 +1439,8 @@ declare
   v_shop  text; v_vis text; v_lead_label text; v_abbr text; v_vabbr text;
   v_slots jsonb := '[]'::jsonb;
   v_n     int := 0;
+  v_staffed boolean := false;
+  v_free int; v_staff_names jsonb;
 begin
   if not (public.is_concierge_admin()
           or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
@@ -1407,6 +1459,7 @@ begin
     v_vis_tz := p_visitor_tz;
   end if;
   v_multi := (select count(*) > 1 from public.concierge_locations where enabled);
+  v_staffed := exists (select 1 from public.concierge_staff_services ss where ss.type_id = v_type.id);
   v_lead  := v_now + make_interval(mins => v_type.lead_time_min);
   v_today := (v_now at time zone v_loc.timezone)::date;
   v_hzn   := v_today + v_type.horizon_days;
@@ -1420,7 +1473,7 @@ begin
     select e.id, e.closed, (e.start_min is not null and e.end_min is not null)
       into v_ex_id, v_ex_closed, v_ex_has_win
       from public.concierge_availability_exceptions e
-      where e.on_date = v_day
+      where e.on_date = v_day and e.staff_id is null
         and (e.location_id is null or e.location_id = v_loc.id)
         and (e.type_id     is null or e.type_id     = v_type.id)
       order by (e.location_id is not null) desc, (e.type_id is not null) desc
@@ -1465,7 +1518,32 @@ begin
               and not a.qa and a.type_id = v_type.id and a.location_id = v_loc.id
               and a.starts_at < v_end   + make_interval(mins => v_type.buffer_min)
               and a.ends_at   > v_start - make_interval(mins => v_type.buffer_min);
-          if v_busy < v_type.capacity then
+          v_free := null; v_staff_names := null;
+          if v_staffed and v_busy < v_type.capacity then
+            select count(*), jsonb_agg(q.name order by q.name) into v_free, v_staff_names from (
+              select st.id, st.name
+                from public.concierge_staff st
+                join public.concierge_staff_services ss
+                  on ss.staff_id = st.id and ss.type_id = v_type.id
+                where st.enabled
+                  and exists (select 1 from public.concierge_staff_hours sh
+                    where sh.staff_id = st.id and sh.location_id = v_loc.id
+                      and sh.dow = extract(dow from v_day)::int
+                      and sh.open_min <= v_m
+                      and sh.close_min >= v_m + v_type.duration_min)
+                  and not exists (select 1 from public.concierge_availability_exceptions e3
+                    where e3.staff_id = st.id and e3.on_date = v_day
+                      and (e3.closed or (e3.start_min is not null
+                           and e3.start_min < v_m + v_type.duration_min
+                           and e3.end_min > v_m)))
+                  and not exists (select 1 from public.concierge_appointments a2
+                    where a2.staff_id = st.id and a2.kind = 'appointment'
+                      and a2.status in ('requested','booked') and not a2.qa
+                      and a2.starts_at < v_end + make_interval(mins => v_type.buffer_min)
+                      and a2.ends_at   > v_start - make_interval(mins => v_type.buffer_min))
+                limit 8) q;
+          end if;
+          if v_busy < v_type.capacity and (not v_staffed or coalesce(v_free, 0) > 0) then
             perform set_config('TimeZone', v_loc.timezone, true);
             v_shop := trim(to_char(v_start, 'Dy Mon FMDD, HH24:MI'));
             v_abbr := trim(to_char(v_start, 'TZ'));
@@ -1486,11 +1564,14 @@ begin
               v_lead_label := v_shop || ' ' || v_abbr
                            || case when v_multi then ' at ' || v_loc.title else '' end;
             end if;
-            v_slots := v_slots || jsonb_build_object(
+            v_slots := v_slots || (jsonb_build_object(
               'starts_at', v_start, 'ends_at', v_end,
               'shop_label', v_shop || ' ' || v_abbr,
               'visitor_label', v_vis || ' ' || v_vabbr,
-              'lead_label', v_lead_label);
+              'lead_label', v_lead_label)
+              || case when v_staffed
+                   then jsonb_build_object('staff', coalesce(v_staff_names, '[]'::jsonb))
+                   else '{}'::jsonb end);
             v_n := v_n + 1;
             exit when v_n >= 40;
           end if;
@@ -1515,13 +1596,14 @@ grant execute on function public.appointment_slots(text, text, date, date, text)
 revoke execute on function public.appointment_slots(text, text, date, date, text) from public, anon;
 
 -- ── The booking write — re-derives the slot it was offered ───────────────────
+drop function if exists public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text);
 create or replace function public.book_appointment(
   p_type text, p_location text, p_starts_at timestamptz,
   p_name text, p_contact text, p_contact_kind text,
   p_party smallint default null, p_notes text default '',
   p_visitor_tz text default null,
   p_customer uuid default null, p_conversation uuid default null,
-  p_session text default null)
+  p_session text default null, p_staff text default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_type public.concierge_appointment_types%rowtype;
@@ -1529,6 +1611,8 @@ declare
   v_slot jsonb; v_slots jsonb; v_row public.concierge_appointments%rowtype;
   v_qa boolean := coalesce(p_session, '') like 'qa-%';
   v_cap int; v_open int; v_status text; v_day date;
+  v_staffed boolean := false; v_min int; v_cand record;
+  v_staff_id bigint; v_staff_name text; v_got boolean := false;
 begin
   if not (public.is_concierge_admin()
           or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
@@ -1569,16 +1653,60 @@ begin
         select s from jsonb_array_elements(v_slots->'slots') s limit 3) alt), '[]'::jsonb));
   end if;
 
+  -- staffed offerings: pick the person inside the slot lock, then serialize
+  -- per person+start — a race across two offerings can never double-book a
+  -- human. Named requests get ONLY that person; unnamed spread the load.
+  v_staffed := exists (select 1 from public.concierge_staff_services ss where ss.type_id = v_type.id);
+  if v_staffed then
+    v_min := extract(hour from (p_starts_at at time zone v_loc.timezone))::int * 60
+           + extract(minute from (p_starts_at at time zone v_loc.timezone))::int;
+    for v_cand in
+      select st.id, st.name
+        from public.concierge_staff st
+        join public.concierge_staff_services ss on ss.staff_id = st.id and ss.type_id = v_type.id
+        where st.enabled
+          and (p_staff is null or st.name ilike trim(p_staff))
+          and exists (select 1 from public.concierge_staff_hours sh
+            where sh.staff_id = st.id and sh.location_id = v_loc.id
+              and sh.dow = extract(dow from (p_starts_at at time zone v_loc.timezone))::int
+              and sh.open_min <= v_min and sh.close_min >= v_min + v_type.duration_min)
+          and not exists (select 1 from public.concierge_availability_exceptions e3
+            where e3.staff_id = st.id
+              and e3.on_date = (p_starts_at at time zone v_loc.timezone)::date
+              and (e3.closed or (e3.start_min is not null
+                   and e3.start_min < v_min + v_type.duration_min and e3.end_min > v_min)))
+        order by (select count(*) from public.concierge_appointments b
+                    where b.staff_id = st.id and b.kind = 'appointment'
+                      and b.status in ('requested','booked') and not b.qa
+                      and b.starts_at > now()) asc, st.id asc
+    loop
+      perform pg_advisory_xact_lock(hashtext('staff|' || v_cand.id::text || '|' || p_starts_at::text));
+      if not exists (select 1 from public.concierge_appointments a2
+          where a2.staff_id = v_cand.id and a2.kind = 'appointment'
+            and a2.status in ('requested','booked') and not a2.qa
+            and a2.starts_at < p_starts_at + make_interval(mins => v_type.duration_min + v_type.buffer_min)
+            and a2.ends_at   > p_starts_at - make_interval(mins => v_type.buffer_min)) then
+        v_staff_id := v_cand.id; v_staff_name := v_cand.name; v_got := true; exit;
+      end if;
+    end loop;
+    if not v_got then
+      return jsonb_build_object('ok', false, 'reason', 'taken',
+        'alternatives', coalesce((select jsonb_agg(s) from (
+          select s from jsonb_array_elements(v_slots->'slots') s
+            where (s->>'starts_at')::timestamptz <> p_starts_at limit 3) alt), '[]'::jsonb));
+    end if;
+  end if;
+
   v_status := case when v_type.confirm_mode = 'manual' then 'requested' else 'booked' end;
   insert into public.concierge_appointments
     (kind, type_id, location_id, starts_at, ends_at, party_size, status,
      visitor_name, visitor_contact, contact_kind, visitor_tz, notes,
-     customer_id, conversation_id, session_key, qa)
+     customer_id, conversation_id, session_key, qa, staff_id)
   values ('appointment', v_type.id, v_loc.id, p_starts_at,
      p_starts_at + make_interval(mins => v_type.duration_min),
      p_party, v_status, trim(p_name), trim(p_contact), p_contact_kind,
      coalesce(p_visitor_tz, ''), coalesce(p_notes, ''),
-     p_customer, p_conversation, p_session, v_qa)
+     p_customer, p_conversation, p_session, v_qa, v_staff_id)
   returning * into v_row;
 
   return jsonb_build_object('ok', true, 'id', v_row.id, 'status', v_row.status,
@@ -1588,10 +1716,11 @@ begin
     'lead_label', v_slot->>'lead_label',
     'location', jsonb_build_object('title', v_loc.title, 'address', v_loc.address,
       'directions', v_loc.directions, 'timezone', v_loc.timezone),
-    'type_title', v_type.title, 'confirm_mode', v_type.confirm_mode);
+    'type_title', v_type.title, 'confirm_mode', v_type.confirm_mode,
+    'staff_name', v_staff_name);
 end $$;
-grant execute on function public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text) to authenticated;
-revoke execute on function public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text) from public, anon;
+grant execute on function public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text,text) to authenticated;
+revoke execute on function public.book_appointment(text,text,timestamptz,text,text,text,smallint,text,text,uuid,uuid,text,text) from public, anon;
 
 -- ── The atomic move — a failed reschedule leaves the original untouched ──────
 create or replace function public.reschedule_appointment(
@@ -1607,6 +1736,7 @@ declare
   v_slot jsonb; v_slots jsonb; v_day date;
   v_new  public.concierge_appointments%rowtype;
   k_old bigint; k_new bigint;
+  v_min int; v_cand record; v_staff_id bigint;
 begin
   if not (public.is_concierge_admin()
           or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
@@ -1645,17 +1775,58 @@ begin
         select s from jsonb_array_elements(v_slots->'slots') s limit 3) alt), '[]'::jsonb));
   end if;
 
+  -- staffed: keep the same person when they're free at the new time,
+  -- otherwise a free qualified colleague — chosen under the per-person lock.
+  if exists (select 1 from public.concierge_staff_services ss where ss.type_id = v_type.id) then
+    v_staff_id := null;
+    v_min := extract(hour from (p_new_starts_at at time zone v_loc.timezone))::int * 60
+           + extract(minute from (p_new_starts_at at time zone v_loc.timezone))::int;
+    for v_cand in
+      select st.id, st.name
+        from public.concierge_staff st
+        join public.concierge_staff_services ss on ss.staff_id = st.id and ss.type_id = v_type.id
+        where st.enabled
+          and exists (select 1 from public.concierge_staff_hours sh
+            where sh.staff_id = st.id and sh.location_id = v_loc.id
+              and sh.dow = extract(dow from (p_new_starts_at at time zone v_loc.timezone))::int
+              and sh.open_min <= v_min and sh.close_min >= v_min + v_type.duration_min)
+          and not exists (select 1 from public.concierge_availability_exceptions e3
+            where e3.staff_id = st.id
+              and e3.on_date = (p_new_starts_at at time zone v_loc.timezone)::date
+              and (e3.closed or (e3.start_min is not null
+                   and e3.start_min < v_min + v_type.duration_min and e3.end_min > v_min)))
+        order by (st.id = v_row.staff_id) desc, st.id asc
+    loop
+      perform pg_advisory_xact_lock(hashtext('staff|' || v_cand.id::text || '|' || p_new_starts_at::text));
+      if not exists (select 1 from public.concierge_appointments a2
+          where a2.staff_id = v_cand.id and a2.kind = 'appointment'
+            and a2.status in ('requested','booked') and not a2.qa and a2.id <> v_row.id
+            and a2.starts_at < p_new_starts_at + make_interval(mins => v_type.duration_min + v_type.buffer_min)
+            and a2.ends_at   > p_new_starts_at - make_interval(mins => v_type.buffer_min)) then
+        v_staff_id := v_cand.id; exit;
+      end if;
+    end loop;
+    if v_staff_id is null then
+      return jsonb_build_object('ok', false, 'reason', 'taken', 'original_stands', true,
+        'alternatives', coalesce((select jsonb_agg(s) from (
+          select s from jsonb_array_elements(v_slots->'slots') s
+            where (s->>'starts_at')::timestamptz <> p_new_starts_at limit 3) alt), '[]'::jsonb));
+    end if;
+  else
+    v_staff_id := v_row.staff_id;
+  end if;
+
   if v_type.confirm_mode = 'manual' and v_row.status = 'booked' then
     -- the no-gap rule: the original holds until the house confirms the move
     insert into public.concierge_appointments
       (kind, type_id, location_id, starts_at, ends_at, party_size, status,
        visitor_name, visitor_contact, contact_kind, visitor_tz, notes,
-       customer_id, conversation_id, session_key, reschedule_of, qa)
+       customer_id, conversation_id, session_key, reschedule_of, qa, staff_id)
     values ('appointment', v_row.type_id, v_loc.id, p_new_starts_at,
        p_new_starts_at + make_interval(mins => v_type.duration_min),
        v_row.party_size, 'requested', v_row.visitor_name, v_row.visitor_contact,
        v_row.contact_kind, coalesce(p_visitor_tz, v_row.visitor_tz), v_row.notes,
-       v_row.customer_id, v_row.conversation_id, v_row.session_key, v_row.id, v_row.qa)
+       v_row.customer_id, v_row.conversation_id, v_row.session_key, v_row.id, v_row.qa, v_staff_id)
     returning * into v_new;
     return jsonb_build_object('ok', true, 'status', 'requested', 'id', v_new.id,
       'original_id', v_row.id, 'no_gap', true,
@@ -1666,7 +1837,8 @@ begin
   update public.concierge_appointments set
       location_id = v_loc.id, starts_at = p_new_starts_at,
       ends_at = p_new_starts_at + make_interval(mins => v_type.duration_min),
-      visitor_tz = coalesce(p_visitor_tz, visitor_tz), updated_at = now()
+      visitor_tz = coalesce(p_visitor_tz, visitor_tz), staff_id = v_staff_id,
+      updated_at = now()
     where id = v_row.id returning * into v_new;
   return jsonb_build_object('ok', true, 'status', v_new.status, 'id', v_new.id,
     'lead_label', v_slot->>'lead_label', 'shop_label', v_slot->>'shop_label',
@@ -1795,7 +1967,7 @@ begin
   select jsonb_build_object(
     'requested', coalesce((select jsonb_agg(jsonb_build_object(
         'id', a.id, 'starts_at', a.starts_at, 'type', t.title, 'location', l.title,
-        'name', a.visitor_name, 'contact', a.visitor_contact, 'contact_kind', a.contact_kind,
+        'name', a.visitor_name, 'staff', st2.name, 'contact', a.visitor_contact, 'contact_kind', a.contact_kind,
         'party', a.party_size, 'notes', a.notes, 'age_min',
         floor(extract(epoch from now() - a.created_at) / 60),
         'ttl_deadline', case when v_ttl > 0 then a.created_at + make_interval(hours => v_ttl) end,
@@ -1805,6 +1977,7 @@ begin
       from public.concierge_appointments a
       left join public.concierge_appointment_types t on t.id = a.type_id
       left join public.concierge_locations l on l.id = a.location_id
+      left join public.concierge_staff st2 on st2.id = a.staff_id
       where a.status = 'requested' and not a.qa), '[]'::jsonb),
     'callbacks', coalesce((select jsonb_agg(jsonb_build_object(
         'id', a.id, 'name', a.visitor_name, 'contact', a.visitor_contact,
@@ -1816,7 +1989,7 @@ begin
       where a.kind = 'callback' and a.status = 'open' and not a.qa), '[]'::jsonb),
     'today', coalesce((select jsonb_agg(jsonb_build_object(
         'id', a.id, 'starts_at', a.starts_at, 'type', t.title, 'location', l.title,
-        'name', a.visitor_name, 'contact', a.visitor_contact,
+        'name', a.visitor_name, 'staff', st2.name, 'contact', a.visitor_contact,
         'party', a.party_size, 'notes', a.notes, 'status', a.status,
         'conversation_id', a.conversation_id, 'customer_id', a.customer_id,
         'open_notes', coalesce((select jsonb_agg(n.note) from (
@@ -1828,17 +2001,19 @@ begin
       from public.concierge_appointments a
       left join public.concierge_appointment_types t on t.id = a.type_id
       left join public.concierge_locations l on l.id = a.location_id
+      left join public.concierge_staff st2 on st2.id = a.staff_id
       where a.kind = 'appointment' and a.status = 'booked' and not a.qa
         and l.id is not null
         and (a.starts_at at time zone l.timezone)::date
             = (now() at time zone l.timezone)::date), '[]'::jsonb),
     'needs_closing', coalesce((select jsonb_agg(jsonb_build_object(
         'id', a.id, 'starts_at', a.starts_at, 'type', t.title, 'location', l.title,
-        'name', a.visitor_name, 'conversation_id', a.conversation_id,
+        'name', a.visitor_name, 'staff', st2.name, 'conversation_id', a.conversation_id,
         'customer_id', a.customer_id) order by a.starts_at)
       from public.concierge_appointments a
       left join public.concierge_appointment_types t on t.id = a.type_id
       left join public.concierge_locations l on l.id = a.location_id
+      left join public.concierge_staff st2 on st2.id = a.staff_id
       where a.kind = 'appointment' and a.status = 'booked' and not a.qa
         and a.ends_at < now()), '[]'::jsonb)
   ) into v;
@@ -1896,7 +2071,7 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', a.id, 'starts_at', a.starts_at, 'ends_at', a.ends_at,
       'status', a.status, 'type', t.title, 'location', l.title,
-      'location_tz', l.timezone, 'name', a.visitor_name,
+      'location_tz', l.timezone, 'name', a.visitor_name, 'staff', st2.name,
       'contact', a.visitor_contact, 'contact_kind', a.contact_kind,
       'party', a.party_size, 'notes', a.notes, 'is_move', a.reschedule_of is not null,
       'conversation_id', a.conversation_id, 'customer_id', a.customer_id)
@@ -1904,6 +2079,7 @@ begin
     from public.concierge_appointments a
     left join public.concierge_appointment_types t on t.id = a.type_id
     left join public.concierge_locations l on l.id = a.location_id
+    left join public.concierge_staff st2 on st2.id = a.staff_id
     where a.kind = 'appointment' and a.status in ('requested','booked') and not a.qa
       and a.starts_at >= date_trunc('day', now())
       and a.starts_at < date_trunc('day', now()) + make_interval(days => v_days);
@@ -1922,13 +2098,14 @@ begin
   end if;
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', a.id, 'kind', a.kind, 'starts_at', a.starts_at, 'status', a.status,
-      'type', t.title, 'location', l.title, 'window_pref', a.window_pref,
+      'type', t.title, 'location', l.title, 'staff', st2.name, 'window_pref', a.window_pref,
       'party', a.party_size, 'notes', a.notes,
       'conversation_id', a.conversation_id, 'created_at', a.created_at)
       order by coalesce(a.starts_at, a.created_at) desc), '[]'::jsonb) into v
     from public.concierge_appointments a
     left join public.concierge_appointment_types t on t.id = a.type_id
     left join public.concierge_locations l on l.id = a.location_id
+    left join public.concierge_staff st2 on st2.id = a.staff_id
     where a.customer_id = p_customer and not a.qa
     limit 1;
   return v;
@@ -1950,13 +2127,14 @@ begin
   end if;
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', a.id, 'kind', a.kind, 'starts_at', a.starts_at, 'status', a.status,
-      'type', t.title, 'location', l.title, 'window_pref', a.window_pref,
+      'type', t.title, 'location', l.title, 'staff', st2.name, 'window_pref', a.window_pref,
       'party', a.party_size, 'notes', a.notes,
       'conversation_id', a.conversation_id, 'created_at', a.created_at)
       order by coalesce(a.starts_at, a.created_at) desc), '[]'::jsonb) into v
     from public.concierge_appointments a
     left join public.concierge_appointment_types t on t.id = a.type_id
     left join public.concierge_locations l on l.id = a.location_id
+    left join public.concierge_staff st2 on st2.id = a.staff_id
     where not a.qa and a.customer_id in (
       select c.id from public.customers c
         where (p_user is not null and c.user_id = p_user)
