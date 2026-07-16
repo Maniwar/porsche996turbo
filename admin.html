@@ -10151,6 +10151,20 @@ async function calAct(fn, args, btn) {
     if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = btn.dataset.lbl; }
   }
 }
+
+/* guarded removal — the server refuses while future visits depend on it */
+async function calRemove(fn, id, label) {
+  if (!window.confirm('Remove ' + label + ' for good? Past visits keep their records but lose this name on them. The register will refuse if future visits still depend on it.')) return;
+  try {
+    const d = await calRpc(fn, { p_id: id });
+    if (d && d.ok === false) {
+      throw new Error(d.reason === 'has_visits'
+        ? d.count + ' standing visit' + (d.count === 1 ? '' : 's') + ' still point here — move or cancel them first, or just switch it off'
+        : d.reason || 'refused');
+    }
+    loadCalendar();
+  } catch (e) { calFail(e); }
+}
 function calBadge(n) {
   const btn = document.querySelector('nav.tabs .tab[data-tab="calendar"]');
   if (btn) btn.textContent = n > 0 ? ('Calendar (' + n + ')') : 'Calendar';
@@ -10643,6 +10657,12 @@ function calStaffCard(st) {
     });
     foot.appendChild(dep);
   }
+  if (!isNew) {
+    const rm = document.createElement('button'); rm.className = 'btn ghost mini'; rm.type = 'button';
+    rm.textContent = 'Remove…'; rm.setAttribute('data-rm-staff', '');
+    rm.addEventListener('click', () => calRemove('remove_person', st.id, '"' + st.name + '"'));
+    foot.appendChild(rm);
+  }
   ed.appendChild(foot);
   holder.appendChild(ed);
   sum.querySelector('.edit').addEventListener('click', () => {
@@ -11123,7 +11143,8 @@ async function loadCalendar() {
         '<label class="cal-field"><span>timezone<span class="info-badge" title="Each location keeps its own clock: the hours below are read in this zone, slots expand in it (daylight saving handled), and guests see times in their own zone alongside.">i</span></span>' + calTzSelect('data-f="timezone"', l.timezone) + '</label>' +
         '<label class="cal-field"><span>address</span><input value="' + esc(l.address || '') + '" data-f="address" style="width:230px;"></label>' +
         '<label class="micro" style="padding-bottom:6px;"><input type="checkbox" data-f="enabled"' + (l.enabled ? ' checked' : '') + '> open for booking<span class="info-badge" title="Off: this location offers no future slots, but every standing booking here survives and stays visible in the queue.">i</span></label>' +
-        '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button></div>' +
+        '<button class="btn ghost" data-save-loc="' + l.id + '">Save</button>' +
+        '<button class="btn ghost mini" type="button" data-rm-loc="' + l.id + '">Remove…</button></div>' +
         '<div class="micro" style="margin-top:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.75;">Business hours</div>' +
         '<div class="micro" style="opacity:.7;">A day with no hours is closed. Add a second row to a day for split shifts.</div>';
       ed.appendChild(calHoursEditor(l.id));
@@ -11210,6 +11231,10 @@ async function loadCalendar() {
     eEl.querySelectorAll('[data-del-exc]').forEach((b) => b.addEventListener('click', async () => {
       try { const r = await sb.from('concierge_availability_exceptions').delete().eq('id', b.dataset.delExc);
         if (r.error) throw new Error(r.error.message); loadCalendar(); } catch (e) { calFail(e); }
+    }));
+    lEl.querySelectorAll('[data-rm-loc]').forEach((b) => b.addEventListener('click', () => {
+      const L = locs.find((x) => x.id === +b.getAttribute('data-rm-loc'));
+      calRemove('remove_location', +b.getAttribute('data-rm-loc'), L ? '"' + L.title + '"' : 'this location');
     }));
     lEl.querySelectorAll('[data-save-loc]').forEach((b) => b.addEventListener('click', async () => {
       const row = b.closest('[data-loc-id]');
@@ -11324,7 +11349,8 @@ function calTypeRow(t) {
     '<div class="cal-frow" style="margin-top:4px;">' +
     '<button class="btn ghost mini" type="button" data-add-win>+ Add hours window</button>' +
     fld('extra question (optional)<span class="info-badge" title="Asked once during booking. The answer rides the request into the queue and the owner email — never used for anything else.">i</span>', '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="asked once while booking" style="width:230px;">') +
-    '<button class="btn ghost" data-save-type>Save</button></div>';
+    '<button class="btn ghost" data-save-type>Save</button>' +
+    (isNew ? '' : '<button class="btn ghost mini" type="button" data-rm-type>Remove…</button>') + '</div>';
   holder.appendChild(box);
   sum.querySelector('.edit').addEventListener('click', () => {
     const collapsed = box.classList.toggle('is-collapsed');
@@ -11355,6 +11381,8 @@ function calTypeRow(t) {
     });
     box.querySelector('[data-wins]').innerHTML = Object.values(gs).map((g) => winHtml(g.days, g.from, g.to, g.step)).join('');
   });
+  const rmT = box.querySelector('[data-rm-type]');
+  if (rmT) rmT.addEventListener('click', () => calRemove('remove_offering', t.id, '"' + (t.title || '') + '"'));
   box.querySelector('[data-save-type]').addEventListener('click', async () => {
     try {
       const g = (f) => box.querySelector('[data-f="' + f + '"]');
