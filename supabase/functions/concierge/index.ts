@@ -1127,21 +1127,25 @@ const REGISTER_TOOLS: any[] = [
     name: "request_callback",
     description:
       "Take a callback request: their phone number (collected through the form, never free-typed " +
-      "chat), a preferred window IN THEIR OWN WORDS, and their name. Collect ALL THREE before " +
-      "promising anything — a callback exists ONLY once this tool returns ok. Until then never say " +
-      "it is logged, submitted, or that someone will call; if a field is missing, ask for it now. " +
+      "chat), a preferred window IN THEIR OWN WORDS, and their name — but a SIGNED-IN customer's " +
+      "name is already on the register: NEVER ask them for it, leave name empty and the house " +
+      "fills it in. Collect what is genuinely missing before promising anything — a callback " +
+      "exists ONLY once this tool returns ok. Until then never say it is logged, submitted, or " +
+      "that someone will call; if a field is truly missing, ask for it now. " +
       "The only promise you may make is the one the result returns — 'someone will call you then'; " +
       "never a precise minute, never 'right away'. If the house is closed for their window, the " +
       "result names the next opening — recite it verbatim.",
     input_schema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "The visitor's name." },
+        name: { type: "string", description: "The visitor's name — OMIT for a signed-in customer; the register already knows it." },
         phone: { type: "string", description: "The number to call." },
         window_pref: { type: "string", description: "When suits them, in their words." },
         notes: { type: "string", description: "One line of context." },
       },
-      required: ["name", "phone", "window_pref"],
+      required: ["phone", "window_pref"],
+      /* name is enforced in the handler for anonymous visitors only — a
+         signed-in customer's name comes from the register, never re-asked */
       /* change_callback (below) edits an OPEN request; this one only creates */
     },
   },
@@ -1862,9 +1866,19 @@ async function runRegisterTool(
         return "ERROR: callbacks are not available — take an inquiry instead.";
       }
       const phone = typeof input.phone === "string" ? input.phone.trim().slice(0, 40) : "";
-      const who = typeof input.name === "string" ? input.name.trim().slice(0, 120) : "";
+      let who = typeof input.name === "string" ? input.name.trim().slice(0, 120) : "";
       const win = typeof input.window_pref === "string" ? input.window_pref.trim().slice(0, 200) : "";
-      if (!phone || !who || !win) return "ERROR: a name, a number, and a preferred window are all needed.";
+      if (!who && customer?.id) {
+        // the register already knows a signed-in patron — never re-ask
+        const cn = await pgSelect<{ name: string | null; email: string }>(
+          `customers?select=name,email&id=eq.${encodeURIComponent(customer.id)}&limit=1`);
+        who = ((cn && cn[0] && (cn[0].name || cn[0].email)) || customer.email || "").trim().slice(0, 120);
+      }
+      if (!phone || !who || !win) {
+        return customer
+          ? "ERROR: a number and a preferred window are needed (their name is already on file)."
+          : "ERROR: a name, a number, and a preferred window are all needed.";
+      }
       const qa = (sessKey ?? "").startsWith("qa-");
       const row = await pgInsert<{ id: number }>("concierge_appointments", {
         kind: "callback", status: "open", visitor_name: who, visitor_contact: phone,
