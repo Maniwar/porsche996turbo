@@ -32,6 +32,10 @@ export interface SalesLedger {
    * gift suits. The book itself stays INVISIBLE to the shopper: the brief that
    * carries these must also carry the never-reveal reminder. */
   bookFacts?: string[];
+  /** Consecutive held beats on THIS conversation, newest backwards (the
+   * engine counts trailing beat_hold rows). 3+ means the well is dry — the
+   * graceful close's trigger. Absent (bubble path) reads as 0. */
+  heldStreak?: number;
 }
 
 export interface BeatDecision {
@@ -262,6 +266,25 @@ export function chooseBeatAction(
         l.section || "page"
       }' section (a care fact, the provenance, the box, the mending promise), warm and brief, no ask, no selling`;
     return pick(warmKey, warmDetail);
+  }
+
+  // The graceful close: several beats in a row have held with nothing new —
+  // an endless silent vigil reads as absence, not restraint. One warm goodbye
+  // that leaves the door open, once per day, then true silence. (The engine
+  // may pair this moment with the closing survey — the NPS gate treats a dry
+  // conversation as concluded, with all its other guards intact.)
+  if (!enabled("GRACEFUL_CLOSE")) fail("GRACEFUL_CLOSE", "disabled by admin");
+  else if ((l.heldStreak ?? 0) < 3) {
+    fail("GRACEFUL_CLOSE", `only ${l.heldStreak ?? 0} consecutive held beat(s) — the well is not dry yet`);
+  } else if (spent("GRACEFUL_CLOSE")) {
+    fail("GRACEFUL_CLOSE", "already said goodbye in the last 24h — now silence really is the answer");
+  } else {
+    return pick(
+      "GRACEFUL_CLOSE",
+      "the conversation has run dry — close warmly and briefly: thank them for their time, " +
+        "say the door stays open and you're here whenever they come back. No ask, no selling, " +
+        "no recap of what was discussed. One or two short sentences.",
+    );
   }
 
   trace.push("HOLD: no rule qualified — nothing new and true to say");

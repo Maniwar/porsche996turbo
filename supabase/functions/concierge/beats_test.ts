@@ -115,6 +115,29 @@ Deno.test("KEEP_WARM is once per section per day, then HOLD", () => {
   assertEq(d.action, "HOLD", "warm line already given for this section today");
 });
 
+Deno.test("GRACEFUL_CLOSE: a dry conversation earns one warm goodbye above HOLD", () => {
+  const l = ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 3 });
+  const d = chooseBeatAction(l, undefined, { nowMs: NOW });
+  assertEq(d.action, "GRACEFUL_CLOSE", "3 consecutive holds → close, not another silence");
+  assert(d.detail.includes("door stays open"), "the goodbye leaves the door open");
+  assert(!d.detail.includes("selling") || d.detail.includes("No ask, no selling"), "no ask, no selling");
+});
+
+Deno.test("GRACEFUL_CLOSE waits for a real dry spell and never repeats same-day", () => {
+  const short = chooseBeatAction(ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 2 }), undefined, { nowMs: NOW });
+  assertEq(short.action, "HOLD", "two holds is patience, not a goodbye");
+  const again = chooseBeatAction(
+    ledger({ spentActions: ["KEEP_WARM:wool", "GRACEFUL_CLOSE"], heldStreak: 5 }), undefined, { nowMs: NOW });
+  assertEq(again.action, "HOLD", "goodbye already said — now silence is honest");
+});
+
+Deno.test("GRACEFUL_CLOSE is admin-disableable like every rule", () => {
+  const d = chooseBeatAction(
+    ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 4 }),
+    { GRACEFUL_CLOSE: { enabled: false } }, { nowMs: NOW });
+  assertEq(d.action, "HOLD", "disabled rule never fires");
+});
+
 Deno.test("proactiveStyle 'offer' makes the presence beat offer-first, not recite", () => {
   const l = ledger({ spentActions: [] });
   const expertise = chooseBeatAction(l, undefined, { nowMs: NOW, proactiveStyle: "expertise" });

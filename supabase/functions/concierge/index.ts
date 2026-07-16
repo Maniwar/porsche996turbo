@@ -5471,6 +5471,22 @@ async function handleChatPost(req: Request): Promise<Response> {
           }
         }
         const ledger = await buildSalesLedger(recall.customer, dataForBeat, beatSection, gs, unansweredAsk);
+        // Trailing held beats on THIS conversation — the graceful close's
+        // trigger and the NPS gate's "ran dry" signal. Newest first; the
+        // streak stops at the first beat that actually spoke or was vetoed.
+        try {
+          if (convId) {
+            const brows = await pgSelect<{ action: string }>(
+              `concierge_actions?select=action&conversation_id=eq.${encodeURIComponent(convId)}` +
+                `&action=like.beat_*&order=created_at.desc&limit=8`);
+            let streak = 0;
+            for (const b of brows || []) {
+              if (b.action === "beat_hold") streak++;
+              else break;
+            }
+            ledger.heldStreak = streak;
+          }
+        } catch { /* the streak is best-effort — absent reads as 0 */ }
         beatDecision = chooseBeatAction(
           ledger,
           dataForBeat.config?.beat_actions as Record<string, { enabled?: boolean }> | undefined,
@@ -5496,7 +5512,7 @@ async function handleChatPost(req: Request): Promise<Response> {
             ]);
             const gate = npsTriggerGate({
               enabled: npsCfg.enabled,
-              concluded: ledger.postSaleWindow || goalMet,
+              concluded: ledger.postSaleWindow || goalMet || (ledger.heldStreak ?? 0) >= 3,
               alreadySurveyedSession: !!(convRows && convRows.length),
               sessionDurationMs: convCreatedMs ? Date.now() - convCreatedMs : 0,
               minDurationMs: npsCfg.minMs,
@@ -5506,9 +5522,13 @@ async function handleChatPost(req: Request): Promise<Response> {
             });
             if (beatAudit) beatAudit.npsGate = gate;
             if (gate.ask) {
+              const closingDry = beatDecision.action === "GRACEFUL_CLOSE";
               beatDecision = {
                 action: "REQUEST_NPS",
-                detail: "INVITE a session rating, ONCE and lightly: ask whether they'd be willing to " +
+                detail: (closingDry
+                  ? "The conversation has run dry — close warmly first: thank them for their time, " +
+                    "the door stays open, no ask, no selling. Then, in the SAME short message, "
+                  : "") + "INVITE a session rating, ONCE and lightly: ask whether they'd be willing to " +
                   "answer one quick question — “" + npsCfg.question + "” — then put the token {{nps}} " +
                   "ALONE on its own line after it (the shopper taps a number on the scale it renders; " +
                   "ignoring it declines). Do not list numbers in words, do not explain the scale, and " +
