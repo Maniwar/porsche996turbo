@@ -7531,6 +7531,34 @@ function custOrderLine(o) {
   return line;
 }
 
+/* The patron drawer's bookings timeline: newest first (the RPC's order),
+   each row a status-pilled line with a jump to the chat that made it. */
+function renderPatronAppts(holder, rows) {
+  if (!rows.length) { holder.appendChild(el('div', 'empty micro', 'No appointments or callbacks on file.')); return; }
+  const TONE = { requested: 'amber', booked: 'green', completed: 'dim', done: 'dim', open: 'blue', cancelled: 'red', no_show: 'red' };
+  rows.slice(0, 12).forEach(function (a) {
+    const item = calItem(
+      calPill(a.kind === 'callback' ? 'callback' : esc(a.type || 'visit'), a.kind === 'callback' ? 'blue' : 'dim') +
+      calPill(a.status, TONE[a.status] || 'dim') +
+      '<b>' + (a.starts_at ? calWhen(a.starts_at) : 'window: “' + esc(a.window_pref || 'any') + '”') + '</b>' +
+      (a.location ? '<span class="micro">at ' + esc(a.location) + '</span>' : '') +
+      (a.party ? '<span class="micro">party of ' + a.party + '</span>' : '') +
+      (a.notes ? '<span class="micro">“' + esc(a.notes) + '”</span>' : ''));
+    if (a.conversation_id) {
+      const cb = el('button', 'btn ghost mini', 'chat ↗'); cb.type = 'button';
+      cb.style.marginLeft = 'auto';
+      cb.addEventListener('click', function () { jumpToConversation(a.conversation_id, a.created_at, 'booking'); });
+      item.appendChild(cb);
+    }
+    holder.appendChild(item);
+  });
+  const foot = el('div', 'micro'); foot.style.marginTop = '6px';
+  const cal = el('button', 'btn ghost mini', 'Manage in Calendar ↗'); cal.type = 'button';
+  cal.addEventListener('click', function () { activateTab('calendar'); });
+  foot.appendChild(cal);
+  if (rows.length > 12) foot.appendChild(document.createTextNode(' showing 12 of ' + rows.length));
+  holder.appendChild(foot);
+}
 function renderPatrons(list, q) {
   const rows = (state.customers || []).filter(function (c) {
     return !q || (c.email || '').toLowerCase().indexOf(q) >= 0 || (c.name || '').toLowerCase().indexOf(q) >= 0;
@@ -7678,6 +7706,29 @@ function renderPatrons(list, q) {
       });
     }
     row.appendChild(orders);
+
+    // Appointments & callbacks — this patron's bookings, loaded once when the
+    // row first opens (an RPC per open row, never per render).
+    const appt = el('div', 'cust-orders');
+    appt.appendChild(el('div', 'micro', 'Appointments & callbacks'));
+    const apptBody = el('div');
+    appt.appendChild(apptBody);
+    row.appendChild(appt);
+    let apptLoaded = false;
+    head.addEventListener('click', async function () {
+      if (apptLoaded || !row.classList.contains('open')) return;
+      apptLoaded = true;
+      apptBody.appendChild(el('div', 'empty micro', 'Loading…'));
+      try {
+        const r = await sb.rpc('patron_appointments_by', { p_email: c.email || null, p_user: c.user_id || null });
+        if (r.error) throw new Error(r.error.message);
+        apptBody.textContent = '';
+        renderPatronAppts(apptBody, r.data || []);
+      } catch (e) {
+        apptBody.textContent = '';
+        apptBody.appendChild(el('div', 'empty micro', 'Appointments unavailable — ' + (e && e.message ? e.message : e)));
+      }
+    });
 
     // Client book & house instructions — the rolling summary the concierge reads
     // each turn, then the individual notes, plus standing instructions the team
@@ -8405,6 +8456,7 @@ function exportInquiriesCsv() {
    ============================================================ */
 
 async function loadConversations(more) {
+  await ensureApptFacets();   // never rejects; feeds the 📅 badge
   if (!more) { pageState.convo = 0; state.convoSel = new Set(); }   // fresh load drops any bulk selection
   const df = fFrom('convo-from'), dt = fTo('convo-to'), kw = fkw('convo-q');
 
@@ -8726,6 +8778,7 @@ const CV_FUNNEL = [
   { key: 'visit', label: 'Visits', color: '#3F9FC4' },
   { key: 'chat_open', label: 'Chat opened', color: '#5E9C57' },
   { key: 'spoke', label: 'Spoke to concierge', color: '#B56AA8' },
+  { key: 'booked', label: 'Booked a visit', color: '#6FA8A0' },
   { key: 'checkout_open', label: 'Register opened', color: '#C06552' },
   { key: 'commission', label: 'Commissions', color: '#B08838' }
 ];
@@ -9750,8 +9803,35 @@ function calBadge(n) {
   const btn = document.querySelector('nav.tabs .tab[data-tab="calendar"]');
   if (btn) btn.textContent = n > 0 ? ('Calendar (' + n + ')') : 'Calendar';
 }
+/* Cross-surface booking facts (📅 badge on Conversations, 'booked' funnel
+   stage): one bounded fetch, cached for the session, refreshed whenever the
+   Calendar tab reloads. Facets are decoration — a failure degrades silently
+   (the Calendar tab is the fail-visible surface for this feature). */
+function ensureApptFacets() {
+  if (state.apptFacetsP) return state.apptFacetsP;
+  state.apptFacetsP = sb.rpc('appointment_facets', { p_days: 400 }).then(function (r) {
+    if (r.error) throw new Error(r.error.message);
+    const rows = r.data || [];
+    const rank = { booked: 5, requested: 4, completed: 3, open: 2, done: 2 };
+    const byConvo = {};
+    rows.forEach(function (a) {
+      if (!a.conversation_id) return;
+      const cur = byConvo[a.conversation_id];
+      if (!cur || (rank[a.status] || 1) > (rank[cur.status] || 1)) byConvo[a.conversation_id] = a;
+    });
+    state.apptFacets = rows; state.apptByConvo = byConvo;
+    return rows;
+  }).catch(function (e) {
+    console.warn('[concierge-admin] appointment facets:', e);
+    state.apptFacetsP = null;
+    state.apptFacets = []; state.apptByConvo = {};
+    return [];
+  });
+  return state.apptFacetsP;
+}
 async function loadCalendar() {
   $('cal-note').textContent = '';
+  state.apptFacetsP = null;   // actions here change the facts the badges read
   try {
     const [q, week, locsR, hoursR, typesR, availR, excR, cfgR] = await Promise.all([
       calRpc('appointments_queue'), calRpc('appointments_week', { p_days: 7 }),
@@ -10056,6 +10136,7 @@ async function calSaveHours(locId) {
 }
 
 async function loadConversion() {
+  await ensureApptFacets();   // never rejects; feeds the 'booked' stage
   cvChipRow('cv-range', CV_RANGES, 'cvRange', 30);
   cvChipRow('cv-gran', CV_GRANS, 'cvGran', 'auto');
   cvChipRow('cv-compare', CV_CMPS, 'cvCmp', 'prior');
@@ -10313,11 +10394,24 @@ async function loadConversion() {
     const i = bk.idx(new Date(o.placed_at).getTime());
     if (i >= 0) uniq.commission[i].add(o.serial != null ? o.serial : (o.id || Math.random()));
   });
+  // 'booked' is a HARD signal like commissions: an appointment row created in
+  // the bucket (callbacks excluded; cancellations excluded), unique per chat.
+  (state.apptFacets || []).forEach(function (a) {
+    if (a.kind !== 'appointment' || a.status === 'cancelled') return;
+    if (!inCur(a.created_at)) return;
+    const i = bk.idx(new Date(a.created_at).getTime());
+    if (i >= 0) uniq.booked[i].add(a.conversation_id || a.session_key || a.id);
+  });
   // Beacon stages with no events in range are "not tracked", not zero — leave
   // them off the chart rather than drawing flat 0-lines that read as real data.
   const anyEventsInRange = allEvents.some(function (e) { return inCur(e.created_at); });
   const funnelSeries = CV_FUNNEL
-    .filter(function (s) { return anyEventsInRange || (s.key === 'spoke' || s.key === 'commission'); })
+    .filter(function (s) {
+      // 'booked' appears once the calendar has ever produced a row — before
+      // that it's "not tracked", not a flat zero line.
+      if (s.key === 'booked') return (state.apptFacets || []).length > 0;
+      return anyEventsInRange || (s.key === 'spoke' || s.key === 'commission');
+    })
     .map(function (s) {
       return { name: s.label, color: s.color, values: uniq[s.key].map(function (set) { return set.size; }) };
     });
@@ -10899,6 +10993,13 @@ function renderConvoList(counts) {
     const l1left = el('span', 'l1left');
     l1left.appendChild(el('span', 'micro', fmtWhen(c.created_at)));
     l1left.appendChild(el('span', 'micro', c.section || '—'));
+    const bkg = (state.apptByConvo || {})[c.id];
+    if (bkg) {
+      const ab = el('span', 'micro', '📅');
+      ab.title = (bkg.kind === 'callback' ? 'Callback request' : 'Booked visit') +
+        ' — ' + bkg.status + '. Manage it on the Calendar tab.';
+      l1left.appendChild(ab);
+    }
     line1.appendChild(l1left);
 
     const stage = convoStageValue(c);

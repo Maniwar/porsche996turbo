@@ -1936,6 +1936,64 @@ end $$;
 grant execute on function public.patron_appointments(uuid) to authenticated;
 revoke execute on function public.patron_appointments(uuid) from public, anon;
 
+-- The drawer variant: the Patrons view carries an email + auth user id, not a
+-- customers.id — resolve here (security definer may read customers; RLS keeps
+-- the table itself closed to the studio).
+create or replace function public.patron_appointments_by(
+  p_email text default null, p_user uuid default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', a.id, 'kind', a.kind, 'starts_at', a.starts_at, 'status', a.status,
+      'type', t.title, 'location', l.title, 'window_pref', a.window_pref,
+      'party', a.party_size, 'notes', a.notes,
+      'conversation_id', a.conversation_id, 'created_at', a.created_at)
+      order by coalesce(a.starts_at, a.created_at) desc), '[]'::jsonb) into v
+    from public.concierge_appointments a
+    left join public.concierge_appointment_types t on t.id = a.type_id
+    left join public.concierge_locations l on l.id = a.location_id
+    where not a.qa and a.customer_id in (
+      select c.id from public.customers c
+        where (p_user is not null and c.user_id = p_user)
+           or (p_email is not null and lower(c.email) = lower(p_email)))
+    limit 1;
+  return v;
+end $$;
+grant execute on function public.patron_appointments_by(text, uuid) to authenticated;
+revoke execute on function public.patron_appointments_by(text, uuid) from public, anon;
+
+-- Bulk facets for the studio's cross-surfaces: which conversations/sessions
+-- produced a booking or callback (the 📅 badge on the Conversations list and
+-- the hard 'booked' stage in the Conversion funnel). Newest first, bounded.
+create or replace function public.appointment_facets(p_days int default 400)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', s.id, 'kind', s.kind, 'status', s.status, 'starts_at', s.starts_at,
+      'created_at', s.created_at, 'conversation_id', s.conversation_id,
+      'session_key', s.session_key)), '[]'::jsonb) into v
+    from (select a.id, a.kind, a.status, a.starts_at, a.created_at,
+                 a.conversation_id, a.session_key
+            from public.concierge_appointments a
+            where not a.qa
+              and a.created_at > now() - make_interval(days => greatest(coalesce(p_days, 400), 1))
+            order by a.created_at desc
+            limit 5000) s;
+  return v;
+end $$;
+grant execute on function public.appointment_facets(int) to authenticated;
+revoke execute on function public.appointment_facets(int) from public, anon;
+
 
 
 
