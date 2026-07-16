@@ -2251,13 +2251,27 @@ begin
            count(*) filter (where starts_at > now()
                               and status in ('requested','booked')) as upcoming
       from rows group by name)
+  -- every ENABLED offering/location appears — a quiet one shows zeros, it
+  -- never vanishes (absence reads as "missing", not "no activity yet")
   select coalesce(jsonb_agg(jsonb_build_object(
-      'name', name, 'booked_min', booked_min, 'done', done, 'no_show', no_show,
-      'cancelled', cancelled,
-      'show_rate', case when done + no_show > 0 then round(done * 100.0 / (done + no_show)) end,
-      'upcoming', upcoming) order by booked_min desc, name), '[]'::jsonb)
-    into v from agg
-   where booked_min > 0 or upcoming > 0 or cancelled > 0 or done > 0 or no_show > 0;
+      'name', n.name,
+      'booked_min', coalesce(a.booked_min, 0), 'done', coalesce(a.done, 0),
+      'no_show', coalesce(a.no_show, 0), 'cancelled', coalesce(a.cancelled, 0),
+      'show_rate', case when coalesce(a.done, 0) + coalesce(a.no_show, 0) > 0
+        then round(a.done * 100.0 / (a.done + a.no_show)) end,
+      'upcoming', coalesce(a.upcoming, 0))
+      order by coalesce(a.booked_min, 0) desc, n.name), '[]'::jsonb)
+    into v
+    from (
+      select name from agg
+       where booked_min > 0 or upcoming > 0 or cancelled > 0 or done > 0 or no_show > 0
+      union
+      select case when p_dim = 'offering' then t.title end from public.concierge_appointment_types t where p_dim = 'offering' and t.enabled
+      union
+      select case when p_dim = 'location' then l.title end from public.concierge_locations l where p_dim = 'location' and l.enabled
+    ) n
+    left join agg a on a.name = n.name
+   where n.name is not null;
   return jsonb_build_object('ok', true, 'days', v_days, 'dim', p_dim, 'rows', v);
 end $$;
 grant execute on function public.booking_report(int,text) to authenticated;
@@ -2322,8 +2336,10 @@ begin
       from public.concierge_appointment_types t
       cross join public.concierge_locations l
      where t.enabled and l.enabled
-       and exists (select 1 from public.concierge_availability av
-                    where av.type_id = t.id and av.location_id = l.id))
+       and (exists (select 1 from public.concierge_availability av
+                     where av.type_id = t.id and av.location_id = l.id)
+            or not exists (select 1 from public.concierge_availability av2
+                            where av2.type_id = t.id)))
   select coalesce(jsonb_agg(jsonb_build_object(
       'offering', g.offering, 'location', g.location,
       'capacity', g.capacity, 'duration_min', g.duration_min, 'step_min', g.step_min,
@@ -2334,6 +2350,9 @@ begin
       'peak_concurrent', coalesce(p.peak, 0),
       'effective', case when g.is_staffed then least(g.capacity, coalesce(p.peak, 0)) else g.capacity end,
       'warn', case
+        when coalesce(s2.starts_week, 0) = 0 and coalesce(c.cover_min, 0) = 0
+             and not exists (select 1 from public.concierge_availability av3 where av3.type_id = g.type_id)
+          then 'no bookable windows yet — open the offering and add hours windows'
         when g.is_staffed and coalesce(c.people, 0) = 0 then 'no qualified person has hours here'
         when g.is_staffed and g.capacity > coalesce(p.peak, 0)
           then 'promises ' || g.capacity || ' at once but at best ' || coalesce(p.peak, 0) || ' can cover'
