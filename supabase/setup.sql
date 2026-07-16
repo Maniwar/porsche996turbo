@@ -2348,6 +2348,74 @@ end $$;
 grant execute on function public.capacity_matrix() to authenticated;
 revoke execute on function public.capacity_matrix() from public, anon;
 
+-- ── The Judge & Coach ledger — one call, the whole picture ───────────────────
+create or replace function public.judge_findings(p_days int default 14)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare v_days int := greatest(coalesce(p_days, 14), 1); v jsonb;
+begin
+  if not (public.is_concierge_admin()
+          or coalesce((select auth.jwt()->>'role'), '') = 'service_role') then
+    raise exception 'not authorized';
+  end if;
+  with beats as (
+    select action, coalesce(payload->>'kind', '?') as kind,
+           coalesce(payload->>'reason', result, '') as reason,
+           coalesce(payload->>'line', '') as line,
+           (payload->>'redraft') = 'true' as redraft, created_at
+      from public.concierge_actions
+     where created_at > now() - make_interval(days => v_days) and action like 'beat_%'),
+  classed as (
+    select *, case
+        when reason like 'pre-filter:%' then 'prefilter'
+        when reason ~* 'plumbing|token|meta|instruction|narrat|sign.?in|process' then 'plumbing'
+        when reason ~* 'invent|fabricat|unsupported|guarantee|refund|discount|not (in|from) house' then 'invented'
+        when reason ~* 'recit|inventor|stored data|tally|dossier' then 'inventorying'
+        when reason ~* 'house rules' then 'house_rules'
+        when reason ~* 'question|unsolicited' then 'etiquette'
+        else 'other' end as klass
+      from beats where action = 'beat_veto'),
+  classes as (
+    select klass, count(*) as n, max(created_at) as latest,
+           (select jsonb_agg(jsonb_build_object('line', left(c2.line, 140), 'reason', left(c2.reason, 140),
+                                                'at', c2.created_at) order by c2.created_at desc)
+              from (select * from classed c3 where c3.klass = classed.klass
+                     order by c3.created_at desc limit 2) c2) as samples
+      from classed group by klass),
+  kinds as (
+    select kind,
+           count(*) filter (where action = 'beat_action') as spoke,
+           count(*) filter (where action = 'beat_hold') as held,
+           count(*) filter (where action = 'beat_veto') as vetoed
+      from beats group by kind),
+  gaps as (
+    select left(question, 90) as q, count(*) as n, max(created_at) as latest,
+           bool_or(reason = 'cache_embed_unavailable' or question like '(system)%') as is_system,
+           bool_or(reason = 'studio_feedback') as is_feedback,
+           (array_agg(id order by created_at desc))[1:50] as ids
+      from public.concierge_flags
+     where not resolved and created_at > now() - interval '30 days'
+     group by 1 having count(*) > 0)
+  select jsonb_build_object('ok', true, 'days', v_days,
+    'totals', (select jsonb_build_object(
+      'spoke', count(*) filter (where action = 'beat_action'),
+      'held', count(*) filter (where action = 'beat_hold'),
+      'vetoed', count(*) filter (where action = 'beat_veto'),
+      'prefilter', count(*) filter (where action = 'beat_veto' and reason like 'pre-filter:%'),
+      'redraft_ok', count(*) filter (where action = 'beat_action' and redraft),
+      'redraft_blocked', count(*) filter (where action = 'beat_veto' and redraft)) from beats),
+    'kinds', (select coalesce(jsonb_agg(jsonb_build_object(
+        'kind', kind, 'spoke', spoke, 'held', held, 'vetoed', vetoed) order by vetoed desc), '[]'::jsonb) from kinds),
+    'classes', (select coalesce(jsonb_agg(jsonb_build_object(
+        'key', klass, 'n', n, 'latest', latest, 'samples', samples) order by n desc), '[]'::jsonb) from classes),
+    'gaps', (select coalesce(jsonb_agg(jsonb_build_object(
+        'q', q, 'n', n, 'latest', latest, 'system', is_system, 'feedback', is_feedback,
+        'ids', to_jsonb(ids)) order by is_feedback desc, n desc), '[]'::jsonb) from gaps))
+    into v;
+  return v;
+end $$;
+grant execute on function public.judge_findings(int) to authenticated;
+revoke execute on function public.judge_findings(int) from public, anon;
+
 -- ── The queue — the merchant's actionable inbox, one call ────────────────────
 create or replace function public.appointments_queue()
 returns jsonb language plpgsql security definer set search_path = '' as $$

@@ -10152,7 +10152,12 @@ async function calAct(fn, args, btn) {
 
 /* guarded removal — the server refuses while future visits depend on it */
 async function calRemove(fn, id, label) {
-  if (!window.confirm('Remove ' + label + ' for good? Past visits keep their records but lose this name on them. The register will refuse if future visits still depend on it.')) return;
+  const cost = fn === 'remove_location'
+    ? ' Its business hours, every offering window there, and staff hours at this place go with it — offerings that only started here will show "no availability" until you point them somewhere else.'
+    : fn === 'remove_offering'
+      ? ' Its availability windows and team designations go with it.'
+      : ' Their hours, services, and time off go with them.';
+  if (!window.confirm('Remove ' + label + ' for good?' + cost + ' Past visits keep their records but lose this name on them. The register will refuse if future visits still depend on it.')) return;
   try {
     const d = await calRpc(fn, { p_id: id });
     if (d && d.ok === false) {
