@@ -334,9 +334,7 @@ begin
   foreach t in array array[
     'concierge_config','concierge_kb','concierge_conversations','concierge_messages',
     'concierge_sops','concierge_cache','concierge_forms','customer_notes','customer_addresses',
-    'concierge_goals','concierge_flags','site_content','concierge_tools','concierge_evals',
-    'concierge_locations','concierge_business_hours','concierge_appointment_types',
-    'concierge_availability','concierge_availability_exceptions'
+    'concierge_goals','concierge_flags','site_content','concierge_tools','concierge_evals'
   ] loop
     execute format('drop policy if exists "admin all" on public.%I', t);
     execute format($f$create policy "admin all" on public.%I for all to authenticated
@@ -647,18 +645,6 @@ create trigger sops_history after insert or update on public.concierge_sops
   for each row execute function public.log_edit_history();
 drop trigger if exists kb_history on public.concierge_kb;
 create trigger kb_history after insert or update on public.concierge_kb
-  for each row execute function public.log_edit_history();
-drop trigger if exists locations_history on public.concierge_locations;
-create trigger locations_history after insert or update on public.concierge_locations
-  for each row execute function public.log_edit_history();
-drop trigger if exists hours_history on public.concierge_business_hours;
-create trigger hours_history after insert or update on public.concierge_business_hours
-  for each row execute function public.log_edit_history();
-drop trigger if exists appt_types_history on public.concierge_appointment_types;
-create trigger appt_types_history after insert or update on public.concierge_appointment_types
-  for each row execute function public.log_edit_history();
-drop trigger if exists availability_history on public.concierge_availability;
-create trigger availability_history after insert or update on public.concierge_availability
   for each row execute function public.log_edit_history();
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -1337,6 +1323,35 @@ alter table public.concierge_availability            enable row level security;
 alter table public.concierge_availability_exceptions enable row level security;
 alter table public.concierge_appointments            enable row level security;
 -- appointments carry PII: no policies — service role writes; admins read via RPCs.
+
+-- Admin policies + edit-history for the calendar config tables live HERE —
+-- after creation — because the file's earlier policy/trigger sections run
+-- before this block exists on a fresh database.
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'concierge_locations','concierge_business_hours','concierge_appointment_types',
+    'concierge_availability','concierge_availability_exceptions'
+  ] loop
+    execute format('drop policy if exists "admin all" on public.%I', t);
+    execute format($f$create policy "admin all" on public.%I for all to authenticated
+      using (public.is_concierge_admin()) with check (public.is_concierge_admin())$f$, t);
+  end loop;
+end $$;
+
+drop trigger if exists locations_history on public.concierge_locations;
+create trigger locations_history after insert or update on public.concierge_locations
+  for each row execute function public.log_edit_history();
+drop trigger if exists hours_history on public.concierge_business_hours;
+create trigger hours_history after insert or update on public.concierge_business_hours
+  for each row execute function public.log_edit_history();
+drop trigger if exists appt_types_history on public.concierge_appointment_types;
+create trigger appt_types_history after insert or update on public.concierge_appointment_types
+  for each row execute function public.log_edit_history();
+drop trigger if exists availability_history on public.concierge_availability;
+create trigger availability_history after insert or update on public.concierge_availability
+  for each row execute function public.log_edit_history();
 
 -- Seed one location so a single-location house never thinks about the
 -- dimension. The admin edits the timezone on first setup (the master switch
