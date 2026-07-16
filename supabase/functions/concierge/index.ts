@@ -3470,6 +3470,18 @@ async function judgeBeatLine(
   houseRules = "",
   recentUser = "",
 ): Promise<{ veto: boolean; reason: string }> {
+  // Deterministic pre-filter (JUDGE_COACH_LOOP.md tier 0): the most-repeated
+  // live veto cluster is mechanical plumbing — {{action:...}} tokens and
+  // sign-in process narration leaking into outreach. Catch it in code before
+  // spending a judge call; the reason is prefixed so reporting can tell the
+  // pre-filter from the model judge.
+  if (/\{\{[a-z]+:/i.test(line) || /\{\{\s*action/i.test(line)) {
+    return { veto: true, reason: "pre-filter: template/action token is plumbing, not customer-facing text" };
+  }
+  if (/\b(once|when|after)\s+you('| a)?re?\s+sign(ed)?\s+in\b/i.test(line) ||
+      /\bonce you sign in\b/i.test(line)) {
+    return { veto: true, reason: "pre-filter: narrates sign-in mechanics instead of genuine service" };
+  }
   try {
     const res = await llmFetch("judge", {
       method: "POST",
