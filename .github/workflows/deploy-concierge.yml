@@ -3,8 +3,14 @@
 # Driven entirely by repository secrets; no branch names are assumed.
 name: Deploy Concierge
 
+# Dispatch by hand, OR automatically whenever engine code under supabase/
+# is pushed — a fix must never sit committed but undeployed.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
 
 jobs:
   deploy:
