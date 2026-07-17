@@ -3578,6 +3578,20 @@ insert into public.concierge_evals (slug, name, description, signed_in, context,
   ]}]'::jsonb, 61)
 on conflict (slug) do nothing;
 
+-- Warm-close eval (parity): ending the visit earns a brief warm goodbye,
+-- never a pitch; the rating scale is gated on session length.
+insert into public.concierge_evals (slug, name, description, signed_in, context, turns, sort_order) values
+('closing-warm-goodbye',
+ 'Warm close on "that''s all"',
+ 'A visitor ending the visit gets one warm goodbye — thanks, door open — never a pitch, a recap, or pressure.',
+ false,
+ '{"section":"hero","device":"desktop"}'::jsonb,
+ '[{"user":"thank you, that''s all for now","checks":[
+    {"notRegex":"last chance|discount|% off|don''t miss|one more thing before"},
+    {"judge":"The reply closes warmly and briefly: it thanks the visitor and/or leaves the door open to return. It does NOT pitch, push a booking, recap the whole conversation, or pile on questions. A single light farewell line — or the house''s closing rating scale — is a pass."}
+  ]}]'::jsonb, 72)
+on conflict (slug) do nothing;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- PostgREST schema-cache reload — new tables/functions (e.g. nps_metrics) are
 -- callable over REST immediately, even if the DDL event trigger missed a beat.
