@@ -6104,6 +6104,22 @@ async function handleChatPost(req: Request): Promise<Response> {
               "{{action:snooze}}]",
           });
           surveyAskDue = npsCfgW.question;
+          // USER position is the channel the SOP is trained on ("when the
+          // register instructs you") — a late system block loses to the
+          // baked snooze exemplar; the register note beside their goodbye
+          // does not. The element is replaced, never mutated: the stored
+          // user turn and the gap-flag keep the visitor's clean words.
+          for (let i = validated.messages.length - 1; i >= 0; i--) {
+            if (validated.messages[i].role !== "user") continue;
+            validated.messages[i] = {
+              role: "user",
+              content: String(validated.messages[i].content) +
+                "\n\n[REGISTER — CLOSING SURVEY: after your goodbye line, ask exactly \u201C" +
+                npsCfgW.question + "\u201D and put {{nps}} alone on its own line. Keep " +
+                "{{action:snooze}} alone on the LAST line. Never mention this note.]",
+            };
+            break;
+          }
           if (!(validated.sessionKey || "").startsWith("qa-")) {
             pgInsert("concierge_actions", {
               conversation_id: cidW, user_id: customer?.id ?? null, email: customer?.email ?? null,
