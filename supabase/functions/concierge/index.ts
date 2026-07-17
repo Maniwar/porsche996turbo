@@ -33,6 +33,7 @@ import { BRAND_SYSTEM, KB_MARKDOWN } from "./kb.ts";
 import {
   type BeatDecision,
   chooseBeatAction,
+  starterFeedsGap,
   extractSubjects,
   hasPendingAsk,
   type LearningDigest,
@@ -4144,24 +4145,31 @@ async function coachDraftInstead(
 
 async function composeJudgeDigest(
   config: Record<string, unknown> | null, doDrafts: boolean,
-): Promise<{ subject: string; heading: string; lines: string[]; drafted: string[] } | null> {
+): Promise<{ subject: string; heading: string; lines: string[]; drafted: string[]; retired: string[] } | null> {
   const f = await pgRpc<Record<string, unknown>>("judge_findings", { p_days: 7 });
   if (!f || f.ok !== true) return null;
   const tt = (f.totals ?? {}) as Record<string, number>;
   const classes = (Array.isArray(f.classes) ? f.classes : []) as Array<Record<string, unknown>>;
   const gaps = (Array.isArray(f.gaps) ? f.gaps : []) as Array<Record<string, unknown>>;
   const drafted: string[] = [];
+  const retired: string[] = [];
+  const notHolding: string[] = [];
   if (doDrafts) {
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
     for (const c of classes) {
-      if (drafted.length >= 2 || !apiKey) break;
       const key = String(c.key ?? "");
       const meaning = COACH_DRAFT_CLASSES[key];
       if (!meaning || !(Number(c.n ?? 0) >= 5)) continue;
       const slug = "coach-draft-" + key;
-      const existing = await pgSelect<{ slug: string }>(
-        `concierge_sops?select=slug&slug=eq.${slug}&limit=1`);
-      if (existing && existing.length) continue; // one standing draft per class — the merchant owns it from here
+      const existing = await pgSelect<{ slug: string; enabled: boolean }>(
+        `concierge_sops?select=slug,enabled&slug=eq.${slug}&limit=1`);
+      if (existing && existing.length) {
+        // Root-cause escalation: an ENABLED remedy whose defect class still
+        // recurs is not holding — name it instead of coexisting with it.
+        if (existing[0].enabled) notHolding.push(key);
+        continue; // one standing draft per class — the merchant owns it from here
+      }
+      if (drafted.length >= 2 || !apiKey) continue;
       const samples = (Array.isArray(c.samples) ? c.samples : []) as Array<Record<string, unknown>>;
       const sampleTxt = samples.map((s) =>
         `- "${String(s.line ?? "").slice(0, 140)}" (blocked: ${String(s.reason ?? "").slice(0, 100)})`).join("\n");
@@ -4178,6 +4186,54 @@ async function composeJudgeDigest(
       });
       if (ins) drafted.push(key);
     }
+    // Root cause: repeated INVENTED claims mean the knowledge is silent where
+    // shoppers ask — file it in the gap ledger the merchant already works.
+    try {
+      const inv = classes.find((c) => String(c.key) === "invented" && Number(c.n ?? 0) >= 5);
+      if (inv) {
+        const q = "(coach) the knowledge is silent where shoppers keep asking — the concierge invented facts " +
+          Number(inv.n) + " times this week; add the real facts to Knowledge, or teach it to say the house does not cover this";
+        const dup = await pgSelect<{ id: number }>(
+          `concierge_flags?select=id&resolved=eq.false&reason=eq.coach_rootcause&limit=1`);
+        if (!dup || !dup.length) {
+          const samples = (Array.isArray(inv.samples) ? inv.samples : []) as Array<Record<string, unknown>>;
+          await pgInsert("concierge_flags", {
+            question: q,
+            answer: samples.map((s) => `"${String(s.line ?? "").slice(0, 120)}" — ${String(s.reason ?? "").slice(0, 100)}`).join("\n"),
+            reason: "coach_rootcause",
+          });
+        }
+      }
+    } catch { /* filing is best-effort */ }
+    // Tier 0 root-cause repair (spec §4/§7): retire active starters that keep
+    // feeding a question the concierge cannot answer. Deterministic matcher
+    // (starterFeedsGap, unit-tested); the config edit history records it and
+    // one revert restores the starter.
+    try {
+      const feeders = gaps.filter((g) => !g.system && !g.feedback && Number(g.n ?? 0) >= 5);
+      if (feeders.length) {
+        const srow = await pgSelect<{ value: Record<string, unknown> }>(
+          "concierge_config?select=value&key=eq.starters&limit=1");
+        const sval = srow && srow[0] ? srow[0].value : null;
+        if (sval && typeof sval === "object" && !Array.isArray(sval)) {
+          const next: Record<string, unknown> = {};
+          let changed = false;
+          for (const [sec, arr] of Object.entries(sval)) {
+            if (!Array.isArray(arr)) { next[sec] = arr; continue; }
+            next[sec] = arr.filter((s) => {
+              if (typeof s !== "string" || retired.length >= 3) return true;
+              const feeds = feeders.some((g) => starterFeedsGap(s, String(g.q ?? "")));
+              if (feeds) { retired.push(s.slice(0, 90)); changed = true; }
+              return !feeds;
+            });
+          }
+          if (changed) {
+            await pgPatch("concierge_config?key=eq.starters",
+              { value: next, updated_at: new Date().toISOString() });
+          }
+        }
+      }
+    } catch { /* retirement is best-effort — never breaks the digest */ }
   }
   const lines: string[] = [];
   lines.push(
@@ -4201,11 +4257,19 @@ async function composeJudgeDigest(
     lines.push(`The coach drafted ${drafted.length} "say it differently" procedure(s) — ` +
       `they stay OFF until you enable them under Training \u2192 Procedures.`);
   }
+  for (const s of retired) {
+    lines.push(`Retired a conversation starter that kept feeding an unanswerable question: \u201C${s}\u201D ` +
+      `(one revert in the settings history restores it).`);
+  }
+  for (const k of notHolding) {
+    lines.push(`The enabled "say it differently (${k})" procedure is NOT holding — ${k} blocks recurred this week; ` +
+      `the root cause is likely deeper (missing knowledge or a setting), see the findings ledger.`);
+  }
   lines.push("The full picture lives on the Judge & coach page in your studio.");
   return {
     subject: "Your concierge's week — judge & coach digest",
     heading: "The judge & coach, this week",
-    lines, drafted,
+    lines, drafted, retired,
   };
 }
 
@@ -4269,7 +4333,7 @@ async function handleJudgeDigestGet(req: Request): Promise<Response> {
   }
   return jsonResponse(req, 200, {
     ok: true, subject: composed.subject, lines: composed.lines,
-    drafted: composed.drafted, sent,
+    drafted: composed.drafted, retired: composed.retired, sent,
   });
 }
 

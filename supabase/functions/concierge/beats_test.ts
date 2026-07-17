@@ -6,6 +6,7 @@
 //   deno test supabase/functions/concierge/beats_test.ts
 
 import {
+  starterFeedsGap,
   chooseBeatAction,
   DEFAULT_PROPOSAL_REST_HOURS,
   extractSubjects,
@@ -159,6 +160,17 @@ Deno.test("proactiveStyle 'offer' makes the presence beat offer-first, not recit
   assert(offer.detail.includes("OFFER-FIRST"), "offer brief invites, not recites");
   assert(/NEVER recite/.test(offer.detail), "offer brief forbids reciting facts at the shopper");
   assert(!offer.detail.includes("GIVE FIRST"), "offer brief is not the expertise brief");
+});
+
+Deno.test("starterFeedsGap: the live edition pair matches; strangers don't", () => {
+  assert(starterFeedsGap("How many are left in the edition?",
+    "how many are actually left in the edition?"), "the live starter/gap pair must match");
+  assert(!starterFeedsGap("What makes the wool from the mill special?",
+    "how many are actually left in the edition?"), "an unrelated starter never matches");
+  assert(!starterFeedsGap("Is shipping free?", "price"),
+    "a one-word gap needs a full match, not a graze");
+  assert(starterFeedsGap("Can I see the service records?", "service records"),
+    "a tight two-word gap fully contained in a starter matches");
 });
 
 // ── Escalating proposal cool-off ─────────────────────────────────────────────

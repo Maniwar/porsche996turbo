@@ -345,6 +345,28 @@ export function renderLearningDigest(
 // (fire once, at a natural close, gated), and the closed loop reuses the same
 // coach/judge/digest machinery as the sales coach.
 
+/** Does an active conversation starter feed this unanswerable question?
+ * Order-free token overlap on meaningful words: the gap must share >=60% of
+ * its meaningful tokens with the starter, and at least two words (or all of
+ * a one/two-word gap). Pure, so Tier-0 starter retirement is provable —
+ * a starter is never retired on vibes. */
+const STARTER_SMALLS = new Set([
+  "the", "and", "are", "for", "you", "your", "what", "how", "that",
+  "this", "with", "about", "can", "does", "will", "there", "its",
+]);
+export function starterFeedsGap(starter: string, gapQ: string): boolean {
+  const toks = (s: string) =>
+    new Set(s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+      .filter((w) => w.length > 2 && !STARTER_SMALLS.has(w)));
+  const g = toks(gapQ);
+  const st = toks(starter);
+  if (g.size === 0 || st.size === 0) return false;
+  let hit = 0;
+  for (const w of g) if (st.has(w)) hit++;
+  if (hit / g.size < 0.6) return false;
+  return hit >= 2 || (g.size <= 2 && hit === g.size);
+}
+
 export type NpsSegment = "promoter" | "passive" | "detractor";
 
 /** Standard NPS banding: 9–10 promoter, 7–8 passive, 0–6 detractor. */
