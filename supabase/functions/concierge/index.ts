@@ -34,6 +34,7 @@ import {
   type BeatDecision,
   chooseBeatAction,
   starterFeedsGap,
+  composeGapSkeleton,
   normalizeQuestionKey,
   extractSubjects,
   hasPendingAsk,
@@ -4575,6 +4576,204 @@ async function handleBakeStartersGet(req: Request): Promise<Response> {
   const r = await bakeStarters(force);
   return jsonResponse(req, 200, { ok: true, baked: r.baked, statuses: r.statuses });
 }
+
+// ── Gap-to-knowledge drafting (KNOWLEDGE.md) ─────────────────────────────────
+// The findings ledger fills with questions the concierge could not answer.
+// One model call per pass clusters them into missing TOPICS: where existing
+// knowledge already holds the facts, it drafts content restating them (with
+// [slug] sources); where the house must supply the answer, the SERVER writes
+// a deterministic fill-in skeleton — the model never gets to invent a fact.
+// Every draft is born DISABLED (origin='gap'); the gaps it covers are linked
+// by kb_slug, and enabling the draft clears them — eagerly in the studio,
+// swept here as the net.
+const GAP_DRAFT_FLAG_CAP = 40;  // gaps read per pass
+const GAP_DRAFT_KB_CAP = 6;     // new drafts per pass
+const GAP_REASONS = "in.(knowledge_gap,starter_bake,starter_gap)";
+function gapSlugify(title: string, seed: number): string {
+  const base = ("gap-" + title.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")).slice(0, 40).replace(/-+$/g, "");
+  return base.length > 4 ? base : "gap-" + seed;
+}
+async function draftKbFromGaps(): Promise<{
+  drafted: number; grounded: number; skeletons: number; swept: number; covered: number;
+}> {
+  // 1. the sweep — a gap whose linked draft is now ENABLED is cleared
+  let swept = 0;
+  const linked = await pgSelect<{ id: number; kb_slug: string }>(
+    "concierge_flags?select=id,kb_slug&resolved=eq.false&kb_slug=not.is.null&limit=200") ?? [];
+  if (linked.length) {
+    const slugs = [...new Set(linked.map((r) => r.kb_slug))];
+    const live = await pgSelect<{ slug: string }>(
+      `concierge_kb?select=slug&enabled=eq.true&slug=in.(${slugs.map(encodeURIComponent).join(",")})`) ?? [];
+    const liveSet = new Set(live.map((r) => r.slug));
+    const ids = linked.filter((r) => liveSet.has(r.kb_slug)).map((r) => r.id);
+    if (ids.length) {
+      const done = await pgPatch(`concierge_flags?id=in.(${ids.join(",")})`, { resolved: true });
+      swept = done ? ids.length : 0;
+    }
+  }
+  // 2. candidates — open gaps not yet linked to a draft
+  const flags = await pgSelect<{ id: number; question: string; reason: string }>(
+    `concierge_flags?select=id,question,reason&resolved=eq.false&kb_slug=is.null&reason=${GAP_REASONS}` +
+    `&order=created_at.asc&limit=${GAP_DRAFT_FLAG_CAP}`) ?? [];
+  const zero = { drafted: 0, grounded: 0, skeletons: 0, swept, covered: 0 };
+  if (!flags.length) return zero;
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  if (!apiKey) return zero;
+  const kbRows = await pgSelect<{ slug: string; title: string; content_md: string; enabled: boolean }>(
+    "concierge_kb?select=slug,title,content_md,enabled&order=sort_order") ?? [];
+  const allSlugs = new Set(kbRows.map((r) => r.slug));
+  const gapOwned = new Set(kbRows.filter((r) => !r.enabled).map((r) => r.slug));
+  const kbBlock = kbRows.filter((r) => r.enabled)
+    .map((r) => `[${r.slug}] ${r.title}\n${String(r.content_md || "").slice(0, 900)}`)
+    .join("\n\n").slice(0, 9000);
+  const gapsBlock = flags.map((f, i) => `${i}. \u201C${String(f.question || "").slice(0, 200)}\u201D`).join("\n");
+  let clusters: Array<Record<string, unknown>> = [];
+  try {
+    const res = await llmFetch("gap-draft", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      signal: AbortSignal.timeout(25000),
+      body: JSON.stringify({
+        model: BEAT_JUDGE_MODEL, max_tokens: 1800, temperature: 0,
+        system:
+          "You triage a sales concierge's UNANSWERED visitor questions into knowledge-base work. " +
+          "Group related questions into clusters (one missing topic each) and give each a short, " +
+          "merchant-facing title. Verdict per cluster: 'grounded' ONLY when the HOUSE KNOWLEDGE " +
+          "below already contains the facts to answer every question in the cluster \u2014 then write " +
+          "content_md restating THOSE facts faithfully (2-6 short markdown bullets) and list the " +
+          "source [slug]s you used; never add a number, price, policy, or claim the knowledge does " +
+          "not contain. 'needs_facts' when the house must supply the answer \u2014 no content, the " +
+          "server writes the fill-in draft. 'not_knowledge' for junk, abuse, or questions that are " +
+          "not about the business.\n\nHOUSE KNOWLEDGE:\n" + kbBlock,
+        tools: [{
+          name: "clusters",
+          description: "The gap clusters.",
+          input_schema: {
+            type: "object",
+            properties: {
+              clusters: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    kind: { type: "string", enum: ["grounded", "needs_facts", "not_knowledge"] },
+                    gap_nums: { type: "array", items: { type: "integer" } },
+                    content_md: { type: "string" },
+                    sources: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["title", "kind", "gap_nums"],
+                },
+              },
+            },
+            required: ["clusters"],
+          },
+        }],
+        tool_choice: { type: "tool", name: "clusters" },
+        messages: [{ role: "user", content: "UNANSWERED VISITOR QUESTIONS:\n" + gapsBlock }],
+      }),
+    });
+    if (res.ok) {
+      const j = await res.json();
+      const tu = Array.isArray(j.content) ? j.content.find((b: { type?: string }) => b.type === "tool_use") : null;
+      const inp = (tu?.input ?? {}) as { clusters?: unknown };
+      if (Array.isArray(inp.clusters)) clusters = inp.clusters as Array<Record<string, unknown>>;
+    }
+  } catch { /* one failed pass never breaks anything — the next hour retries */ }
+  let drafted = 0, grounded = 0, skeletons = 0, covered = 0;
+  const seenNums = new Set<number>();
+  const ledger: Array<Record<string, unknown>> = [];
+  for (const c of clusters) {
+    if (drafted >= GAP_DRAFT_KB_CAP) break;
+    const kind = String(c.kind ?? "");
+    const title = String(c.title ?? "").trim().slice(0, 120);
+    const nums = (Array.isArray(c.gap_nums) ? c.gap_nums : [])
+      .filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < flags.length && !seenNums.has(n));
+    if (kind === "not_knowledge" || !nums.length || !title) continue;
+    nums.forEach((n) => seenNums.add(n));
+    const members = nums.map((n) => flags[n]);
+    const idList = members.map((m) => m.id).join(",");
+    let slug = gapSlugify(title, members[0].id);
+    if (allSlugs.has(slug)) {
+      if (gapOwned.has(slug)) {
+        // an earlier pass already drafted this topic — link these gaps to it
+        await pgPatch(`concierge_flags?id=in.(${idList})`, { kb_slug: slug }).catch(() => {});
+        covered += members.length;
+        ledger.push({ slug, kind: "linked", gaps: members.length });
+        continue;
+      }
+      slug = (slug + "-" + members[0].id).slice(0, 48);
+      if (allSlugs.has(slug)) continue;
+    }
+    let content = "";
+    if (kind === "grounded") {
+      const body = String(c.content_md ?? "").trim().slice(0, 4000);
+      const srcs = (Array.isArray(c.sources) ? c.sources : [])
+        .map((s) => String(s)).filter((s) => allSlugs.has(s)).slice(0, 6);
+      // a grounded draft must cite real knowledge; otherwise it degrades to a fill-in
+      if (body && srcs.length) {
+        content = body + "\n\n_Drafted from existing knowledge: " +
+          srcs.map((s) => "[" + s + "]").join(" ") + "_";
+      }
+    }
+    const isSkeleton = !content;
+    if (isSkeleton) content = composeGapSkeleton(members.map((m) => m.question));
+    const ins = await pgInsert("concierge_kb", {
+      slug, title, content_md: content,
+      enabled: false, origin: "gap", sort_order: 920,
+      updated_at: new Date().toISOString(),
+    });
+    if (!ins) continue;
+    allSlugs.add(slug); gapOwned.add(slug);
+    drafted++; covered += members.length;
+    if (isSkeleton) skeletons++; else grounded++;
+    await pgPatch(`concierge_flags?id=in.(${idList})`, { kb_slug: slug }).catch(() => {});
+    ledger.push({ slug, kind: isSkeleton ? "needs_facts" : "grounded", gaps: members.length });
+  }
+  await pgPatch("concierge_insights?kind=eq.gap_draft",
+    { payload: { drafted, grounded, skeletons, swept, covered, clusters: ledger } }).catch(() => {});
+  return { drafted, grounded, skeletons, swept, covered };
+}
+let lastGapDraftCheckMs = 0;
+function scheduleGapDraft(): void {
+  try {
+    if (Date.now() - lastGapDraftCheckMs < 3600000) return; // one DB peek per isolate-hour
+    lastGapDraftCheckMs = Date.now();
+    const p = gapDraftIfDue().catch(() => {});
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
+  } catch { /* drafting never touches a conversation */ }
+}
+async function gapDraftIfDue(): Promise<void> {
+  // cheap peek: any open gap not yet linked, or any linked gap whose draft went live?
+  const open = await pgSelect<{ id: number }>(
+    `concierge_flags?select=id&resolved=eq.false&kb_slug=is.null&reason=${GAP_REASONS}&limit=1`);
+  const linked = await pgSelect<{ id: number }>(
+    "concierge_flags?select=id&resolved=eq.false&kb_slug=not.is.null&limit=1");
+  if ((!open || !open.length) && (!linked || !linked.length)) return;
+  // claim the hour atomically — exactly one isolate drafts
+  const seeded = await pgSelect<{ computed_at: string }>(
+    "concierge_insights?select=computed_at&kind=eq.gap_draft&limit=1");
+  if (!seeded) return;
+  if (!seeded.length) {
+    const planted = await pgInsert("concierge_insights", {
+      kind: "gap_draft", payload: {}, computed_at: new Date().toISOString(),
+    });
+    if (!planted) return; // lost the race
+  } else {
+    const cut = new Date(Date.now() - 55 * 60000).toISOString();
+    const won = await pgPatch<{ kind: string }>(
+      `concierge_insights?kind=eq.gap_draft&computed_at=lt.${encodeURIComponent(cut)}`,
+      { computed_at: new Date().toISOString() });
+    if (!won || !won.length) return;
+  }
+  await draftKbFromGaps();
+}
+async function handleGapDraftGet(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const r = await draftKbFromGaps();
+  return jsonResponse(req, 200, { ok: true, ...r });
+}
 let lastJudgeDigestCheckMs = 0;
 function scheduleJudgeDigest(): void {
   try {
@@ -5536,6 +5735,7 @@ async function handleGenStartersPost(req: Request): Promise<Response> {
       }
       if (trio.length) out[key] = trio;
     }
+    const writerHad = new Set(Object.keys(out));
     // Answerability gate (#147 / JUDGE_COACH_LOOP.md §7): the edition-count
     // starter proved prompt rules alone don't guarantee a starter can be
     // answered. A second cheap pass judges each candidate against the KB PLUS
@@ -5595,7 +5795,24 @@ async function handleGenStartersPost(req: Request): Promise<Response> {
         }
       }
     } catch { /* the gate is advisory — writer drafts stand */ }
-    return jsonResponse(req, 200, { starters: out, model, count, unanswerable_dropped: dropped });
+    // Per-section accountability: a section that got nothing is a knowledge
+    // gap, not a shrug — name it in the response and file it in the findings
+    // ledger so the gap-draft pass turns it into a fill-in knowledge draft.
+    const misses: Array<{ key: string; reason: string }> = [];
+    for (const k of keys) {
+      if (out[k]) continue;
+      misses.push({ key: k, reason: writerHad.has(k) ? "unanswerable" : "nothing-drafted" });
+    }
+    for (const m of misses.slice(0, 8)) {
+      try {
+        const q = "(starters) section \u201C" + m.key + "\u201D — the knowledge can't support starters here (" +
+          m.reason + "); add the facts to Knowledge, or retitle the section";
+        const dup = await pgSelect<{ id: number }>(
+          `concierge_flags?select=id&resolved=eq.false&reason=eq.starter_gap&question=eq.${encodeURIComponent(q)}&limit=1`);
+        if (!dup || !dup.length) await pgInsert("concierge_flags", { question: q, answer: "", reason: "starter_gap" });
+      } catch { /* filing is best-effort */ }
+    }
+    return jsonResponse(req, 200, { starters: out, model, count, unanswerable_dropped: dropped, misses });
   } catch (e) {
     return jsonError(req, 502, "Starter-writer error: " + (e instanceof Error ? e.message : String(e)));
   }
@@ -6157,6 +6374,7 @@ async function handleChatPost(req: Request): Promise<Response> {
   const editionCtx = await editionContextBlock();
   scheduleJudgeDigest(); // piggybacked weekly check — fire-and-forget, never on the reply path
   scheduleStarterBake(); // starters wire their own answers up — never on the reply path
+  scheduleGapDraft(); // unanswered questions become knowledge drafts — never on the reply path
   const customerLine = [customerLine0, bookingCtx, editionCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
   // Live goal status from the last evaluation, so the prompt shows which goals
   // are still open and the concierge actively drives them.
@@ -7777,6 +7995,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("bakestarters")) {
     return await handleBakeStartersGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("gapdraft")) {
+    return await handleGapDraftGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("npsreport")) {
     return await handleNpsReportGet(req);

@@ -1941,6 +1941,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         </div>
         <div id="gaps-list"></div>
         <div class="card-foot">
+          <button id="gaps-draft" class="btn primary">Draft knowledge from gaps ✳</button>
           <button id="gaps-refresh" class="btn">Refresh</button>
         </div>
       </section>
@@ -3251,6 +3252,19 @@ function wireStatic() {
   });
   $('gaps-refresh').addEventListener('click', function () {
     withBusy($('gaps-refresh'), loadGaps);
+  });
+  if ($('gaps-draft')) $('gaps-draft').addEventListener('click', function () {
+    withBusy($('gaps-draft'), async function () {
+      try {
+        const d = await adminGet('?gapdraft=1');
+        toast('Drafts: ' + (d.drafted || 0) + ' new \u00B7 ' + (d.skeletons || 0) + ' need your facts \u00B7 ' +
+          (d.grounded || 0) + ' pre-filled from existing knowledge' +
+          (d.swept ? ' \u00B7 ' + d.swept + ' gap' + (d.swept === 1 ? '' : 's') + ' cleared' : '') +
+          ' \u2014 review below, then enable');
+        await loadGaps();
+        await loadSections(KB_SPEC);
+      } catch (e) { fail('Draft knowledge from gaps', e); }
+    });
   });
   $('forms-refresh').addEventListener('click', function () {
     withBusy($('forms-refresh'), loadForms);
@@ -5282,14 +5296,31 @@ async function genStarters() {
       }
     }
   });
+  const missedKeys = Object.keys(emptyBySection).filter(function (k) { return !Array.isArray(map[k]) || !map[k].length; });
+  // the honest diagnosis, in place: an unfilled section says WHY, right where
+  // the merchant is looking, and points at the gap ledger that now holds it
+  STARTER_KEYS.forEach(function (key) {
+    const old = $('st-miss-' + key);
+    if (old) old.remove();
+  });
+  missedKeys.forEach(function (key) {
+    const first = $('st-' + key + '-0');
+    const fs = first && first.closest ? first.closest('fieldset') : null;
+    if (!fs) return;
+    const note = el('div', 'micro warn',
+      'Nothing the knowledge can answer here yet \u2014 filed under Knowledge gaps; add the facts, then redraft.');
+    note.id = 'st-miss-' + key;
+    note.style.cssText = 'margin-top:4px;';
+    fs.appendChild(note);
+  });
   if (!filled) {
-    // The honest diagnosis, not a shrug: name the sections that got nothing.
-    const missed = Object.keys(emptyBySection).filter(function (k) { return !Array.isArray(map[k]) || !map[k].length; });
-    toast('The model drafted nothing for: ' + (missed.join(', ') || 'the empty sections') +
-      ' — check those sections exist in the journey and the knowledge base covers them', true);
+    toast('The model drafted nothing for: ' + (missedKeys.join(', ') || 'the empty sections') +
+      ' — each is filed under Knowledge gaps (the drafter will propose the missing entry)', true);
     return;
   }
-  toast('Drafted ' + filled + ' starter' + (filled === 1 ? '' : 's') + ' (' + (d.model || 'model') + ') — review and Save');
+  toast('Drafted ' + filled + ' starter' + (filled === 1 ? '' : 's') + ' (' + (d.model || 'model') + ')' +
+    (missedKeys.length ? ' \u00B7 nothing for: ' + missedKeys.join(', ') + ' (filed under Knowledge gaps)' : '') +
+    ' — review and Save');
 }
 
 async function saveStarters() {
@@ -5420,6 +5451,13 @@ function kbEditor(row, spec) {
   const slugEl = el('span', 'slug', row.id ? (row.slug || '') : '(named automatically)');
   top.appendChild(slugEl);
   top.appendChild(el('span', 'micro ord', '#' + row.sort_order));
+  if (row.origin === 'gap') {
+    const gchip = el('span', 'micro', row.enabled
+      ? '\u2733 from visitor questions'
+      : '\u2733 drafted from visitor questions \u2014 complete, then enable to clear the gaps');
+    gchip.style.cssText = 'color:var(--brass-soft);';
+    top.appendChild(gchip);
+  }
   wrap.appendChild(top);
 
   // -- title
@@ -5499,6 +5537,14 @@ function kbEditor(row, spec) {
         if (res.error) { fail('Save ' + spec.noun, res.error); return; }
         row.title = t; row.content_md = body.value; row.enabled = cb.checked;
         if (spec.hasAudience && audience) row.audience = audience.value;
+        if (spec.table === 'concierge_kb' && row.origin === 'gap' && cb.checked && row.slug) {
+          const rf = await sb.from('concierge_flags').update({ resolved: true })
+            .eq('kb_slug', row.slug).eq('resolved', false).select('id');
+          if (!rf.error && rf.data && rf.data.length) {
+            toast(rf.data.length + ' knowledge gap' + (rf.data.length === 1 ? '' : 's') + ' cleared \u2014 the answer is live');
+            loadGaps();
+          }
+        }
         toast(spec.noun.charAt(0).toUpperCase() + spec.noun.slice(1) + ' saved — ' + (row.slug || t));
       } else {
         const slug = kebab(t);
@@ -6670,7 +6716,7 @@ function renderActions() {
 
 async function loadGaps() {
   const res = await sb.from('concierge_flags')
-    .select('id,question,answer,created_at,reason')
+    .select('id,question,answer,created_at,reason,kb_slug')
     .eq('resolved', false)
     .order('created_at', { ascending: false })
     .limit(40);
@@ -6698,6 +6744,11 @@ function renderGaps() {
     ans.style.whiteSpace = 'normal';
     ans.style.marginTop = '4px';
     body.appendChild(ans);
+    if (g.kb_slug) {
+      const chip = el('div', 'micro', '\u2733 draft ready below (' + g.kb_slug + ') \u2014 complete it, then enable to clear this');
+      chip.style.cssText = 'color:var(--brass-soft);margin-top:4px;';
+      body.appendChild(chip);
+    }
     row.appendChild(body);
     const done = el('button', 'btn', 'Resolved');
     done.addEventListener('click', function () {

@@ -376,6 +376,17 @@ export function normalizeQuestionKey(q: string): string {
     .replace(/[\s?.!…]+$/u, "");
 }
 
+/** The fill-in-the-blank knowledge draft for a gap the model could not
+ * ground: only the visitors' own questions plus a blank for the house's
+ * answer. Composed HERE, deterministically — never by the model — so an
+ * ungrounded draft cannot contain an invented fact. */
+export function composeGapSkeleton(questions: string[]): string {
+  const qs = questions.map((q) => String(q ?? "").trim()).filter((q) => q)
+    .slice(0, 8).map((q) => `- \u201C${q.slice(0, 200)}\u201D`).join("\n");
+  return "Visitors asked, and the concierge had no answer:\n\n" + qs +
+    "\n\n**The house's answer** \u2014 replace this line with the facts, then enable:\n\n- \u2026";
+}
+
 export type NpsSegment = "promoter" | "passive" | "detractor";
 
 /** Standard NPS banding: 9–10 promoter, 7–8 passive, 0–6 detractor. */

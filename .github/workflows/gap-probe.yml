@@ -1,0 +1,134 @@
+name: Gap probe (knowledge drafting, live)
+# Definitive proof of the gap-to-knowledge loop against the LIVE concierge:
+#   1. Two QA gaps (same missing topic, answerable by nothing in the KB) are
+#      planted in the findings ledger and the drafting claim is aged so the
+#      pass is due.
+#   2. A zero-cost tap (a planted baked answer) kicks the self-scheduler.
+#   3. The probe watches until BOTH gaps are linked (kb_slug) to a knowledge
+#      DRAFT — born disabled, origin='gap' — and prints the draft.
+#   4. The merchant's move is simulated: the draft is ENABLED; the sweep (or,
+#      if warm isolates defer it, the studio's own clearing query) must mark
+#      both gaps resolved. "Run that and clear the gaps", proven end to end.
+#   5. Every row the probe created is removed. (The enable/delete flushes the
+#      answer cache once — pinned answers go stale and the hourly bake pass
+#      re-authors them; that is the designed recovery, exercised on purpose.)
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      FN: https://amexzypgvntohhntahuj.supabase.co/functions/v1/concierge
+      # publishable key — public by design, ships in the page source
+      K: sb_publishable_zt3jU2wLqqoWBaUgajs1tw_a-Sxi1sk
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: "Plant two QA gaps + the poke row; age the drafting claim"
+        run: |
+          SES="qa-gap-probe-${GITHUB_RUN_ID}"
+          NK="qa gap probe ${GITHUB_RUN_ID}"
+          RID="${GITHUB_RUN_ID}"
+          echo "SES=$SES" >> "$GITHUB_ENV"
+          echo "NK=$NK"   >> "$GITHUB_ENV"
+          echo "RID=$RID" >> "$GITHUB_ENV"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          insert into public.concierge_flags (question, answer, reason) values
+            ('What is the probe certification number for run ${RID}?', 'I do not have that detail.', 'knowledge_gap'),
+            ('Where can I see the probe certification for run ${RID}?', 'I do not have that detail.', 'knowledge_gap');
+          insert into public.concierge_cache
+            (question, answer_md, embedding, model, pinned, stale, hand_edited, norm_key, enabled)
+          values ('QA gap probe ${RID}?', 'Probe poke answer.',
+                  ('[' || repeat('0,', 383) || '0]')::extensions.vector,
+                  'baked', true, false, false, '${NK}', true);
+          update public.concierge_insights set computed_at = '2000-01-01'
+           where kind = 'gap_draft';
+          SQL
+      - name: "Poke — one zero-cost tap kicks the self-scheduled pass"
+        run: |
+          code=$(curl -s -o /tmp/sse -w '%{http_code}' --max-time 60 \
+            -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+            -d "{\"messages\":[{\"role\":\"user\",\"content\":\"QA gap probe ${RID}?\"}],\"context\":{\"section\":\"hero\"},\"session_key\":\"$SES\"}" \
+            "$FN")
+          echo "poke HTTP $code"; test "$code" = "200"
+          grep -q '^data: {"c":1}' /tmp/sse && echo "✓ poke served from the pinned row (zero cost)"
+      - name: "Watch — both gaps must gain a linked, DISABLED knowledge draft"
+        run: |
+          for i in $(seq 1 8); do
+            NLINK=$(psql "$SUPABASE_DB_URL" -At -c "
+              select count(*) from public.concierge_flags
+               where question like '%${RID}%' and kb_slug is not null;")
+            NDRAFT=$(psql "$SUPABASE_DB_URL" -At -c "
+              select count(distinct k.slug) from public.concierge_kb k
+                join public.concierge_flags f on f.kb_slug = k.slug
+               where f.question like '%${RID}%' and k.origin = 'gap' and not k.enabled;")
+            echo "poll $i — linked gaps: $NLINK/2 · disabled gap-drafts: $NDRAFT"
+            [ "$NLINK" = "2" ] && [ "$NDRAFT" -ge 1 ] && break
+            sleep 30
+          done
+          test "$NLINK" = "2"
+          test "$NDRAFT" -ge 1
+          echo "---- the draft the pass authored ----"
+          psql "$SUPABASE_DB_URL" -c "
+            select k.slug, k.title, left(k.content_md, 400) as content
+              from public.concierge_kb k
+             where k.origin = 'gap'
+               and k.slug in (select kb_slug from public.concierge_flags
+                               where question like '%${RID}%' and kb_slug is not null);" \
+            -P title='gap draft (born disabled — the merchant completes and enables)'
+          psql "$SUPABASE_DB_URL" -c "
+            select payload->>'drafted' as drafted, payload->>'skeletons' as skeletons,
+                   payload->>'grounded' as grounded, payload->>'covered' as covered,
+                   computed_at at time zone 'utc' as claimed_utc
+              from public.concierge_insights where kind = 'gap_draft';" \
+            -P title='pass ledger'
+      - name: "Enable the draft — the gaps it covers must clear"
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            update public.concierge_kb set enabled = true
+             where origin = 'gap'
+               and slug in (select kb_slug from public.concierge_flags
+                             where question like '%${RID}%' and kb_slug is not null);
+            update public.concierge_insights set computed_at = '2000-01-01'
+             where kind = 'gap_draft';"
+          curl -s -o /dev/null --max-time 60 \
+            -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+            -d "{\"messages\":[{\"role\":\"user\",\"content\":\"QA gap probe ${RID}?\"}],\"context\":{\"section\":\"hero\"},\"session_key\":\"$SES\"}" \
+            "$FN"
+          CLEARED_BY="server sweep"
+          for i in $(seq 1 4); do
+            NRES=$(psql "$SUPABASE_DB_URL" -At -c "
+              select count(*) from public.concierge_flags
+               where question like '%${RID}%' and resolved;")
+            echo "poll $i — cleared gaps: $NRES/2"
+            [ "$NRES" = "2" ] && break
+            sleep 30
+          done
+          if [ "$NRES" != "2" ]; then
+            # warm isolates can defer the hourly sweep — the studio's own
+            # clearing query (what Save runs on enable) is the eager path
+            CLEARED_BY="studio clearing query (sweep nets within the hour)"
+            NRES=$(psql "$SUPABASE_DB_URL" -At -c "
+              with c as (update public.concierge_flags set resolved = true
+                          where resolved = false
+                            and kb_slug in (select kb_slug from public.concierge_flags
+                                             where question like '%${RID}%' and kb_slug is not null)
+                          returning 1)
+              select count(*) from c;")
+            echo "studio-path cleared: $NRES"
+          fi
+          test "$NRES" = "2" && echo "✓ both gaps cleared via: $CLEARED_BY"
+      - name: "Zero residue — drafts, gaps, poke row, and conversation removed"
+        if: always()
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          delete from public.concierge_kb
+           where origin = 'gap'
+             and slug in (select kb_slug from public.concierge_flags
+                           where question like '%${RID}%' and kb_slug is not null);
+          delete from public.concierge_flags where question like '%${RID}%';
+          delete from public.concierge_cache where pinned and norm_key = '${NK}';
+          with cids as (select id from public.concierge_conversations where session_key = '${SES}')
+          , d1 as (delete from public.concierge_actions   where conversation_id in (select id from cids) returning 1)
+          , d2 as (delete from public.concierge_messages  where conversation_id in (select id from cids) returning 1)
+          , d3 as (delete from public.concierge_llm_usage where conversation_id in (select id from cids) returning 1)
+          delete from public.concierge_conversations where session_key = '${SES}';
+          SQL

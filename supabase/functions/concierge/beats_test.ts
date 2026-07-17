@@ -6,6 +6,7 @@
 //   deno test supabase/functions/concierge/beats_test.ts
 
 import {
+  composeGapSkeleton,
   normalizeQuestionKey,
   starterFeedsGap,
   chooseBeatAction,
@@ -161,6 +162,17 @@ Deno.test("proactiveStyle 'offer' makes the presence beat offer-first, not recit
   assert(offer.detail.includes("OFFER-FIRST"), "offer brief invites, not recites");
   assert(/NEVER recite/.test(offer.detail), "offer brief forbids reciting facts at the shopper");
   assert(!offer.detail.includes("GIVE FIRST"), "offer brief is not the expertise brief");
+});
+
+Deno.test("composeGapSkeleton: only the visitors' questions and a blank — no room to invent", () => {
+  const s = composeGapSkeleton(["  What is the warranty?  ", "", "Is there a certificate?"]);
+  if (!s.includes("\u201CWhat is the warranty?\u201D")) throw new Error("question 1 missing or unquoted");
+  if (!s.includes("\u201CIs there a certificate?\u201D")) throw new Error("question 2 missing");
+  if (s.includes("\u201C\u201D")) throw new Error("empty question should be dropped");
+  if (!s.includes("replace this line with the facts, then enable")) throw new Error("the fill-in blank is missing");
+  const many = composeGapSkeleton(new Array(20).fill("Q?"));
+  const n = (many.match(/\u201C/g) || []).length;
+  if (n !== 8) throw new Error("question list must cap at 8, got " + n);
 });
 
 Deno.test("normalizeQuestionKey: tap, retype, and pinned row all agree", () => {

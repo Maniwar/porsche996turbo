@@ -25,6 +25,10 @@ create table if not exists public.concierge_kb (
   slug text unique not null, title text not null, content_md text not null,
   sort_order int not null default 0, enabled boolean not null default true,
   updated_at timestamptz not null default now());
+-- origin = 'gap' marks an entry the gap-draft pass authored from unanswered
+-- visitor questions (always born disabled; the studio shows the provenance
+-- chip and enabling it clears the linked gaps). Null = merchant-authored.
+alter table public.concierge_kb add column if not exists origin text;
 
 create table if not exists public.concierge_admins (email text primary key);
 -- a protected super admin (the owner) can never be removed or demoted
@@ -197,6 +201,10 @@ create table if not exists public.concierge_flags (
   reason text not null default 'knowledge_gap', resolved boolean not null default false,
   created_at timestamptz not null default now());
 create index if not exists concierge_flags_open_idx on public.concierge_flags (resolved, created_at desc);
+-- Gap-to-knowledge loop (KNOWLEDGE.md): kb_slug names the DRAFT knowledge
+-- entry the gap pass created for this gap. Enabling that entry resolves the
+-- gap (eagerly in the studio, and swept by the hourly pass as the net).
+alter table public.concierge_flags add column if not exists kb_slug text;
 
 create table if not exists public.concierge_forms (
   id uuid primary key default gen_random_uuid(),
@@ -588,12 +596,26 @@ end; $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['concierge_kb','concierge_config','concierge_sops'] loop
+  foreach t in array array['concierge_config','concierge_sops'] loop
     execute format('drop trigger if exists flush_cache on public.%I', t);
     execute format(
       'create trigger flush_cache after insert or update or delete on public.%I for each statement execute function public.flush_concierge_cache()', t);
   end loop;
 end $$;
+-- concierge_kb is row-level with enabled-guards: only ENABLED knowledge is
+-- model-visible, so creating or editing a DISABLED draft (the gap-draft pass
+-- does this on a schedule) must not empty the learned cache or stale every
+-- baked starter. Any change that touches enabled knowledge still flushes.
+drop trigger if exists flush_cache on public.concierge_kb;
+drop trigger if exists flush_cache_ins on public.concierge_kb;
+drop trigger if exists flush_cache_upd on public.concierge_kb;
+drop trigger if exists flush_cache_del on public.concierge_kb;
+create trigger flush_cache_ins after insert on public.concierge_kb
+  for each row when (new.enabled) execute function public.flush_concierge_cache();
+create trigger flush_cache_upd after update on public.concierge_kb
+  for each row when (old.enabled or new.enabled) execute function public.flush_concierge_cache();
+create trigger flush_cache_del after delete on public.concierge_kb
+  for each row when (old.enabled) execute function public.flush_concierge_cache();
 
 -- Order audit trigger: full row on create, field-level diffs on update.
 create or replace function public.log_order_event() returns trigger
@@ -2883,7 +2905,7 @@ insert into public.concierge_kb (slug, title, content_md, enabled, sort_order) v
 ('hero', '2003 Porsche 911 Turbo', $kb$- Zanzibar Red (L1A8) · Factory Special Color 00501 · Tiptronic S · McKinney, TX$kb$, false, 10),
 
 ('asking-price', 'Asking Price', $kb$- Serious offers considered — PPI welcome and encouraged
-- Copied!: $59,900$kb$, false, 20),
+- Asking price: $59,900$kb$, false, 20),
 
 ('every-angle-every-light', 'Every Angle, Every Light', $kb$- 21 photos — click any image to open the full viewer. The shot at the top captures the color perfectly at golden sunset. Swipe or use arrow keys to navigate.
 - The Color at Golden Hour: Zanzibar Red in Perfect Light$kb$, false, 30),
