@@ -35,6 +35,10 @@ jobs:
             from public.concierge_conversations where session_key = '${TAG}';
           update public.concierge_flags set resolved = true
            where question = '(${TAG}) probe gap';
+          -- a versioned rulebook edit today, tagged for cleanup: it must surface
+          -- as a 'change' in the trend so the merchant sees the line respond
+          insert into public.concierge_edit_history (entity, ref, snapshot, edited_by)
+          values ('config', 'judge', '{}'::jsonb, '${TAG}');
           SQL
       - name: "resolved_at got stamped by the trigger (no call-site set it)"
         run: |
@@ -59,6 +63,18 @@ jobs:
           test "$SPOKE"   -ge 1 && echo "✓ today's spoke count includes the plant"
           test "$VETOED"  -ge 1 && echo "✓ today's vetoed count includes the plant"
           test "$CLEARED" -ge 1 && echo "✓ today's gaps_cleared reflects the resolved gap"
+      - name: "The insight fields — why the line moved — are present and correct"
+        run: |
+          CLAIM="select set_config('request.jwt.claims','{\"role\":\"service_role\"}',false);"
+          # today's dominant defect family: our lone veto ('invents a discount') → 'invented'
+          FAM=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(7)->'series'->6->>'top_family');" | tail -1)
+          echo "today top_family=$FAM"
+          test "$FAM" = "invented" && echo "✓ the day's blocks are attributed to a defect family (invented)"
+          # the rulebook edit surfaces as a change so the chart can mark it
+          CH=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select public.judge_findings(7)->'changes';" | tail -1)
+          echo "changes: $CH"
+          HASJUDGE=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select exists(select 1 from jsonb_array_elements(public.judge_findings(7)->'changes') e where e->>'entity'='config' and e->>'ref'='judge');" | tail -1)
+          test "$HASJUDGE" = "t" && echo "✓ the versioned rulebook edit surfaces as a change marker"
       - name: "Zero residue — the probe rows are removed"
         if: always()
         run: |
@@ -67,4 +83,5 @@ jobs:
              where f.conversation_id = c.id and c.session_key = '${TAG}';
             delete from public.concierge_actions a using public.concierge_conversations c
              where a.conversation_id = c.id and c.session_key = '${TAG}';
-            delete from public.concierge_conversations where session_key = '${TAG}';"
+            delete from public.concierge_conversations where session_key = '${TAG}';
+            delete from public.concierge_edit_history where edited_by = '${TAG}';"

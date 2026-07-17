@@ -2597,6 +2597,26 @@ begin
      where resolved and resolved_at is not null
        and resolved_at > now() - make_interval(days => v_days)
      group by 1),
+  -- which defect family drove the blocks each day, so a spike on the chart can
+  -- be READ ("that day's blocks were mostly invented-offer") not just seen
+  day_fam as (
+    select date_trunc('day', created_at)::date as day, klass, count(*) as n
+      from classed group by 1, 2),
+  day_top as (
+    select day, (array_agg(klass order by n desc, klass))[1] as top_family
+      from day_fam group by day),
+  -- the causal overlay: every versioned change to a judge-relevant setting or to
+  -- knowledge, so the merchant can see the line respond to what THEY did
+  changes as (
+    select date_trunc('day', created_at)::date as day, entity,
+           (array_agg(ref order by created_at desc))[1] as ref, count(*) as n,
+           max(created_at) as at
+      from public.concierge_edit_history
+     where created_at > now() - make_interval(days => v_days)
+       and (entity in ('kb', 'sop')
+            or (entity = 'config' and ref in ('judge', 'outreach', 'voice_base',
+                                              'selling_base', 'engagement_base', 'beat_notes')))
+     group by 1, 2),
   series as (
     select ds.day,
       count(*) filter (where b.action = 'beat_action') as spoke,
@@ -2606,10 +2626,12 @@ begin
       count(*) filter (where b.action = 'beat_action' and b.redraft) as redraft_ok,
       count(*) filter (where b.action = 'beat_veto' and b.redraft) as redraft_blocked,
       count(*) filter (where b.action = 'beat_action' and b.floored) as floored,
-      coalesce(max(cl.n), 0) as gaps_cleared
+      coalesce(max(cl.n), 0) as gaps_cleared,
+      max(dt.top_family) as top_family
       from day_series ds
       left join beats b on date_trunc('day', b.created_at)::date = ds.day
       left join cleared cl on cl.day = ds.day
+      left join day_top dt on dt.day = ds.day
      group by ds.day order by ds.day)
   select jsonb_build_object('ok', true, 'days', v_days,
     'totals', (select jsonb_build_object(
@@ -2631,7 +2653,11 @@ begin
         'day', to_char(day, 'YYYY-MM-DD'),
         'spoke', spoke, 'held', held, 'vetoed', vetoed, 'prefilter', prefilter,
         'redraft_ok', redraft_ok, 'redraft_blocked', redraft_blocked,
-        'floored', floored, 'gaps_cleared', gaps_cleared) order by day), '[]'::jsonb) from series))
+        'floored', floored, 'gaps_cleared', gaps_cleared,
+        'top_family', top_family) order by day), '[]'::jsonb) from series),
+    'changes', (select coalesce(jsonb_agg(jsonb_build_object(
+        'day', to_char(day, 'YYYY-MM-DD'), 'entity', entity, 'ref', ref, 'n', n)
+        order by day), '[]'::jsonb) from changes))
     into v;
   return v;
 end $$;

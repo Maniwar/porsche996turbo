@@ -2688,6 +2688,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         </div>
         <div id="jc-trend"></div>
         <div id="jc-trend-cap" class="micro" style="margin-top:8px;opacity:.78;text-transform:none;letter-spacing:0;"></div>
+        <div id="jc-trend-why" style="margin-top:12px;"></div>
       </section>
 
       <!-- CARD 2 — the detail behind the scoreboard -->
@@ -9895,6 +9896,24 @@ function npsLineChart(mount, opts) {
     tx.textContent = opts.fmt(v);
     sv.appendChild(tx);
   }
+  // change markers: faint vertical lines where the merchant changed a setting,
+  // so they can SEE the line respond to what they did (each carries a hover)
+  (opts.marks || []).forEach(function (m) {
+    if (m.i < 0 || m.i >= n) return;
+    const x = X(m.i);
+    const ln = mk('line');
+    ln.setAttribute('x1', x); ln.setAttribute('x2', x);
+    ln.setAttribute('y1', T); ln.setAttribute('y2', T + ih);
+    ln.setAttribute('stroke', 'rgba(216,198,154,.45)'); ln.setAttribute('stroke-width', '1');
+    ln.setAttribute('stroke-dasharray', '3 3');
+    const ti = mk('title'); ti.textContent = m.label || 'change'; ln.appendChild(ti);
+    sv.appendChild(ln);
+    const dot = mk('circle');
+    dot.setAttribute('cx', x); dot.setAttribute('cy', T); dot.setAttribute('r', '3');
+    dot.setAttribute('fill', '#d8c69a');
+    const ti2 = mk('title'); ti2.textContent = m.label || 'change'; dot.appendChild(ti2);
+    sv.appendChild(dot);
+  });
   (n <= 4 ? opts.labels.map(function (_, i) { return i; }) : [0, Math.floor((n - 1) / 2), n - 1])
     .forEach(function (i) {
       const tx = mk('text');
@@ -10656,6 +10675,57 @@ const JC_TREND_METRICS = {
     cap: 'Knowledge gaps you resolved each day — every one is a question the concierge couldn’t answer before and now can. ↑ Higher means you’re closing the loop.'
   }
 };
+const JC_FAM_SHORT = {
+  invented: 'invented offers or claims', inventorying: 'reciting the shopper back',
+  plumbing: 'process talk', house_rules: 'breaking your written rules',
+  etiquette: 'unsolicited questions', other: 'other issues', prefilter: 'plumbing tokens'
+};
+// The deterministic "what moved & likely why" read: name the biggest rise and
+// drop in the chosen measure, attribute each to that day's dominant defect
+// family (for block metrics) and to any setting change near it. No LLM, no
+// invented causation — just the composition and the timing, stated plainly.
+function jcTrendWhy(mount, o) {
+  mount.textContent = '';
+  const famMetric = (o.key === 'block_rate' || o.key === 'vetoed');
+  const pts = []; o.values.forEach(function (v, i) { if (v !== null && v !== undefined) pts.push({ i: i, v: v }); });
+  const softNote = function (txt) {
+    const d = el('div', 'micro'); d.textContent = txt;
+    d.style.cssText = 'opacity:.7;text-transform:none;letter-spacing:0;'; mount.appendChild(d);
+  };
+  if (pts.length < 2) { softNote('Not enough days with activity yet to explain the movement — it fills in once the concierge has spoken across a few days.'); return; }
+  let rise = null, drop = null;
+  for (let k = 1; k < pts.length; k++) {
+    const d = pts[k].v - pts[k - 1].v;
+    if (rise === null || d > rise.d) rise = { d: d, a: pts[k - 1], b: pts[k] };
+    if (drop === null || d < drop.d) drop = { d: d, a: pts[k - 1], b: pts[k] };
+  }
+  const nearChange = function (i) {
+    for (let j = i - 1; j <= i; j++) if (o.markMap[j]) {
+      const seen = {}; return o.markMap[j].filter(function (l) { return seen[l] ? false : (seen[l] = true); });
+    }
+    return null;
+  };
+  const sentence = function (mv, lead) {
+    const parts = [lead + ' from ' + o.fmt(mv.a.v) + ' to ' + o.fmt(mv.b.v) +
+      ' (' + o.labels[mv.a.i] + '→' + o.labels[mv.b.i] + ').'];
+    if (famMetric) { const fam = o.series[mv.b.i].top_family; if (fam) parts.push('That day’s blocks were mostly ' + (JC_FAM_SHORT[fam] || fam) + '.'); }
+    const ch = nearChange(mv.b.i); if (ch) parts.push('Right around then, you ' + ch.join('; you ') + '.');
+    return parts.join(' ');
+  };
+  const head = el('div', 'micro'); head.textContent = 'WHAT MOVED — AND LIKELY WHY';
+  head.style.cssText = 'letter-spacing:.08em;opacity:.8;margin-bottom:6px;'; mount.appendChild(head);
+  const add = function (icon, txt) {
+    const row = el('div'); row.style.cssText = 'font-size:12.5px;line-height:1.5;opacity:.88;margin:3px 0;';
+    row.textContent = icon + '  ' + txt; mount.appendChild(row);
+  };
+  const m = o.spec.label.toLowerCase();
+  const moved = (rise && rise.d > 0) || (drop && drop.d < 0);
+  if (rise && rise.d > 0) add('▲', sentence(rise, 'Biggest rise: ' + m + ' rose'));
+  if (drop && drop.d < 0) add('▼', sentence(drop, 'Biggest drop: ' + m + ' fell'));
+  if (!moved) add('—', m.charAt(0).toUpperCase() + m.slice(1) + ' held steady across this range.');
+  if (Object.keys(o.markMap).length) softNote('Dashed lines mark the days you changed a setting — hover any one to see what.');
+  else softNote('No setting changes in this range — the movement is the concierge’s own drift, not something you did.');
+}
 async function loadJudgeTrend() {
   const mount = $('jc-trend'); if (!mount) return;
   const cap = $('jc-trend-cap');
@@ -10667,17 +10737,36 @@ async function loadJudgeTrend() {
     const r = await sb.rpc('judge_findings', { p_days: range });
     if (r.error) throw new Error(r.error.message);
     const series = (r.data && r.data.series) || [];
+    const why = $('jc-trend-why'); if (why) why.textContent = '';
     if (!series.length) { mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No days to plot yet.')); if (cap) cap.textContent = ''; return; }
     const labels = series.map(function (s) { const p = String(s.day).split('-'); return p.length === 3 ? (+p[1] + '/' + (+p[2])) : s.day; });
     const values = series.map(function (s) { return spec.val(s); });
+    const fmt = spec.pct ? function (v) { return Math.round(v) + '%'; } : function (v) { return String(Math.round(v)); };
     let hi = spec.pct ? 100 : 1;
     values.forEach(function (v) { if (v !== null && v > hi) hi = v; });
+    // ── change markers: where the merchant changed a judge-relevant setting ──
+    const dayIdx = {}; series.forEach(function (s, i) { dayIdx[s.day] = i; });
+    const changeLabel = function (c) {
+      if (c.entity === 'config') return c.ref === 'judge' ? 'edited the rulebook'
+        : c.ref === 'outreach' ? 'changed reach-out settings' : 'edited the house voice';
+      return c.entity === 'kb' ? 'updated knowledge' : c.entity === 'sop' ? 'edited a procedure' : 'changed a setting';
+    };
+    const markMap = {};
+    ((r.data && r.data.changes) || []).forEach(function (c) {
+      const i = dayIdx[c.day]; if (i == null) return;
+      (markMap[i] = markMap[i] || []).push(changeLabel(c));
+    });
+    const marks = Object.keys(markMap).map(function (i) {
+      const seen = {}; const uniq = markMap[i].filter(function (l) { return seen[l] ? false : (seen[l] = true); });
+      return { i: +i, label: 'You ' + uniq.join('; you ') + ' this day.' };
+    });
     npsLineChart(mount, {
-      labels: labels, values: values, yMin: 0, yMax: hi, color: spec.color,
-      aria: spec.label + ' over ' + range + ' days',
-      fmt: spec.pct ? function (v) { return Math.round(v) + '%'; } : function (v) { return String(Math.round(v)); }
+      labels: labels, values: values, yMin: 0, yMax: hi, color: spec.color, marks: marks,
+      aria: spec.label + ' over ' + range + ' days', fmt: fmt
     });
     if (cap) cap.textContent = spec.cap;
+    // ── the "what moved & likely why" read ────────────────────────
+    if (why) jcTrendWhy(why, { key: key, spec: spec, series: series, labels: labels, values: values, fmt: fmt, markMap: markMap });
   } catch (e) {
     mount.textContent = '';
     mount.appendChild(el('div', 'empty micro', 'Could not load the trend — ' + (e && e.message ? e.message : e)));
