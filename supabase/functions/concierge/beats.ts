@@ -392,6 +392,62 @@ export function normalizeQuestionKey(q: string): string {
  * ground: only the visitors' own questions plus a blank for the house's
  * answer. Composed HERE, deterministically — never by the model — so an
  * ungrounded draft cannot contain an invented fact. */
+/** The judge's defect families. 'invented'/'inventorying'/'plumbing' are
+ * the ones a merchant might legitimately want to relax for their own house;
+ * a floor never relaxes 'prefilter' (mechanical, always right) — it isn't
+ * even offered. Mirror of the judge_findings RPC ladder. */
+export type JudgeFamily =
+  | "prefilter" | "inventorying" | "invented" | "plumbing"
+  | "house_rules" | "etiquette" | "other";
+
+/** Classify a judge veto reason into its defect family. Byte-for-byte the
+ * same ladder (same order, same alternations) as the judge_findings RPC —
+ * the floor must never disagree with the report about what a block WAS. */
+export function classifyJudgeReason(reason: string): JudgeFamily {
+  const r = String(reason ?? "");
+  if (/^pre-filter:/i.test(r)) return "prefilter";
+  // inventorying first: "INVENTORIES the shopper" also contains "invent"
+  if (/inventor|recit|read(s|ing)? .{0,12}aloud|stored (data|contact|phone)|records aloud|tally|dossier|scorekeep/i.test(r)) return "inventorying";
+  if (/invent|fabricat|unsupported|not authorized|guarantee|refund|discount|not (in|from) house/i.test(r)) return "invented";
+  if (/plumbing|template|token|meta|narrat|sign.?in|process talk/i.test(r)) return "plumbing";
+  if (/house rules/i.test(r)) return "house_rules";
+  if (/question|unsolicited/i.test(r)) return "etiquette";
+  return "other";
+}
+
+/** The floor a merchant may relax. 'prefilter' is mechanical and NEVER
+ * relaxable (a malformed token can't be "allowed"); broken output has no
+ * family a merchant would loosen either. */
+export const FLOOR_FAMILIES: JudgeFamily[] =
+  ["invented", "inventorying", "plumbing", "house_rules", "etiquette", "other"];
+
+/** Does the merchant's floor ALLOW a line the judge blocked on this family?
+ * Default (no config, or the family unset) = BLOCK — the floor only ever
+ * loosens on an explicit merchant choice, never by omission. 'prefilter' is
+ * never allowed regardless of config. */
+export function judgeFloorAllows(
+  family: JudgeFamily,
+  floor: Record<string, unknown> | null | undefined,
+): boolean {
+  if (family === "prefilter") return false; // mechanical — never relaxable
+  const v = floor && typeof floor === "object" ? floor[family] : undefined;
+  return v === "allow";
+}
+
+/** The three named presets, resolved to a per-family policy map. 'standard'
+ * blocks every family (today's behaviour). 'facts_only' keeps the honesty
+ * families hard (invented, inventorying, house_rules) but lets style/etiquette
+ * and plumbing-adjacent lines through. 'strict' is identical to standard here
+ * (the judge already blocks all) but names the merchant's intent explicitly. */
+export function judgeFloorPreset(name: string): Record<string, "block" | "allow"> {
+  const all = (v: "block" | "allow") =>
+    Object.fromEntries(FLOOR_FAMILIES.map((f) => [f, v])) as Record<string, "block" | "allow">;
+  if (name === "facts_only") {
+    return { ...all("block"), etiquette: "allow", plumbing: "allow", other: "allow" };
+  }
+  return all("block"); // 'strict' and 'standard' both block everything
+}
+
 export function composeGapSkeleton(questions: string[]): string {
   const qs = questions.map((q) => String(q ?? "").trim()).filter((q) => q)
     .slice(0, 8).map((q) => `- \u201C${q.slice(0, 200)}\u201D`).join("\n");

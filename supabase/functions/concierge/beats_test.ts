@@ -6,7 +6,10 @@
 //   deno test supabase/functions/concierge/beats_test.ts
 
 import {
+  classifyJudgeReason,
   composeGapSkeleton,
+  judgeFloorAllows,
+  judgeFloorPreset,
   normalizeQuestionKey,
   starterFeedsGap,
   chooseBeatAction,
@@ -176,6 +179,28 @@ Deno.test("proactiveStyle 'offer' makes the presence beat offer-first, not recit
   assert(offer.detail.includes("OFFER-FIRST"), "offer brief invites, not recites");
   assert(/NEVER recite/.test(offer.detail), "offer brief forbids reciting facts at the shopper");
   assert(!offer.detail.includes("GIVE FIRST"), "offer brief is not the expertise brief");
+});
+
+Deno.test("classifyJudgeReason: mirrors the report ladder (inventorying before invented)", () => {
+  assertEq(classifyJudgeReason("pre-filter: unrenderable plumbing token {{tool:x}}"), "prefilter", "prefilter prefix wins");
+  assertEq(classifyJudgeReason("INVENTORIES the shopper — recites stored data"), "inventorying", "inventor beats the 'invent' substring");
+  assertEq(classifyJudgeReason("reads records aloud from the house files"), "inventorying", "reading records aloud is inventorying");
+  assertEq(classifyJudgeReason("invents a 10% discount the house never offered"), "invented", "invented commerce");
+  assertEq(classifyJudgeReason("narrates its own sign-in mechanics"), "plumbing", "plumbing leak");
+  assertEq(classifyJudgeReason("contradicts the house rules on pricing"), "house_rules", "house rules");
+  assertEq(classifyJudgeReason("an unsolicited question mid-read"), "etiquette", "etiquette");
+  assertEq(classifyJudgeReason("something else entirely"), "other", "fallthrough");
+});
+
+Deno.test("judgeFloorAllows: block by default; only an explicit allow relaxes; prefilter never", () => {
+  assert(!judgeFloorAllows("invented", null), "no config = block");
+  assert(!judgeFloorAllows("invented", { invented: "block" }), "explicit block = block");
+  assert(judgeFloorAllows("invented", { invented: "allow" }), "explicit allow = allow");
+  assert(!judgeFloorAllows("prefilter", { prefilter: "allow" }), "prefilter can never be allowed");
+  const facts = judgeFloorPreset("facts_only");
+  assert(judgeFloorAllows("etiquette", facts), "facts_only lets etiquette through");
+  assert(!judgeFloorAllows("invented", facts), "facts_only still blocks invented");
+  assert(!judgeFloorAllows("inventorying", judgeFloorPreset("standard")), "standard blocks everything");
 });
 
 Deno.test("composeGapSkeleton: only the visitors' questions and a blank — no room to invent", () => {

@@ -2678,6 +2678,24 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <section class="card">
         <div class="card-head"><h3>The coach&#8217;s drafts &amp; the weekly digest</h3><span class="micro">nothing applies until you enable it</span></div>
         <div id="jc-drafts"></div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hairline-dim);">
+          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:2px;">YOUR STANDARDS FLOOR</div>
+          <p class="note" style="margin:0 0 10px;">The review judge blocks a proactive line when it crosses one of these lines. You decide which are hard blocks and which the concierge may cross — a crossed line still <strong>speaks</strong>, and still shows here as “let through by your floor,” so you keep control without going blind. Presets set them all at once; adjust any row below.</p>
+          <div class="cal-frow" style="align-items:center;">
+            <label class="micro">Preset</label>
+            <select id="jc-floor-preset" title="Strict blocks everything the judge flags. Standard is the house default. Facts-only keeps the honesty lines hard (no invented offers, no reading records aloud, no breaking your rules) but lets softer style/etiquette lines through.">
+              <option value="standard">Standard — block what the judge flags</option>
+              <option value="strict">Strict — block everything, no exceptions</option>
+              <option value="facts_only">Facts-only — hard on honesty, easy on style</option>
+              <option value="custom">Custom — set each below</option>
+            </select>
+          </div>
+          <div id="jc-floor" style="margin-top:10px;"></div>
+          <div class="cal-frow" style="margin-top:10px;">
+            <button id="jc-floor-save" class="btn ghost" type="button" title="Saves your floor, versioned like every setting. It takes effect on the next proactive line.">Save the floor</button>
+            <span id="jc-floor-note" class="micro" style="opacity:.7;"></span>
+          </div>
+        </div>
         <div class="cal-frow" style="margin-top:14px;">
           <input id="jc-rules" placeholder="Amend the judge in your own words — e.g. saying a number is on file is fine; only reading digits aloud is not."
             style="flex:1 1 340px;min-width:220px;">
@@ -10333,7 +10351,8 @@ async function loadJudge() {
     const chip = (n, lab) => '<span><span style="font-family:var(--cal-disp,Georgia,serif);font-size:26px;">' +
       (n || 0) + '</span><br><span class="micro">' + lab + '</span></span>';
     $('jc-strip').innerHTML = chip(t.spoke, 'spoke') + chip(t.held, 'held') + chip(t.vetoed, 'blocked') +
-      chip(t.prefilter, 'caught in code') + chip(t.redraft_ok, 'redrafts saved') + chip(t.redraft_blocked, 'blocked twice');
+      chip(t.prefilter, 'caught in code') + chip(t.redraft_ok, 'redrafts saved') + chip(t.redraft_blocked, 'blocked twice') +
+      (t.floored ? chip(t.floored, 'let through by your floor') : '');
     const sub = $('jc-sub');
     if (sub) {
       const rate = (t.spoke || 0) + (t.vetoed || 0) > 0
@@ -10404,6 +10423,80 @@ async function loadJudge() {
         jVal = ((jc2.data && jc2.data[0]) || {}).value || {};
       } catch (e2) { /* absent config reads as no amendments */ }
       if (document.activeElement !== jrIn) jrIn.value = typeof jVal.rules === 'string' ? jVal.rules : '';
+      // ── the standards floor: per-family Block/Allow, with presets ──────────
+      const FLOOR_FAMS = [
+        ['invented', 'Invented offers or claims', 'A discount, price, guarantee, or fact the house never authorized.'],
+        ['inventorying', 'Reciting the shopper back', 'Tallying their stored data, or reading a phone/email/address aloud.'],
+        ['plumbing', 'Process talk', 'Mentioning prompts, tools, sign-in mechanics, or narrating its own outreach.'],
+        ['house_rules', 'Against your written rules', 'Anything your own amendment or house rules forbid.'],
+        ['etiquette', 'Unsolicited questions', 'Asking something new when the moment called for restraint.'],
+        ['other', 'Anything else the judge flags', 'Uncategorized blocks.']
+      ];
+      const fpSel = $('jc-floor-preset'); const fWrap = $('jc-floor');
+      const fpNote = $('jc-floor-note'); const fpBtn = $('jc-floor-save');
+      const PRESETS = {
+        strict: {}, standard: {},
+        facts_only: { etiquette: 'allow', plumbing: 'allow', other: 'allow' }
+      };
+      const readFloor = () => (jVal.floor && typeof jVal.floor === 'object') ? jVal.floor : {};
+      const matchPreset = (fl) => {
+        for (const p of ['strict', 'standard', 'facts_only']) {
+          const want = PRESETS[p];
+          const ok = FLOOR_FAMS.every(function (f) {
+            const v = fl[f[0]] === 'allow' ? 'allow' : 'block';
+            return v === (want[f[0]] === 'allow' ? 'allow' : 'block');
+          });
+          if (ok) return p === 'strict' ? 'standard' : p; // strict≡standard here; prefer 'standard'
+        }
+        return 'custom';
+      };
+      const drawFloor = function () {
+        if (!fWrap) return;
+        const fl = readFloor();
+        fWrap.textContent = '';
+        FLOOR_FAMS.forEach(function (f) {
+          const row = el('div', 'cal-frow');
+          row.style.cssText = 'align-items:center;gap:10px;margin:4px 0;';
+          const cb = el('input'); cb.type = 'checkbox'; cb.id = 'jcf-' + f[0];
+          cb.checked = fl[f[0]] === 'allow';
+          cb.addEventListener('change', function () {
+            jVal.floor = jVal.floor || {};
+            jVal.floor[f[0]] = cb.checked ? 'allow' : 'block';
+            if (fpSel) fpSel.value = matchPreset(jVal.floor);
+          });
+          const lab = el('label', 'micro'); lab.htmlFor = cb.id;
+          lab.appendChild(el('strong', '', cb.checked ? 'Allow' : 'Block'));
+          lab.appendChild(document.createTextNode(' · ' + f[1]));
+          lab.title = f[2];
+          cb.addEventListener('change', function () { lab.firstChild.textContent = cb.checked ? 'Allow' : 'Block'; });
+          row.appendChild(cb); row.appendChild(lab);
+          fWrap.appendChild(row);
+        });
+      };
+      if (fpSel) {
+        fpSel.value = matchPreset(readFloor());
+        fpSel.addEventListener('change', function () {
+          if (fpSel.value === 'custom') return;
+          const want = PRESETS[fpSel.value] || {};
+          jVal.floor = {};
+          FLOOR_FAMS.forEach(function (f) { jVal.floor[f[0]] = want[f[0]] === 'allow' ? 'allow' : 'block'; });
+          drawFloor();
+        });
+      }
+      drawFloor();
+      if (fpBtn) fpBtn.onclick = async () => {
+        try {
+          const v4 = Object.assign({}, jVal, { floor: jVal.floor || {} });
+          const u4 = await sb.from('concierge_config').upsert(
+            [{ key: 'judge', value: v4, updated_at: nowIso() }], { onConflict: 'key' });
+          if (u4.error) throw new Error(u4.error.message);
+          jVal = v4;
+          const allowed = FLOOR_FAMS.filter(function (f) { return (v4.floor || {})[f[0]] === 'allow'; });
+          if (fpNote) fpNote.textContent = allowed.length
+            ? 'Saved — the concierge may now cross: ' + allowed.map(function (f) { return f[1].toLowerCase(); }).join(', ') + '.'
+            : 'Saved — every line the judge flags stays blocked.';
+        } catch (e4) { if (fpNote) { fpNote.textContent = 'Could not save — ' + (e4 && e4.message ? e4.message : e4); fpNote.className = 'micro warn'; } }
+      };
       jrBtn.onclick = async () => {
         try {
           const v3 = Object.assign({}, jVal, { rules: (jrIn.value || '').trim() });

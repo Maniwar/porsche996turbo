@@ -2528,7 +2528,8 @@ begin
     select action, coalesce(payload->>'kind', '?') as kind,
            coalesce(payload->>'reason', result, '') as reason,
            coalesce(payload->>'line', '') as line,
-           (payload->>'redraft') = 'true' as redraft, created_at
+           (payload->>'redraft') = 'true' as redraft,
+           (payload ? 'floored') as floored, created_at
       from public.concierge_actions
      where created_at > now() - make_interval(days => v_days) and action like 'beat_%'),
   classed as (
@@ -2573,7 +2574,8 @@ begin
       'vetoed', count(*) filter (where action = 'beat_veto'),
       'prefilter', count(*) filter (where action = 'beat_veto' and reason like 'pre-filter:%'),
       'redraft_ok', count(*) filter (where action = 'beat_action' and redraft),
-      'redraft_blocked', count(*) filter (where action = 'beat_veto' and redraft)) from beats),
+      'redraft_blocked', count(*) filter (where action = 'beat_veto' and redraft),
+      'floored', count(*) filter (where action = 'beat_action' and floored)) from beats),
     'kinds', (select coalesce(jsonb_agg(jsonb_build_object(
         'kind', kind, 'spoke', spoke, 'held', held, 'vetoed', vetoed) order by vetoed desc), '[]'::jsonb) from kinds),
     'classes', (select coalesce(jsonb_agg(jsonb_build_object(

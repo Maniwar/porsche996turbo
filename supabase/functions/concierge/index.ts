@@ -34,7 +34,9 @@ import {
   type BeatDecision,
   chooseBeatAction,
   starterFeedsGap,
+  classifyJudgeReason,
   composeGapSkeleton,
+  judgeFloorAllows,
   normalizeQuestionKey,
   extractSubjects,
   hasPendingAsk,
@@ -3589,7 +3591,20 @@ async function judgeBeatLine(
   houseRules = "",
   recentUser = "",
   factsOnFile = "",
-): Promise<{ veto: boolean; reason: string }> {
+  floor: Record<string, unknown> | null = null,
+): Promise<{ veto: boolean; reason: string; floored?: string }> {
+  // The floor never relaxes the mechanical pre-filter (a malformed token
+  // can't be "allowed"), so the two pre-filter returns below are untouched.
+  const applyFloor = (verdict: { veto: boolean; reason: string }): { veto: boolean; reason: string; floored?: string } => {
+    if (!verdict.veto || !floor) return verdict;
+    const fam = classifyJudgeReason(verdict.reason);
+    if (judgeFloorAllows(fam, floor)) {
+      // the merchant chose to allow this family — release it, but remember
+      // WHY so the caller records "allowed by your floor" (never a silent pass)
+      return { veto: false, reason: verdict.reason, floored: fam };
+    }
+    return verdict;
+  };
   // Deterministic pre-filter (JUDGE_COACH_LOOP.md tier 0): the most-repeated
   // live veto cluster is mechanical plumbing — {{action:...}} tokens and
   // sign-in process narration leaking into outreach. Catch it in code before
@@ -3678,7 +3693,7 @@ async function judgeBeatLine(
     // deno-lint-ignore no-explicit-any
     const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "verdict");
     if (!tool || typeof tool.input?.pass !== "boolean") return { veto: false, reason: "" };
-    return { veto: tool.input.pass === false, reason: String(tool.input.reason || "").slice(0, 160) };
+    return applyFloor({ veto: tool.input.pass === false, reason: String(tool.input.reason || "").slice(0, 160) });
   } catch {
     return { veto: false, reason: "" };
   }
@@ -6910,11 +6925,23 @@ async function handleChatPost(req: Request): Promise<Response> {
               const recentU = (lastUserJ && typeof lastUserJ.content === "string") ? maskContacts(lastUserJ.content) : "";
               const jk = isNudge ? "nudge" : "opener";
               const rules = houseHonestyRules(jcfg) + extraJudgeRules(jcfg as Record<string, unknown>);
+              // The merchant's floor (Judge & coach → House rules): which
+              // defect families they choose to allow through. Below-floor
+              // lines speak but are still audited (control without blindness).
+              const jconf = (jcfg?.judge ?? null) as Record<string, unknown> | null;
+              const floor = (jconf && typeof jconf.floor === "object" ? jconf.floor : null) as Record<string, unknown> | null;
               // The judge grades against the SAME register truth the drafter
               // was handed — a real callback or visit is never an "invention".
               const beatFacts = [bookingCtx, editionCtx]
                 .filter((s) => s && String(s).trim()).join("\n").slice(0, 1200);
-              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts);
+              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts, floor);
+              if (v.floored && beatAudit) {
+                // the judge WOULD have blocked this, but the merchant's floor
+                // let the family through — record it so the tab shows what the
+                // floor is letting speak (target: they see it and decide).
+                beatAudit.floored = v.floored;
+                beatAudit.flooredReason = v.reason;
+              }
               if (v.veto) {
                 // One bounded redraft (approved budget: exactly one) — the block
                 // becomes a lesson instead of a silent death. Judged again; a
@@ -6928,8 +6955,9 @@ async function handleChatPost(req: Request): Promise<Response> {
                   "Draft ONE different line that fully avoids this defect — or hold. Never mention the review.");
                 redrafted = true;
                 if (second.speak && second.text) {
-                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU, beatFacts);
+                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU, beatFacts, floor);
                   text = second.text;
+                  if (v2.floored && beatAudit) { beatAudit.floored = v2.floored; beatAudit.flooredReason = v2.reason; }
                   if (v2.veto) vetoReason = v2.reason || "vetoed again after redraft";
                 } else {
                   vetoReason = firstKill.reason;

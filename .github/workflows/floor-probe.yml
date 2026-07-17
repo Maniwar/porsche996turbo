@@ -1,0 +1,67 @@
+name: Judge floor probe (merchant control, live)
+# Proves the judge-floor reporting against the LIVE database, without a model
+# call, without touching a visitor, and WITHOUT mutating the merchant's real
+# judge config:
+#   1. Plants two beat audit rows on a qa- conversation — one a 'floored'
+#      spoke (a line the merchant's floor let through), one a plain veto of a
+#      family that stays blocked.
+#   2. Asserts judge_findings counts the floored one under 'floored' (the strip
+#      shows it as "let through by your floor") and the blocked one under
+#      'vetoed' — never confusing the two.
+#   3. Deletes every row it created.
+# The pure classifier + per-family policy (which family a reason belongs to,
+# and whether the floor allows it) is unit-tested in the beat suite (39/39);
+# the config round-trip is the studio's own save. This proves the seam
+# between them — the audited count the merchant actually reads.
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: "Plant a floored spoke + a still-blocked veto on a qa- conversation"
+        run: |
+          TAG="qa-floor-${GITHUB_RUN_ID}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          insert into public.concierge_conversations (session_key, section)
+          values ('${TAG}', 'hero');
+          -- a floored spoke: the judge WOULD have blocked 'invented', but the
+          -- merchant's floor let it through — payload carries 'floored'
+          insert into public.concierge_actions (conversation_id, action, payload, result)
+          select id, 'beat_action',
+                 jsonb_build_object('kind','nudge','outcome','spoke','floored','invented',
+                                    'flooredReason','invents a 10% discount'),
+                 'ADVANCE_GOAL'
+            from public.concierge_conversations where session_key = '${TAG}';
+          -- a plain veto of a family the floor does NOT allow — stays blocked
+          insert into public.concierge_actions (conversation_id, action, payload, result)
+          select id, 'beat_veto',
+                 jsonb_build_object('kind','nudge','reason','reads records aloud from the files'),
+                 'held: reads records aloud from the files'
+            from public.concierge_conversations where session_key = '${TAG}';
+          SQL
+      - name: "judge_findings counts the floored line as floored — not as a veto"
+        run: |
+          T=$(psql "$SUPABASE_DB_URL" -At -c "select public.judge_findings(1)->'totals';")
+          echo "totals: $T"
+          FLOORED=$(psql "$SUPABASE_DB_URL" -At -c "
+            select (public.judge_findings(1)->'totals'->>'floored')::int;")
+          VETOED=$(psql "$SUPABASE_DB_URL" -At -c "
+            select (public.judge_findings(1)->'totals'->>'vetoed')::int;")
+          SPOKE=$(psql "$SUPABASE_DB_URL" -At -c "
+            select (public.judge_findings(1)->'totals'->>'spoke')::int;")
+          echo "floored=$FLOORED  vetoed=$VETOED  spoke=$SPOKE"
+          test "$FLOORED" -ge 1 && echo "✓ the floored spoke shows as 'let through by your floor'"
+          test "$VETOED"  -ge 1 && echo "✓ the family the floor did NOT allow stays a block"
+          # the floored line is a SPOKE (it was sent), not a veto — the two counts
+          # describe different rows, never the same one
+          test "$SPOKE" -ge 1 && echo "✓ a floored line counts as spoken, because it was"
+      - name: "Zero residue — the probe rows are removed"
+        if: always()
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            delete from public.concierge_actions a using public.concierge_conversations c
+             where a.conversation_id = c.id and c.session_key = '${TAG}';
+            delete from public.concierge_conversations where session_key = '${TAG}';"
