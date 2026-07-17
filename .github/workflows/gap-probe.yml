@@ -32,8 +32,8 @@ jobs:
           echo "RID=$RID" >> "$GITHUB_ENV"
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
           insert into public.concierge_flags (question, answer, reason) values
-            ('What is the probe certification number for run ${RID}?', 'I do not have that detail.', 'knowledge_gap'),
-            ('Where can I see the probe certification for run ${RID}?', 'I do not have that detail.', 'knowledge_gap');
+            ('Can you help arrange shipping to another state?', 'I do not have that detail. [qa-probe-${RID}]', 'knowledge_gap'),
+            ('What are my options for out-of-state delivery?', 'I do not have that detail. [qa-probe-${RID}]', 'knowledge_gap');
           insert into public.concierge_cache
             (question, answer_md, embedding, model, pinned, stale, hand_edited, norm_key, enabled)
           values ('QA gap probe ${RID}?', 'Probe poke answer.',
@@ -55,11 +55,11 @@ jobs:
           for i in $(seq 1 8); do
             NLINK=$(psql "$SUPABASE_DB_URL" -At -c "
               select count(*) from public.concierge_flags
-               where question like '%${RID}%' and kb_slug is not null;")
+               where answer like '%qa-probe-${RID}%' and kb_slug is not null;")
             NDRAFT=$(psql "$SUPABASE_DB_URL" -At -c "
               select count(distinct k.slug) from public.concierge_kb k
                 join public.concierge_flags f on f.kb_slug = k.slug
-               where f.question like '%${RID}%' and k.origin = 'gap' and not k.enabled;")
+               where f.answer like '%qa-probe-${RID}%' and k.origin = 'gap' and not k.enabled;")
             CLAIM=$(psql "$SUPABASE_DB_URL" -At -c "
               select coalesce(max(to_char(computed_at at time zone 'utc', 'HH24:MI:SS')), 'no claim row')
                 from public.concierge_insights where kind = 'gap_draft';")
@@ -79,7 +79,7 @@ jobs:
                 from public.concierge_insights where kind = 'gap_draft';" -P title='claim row (2000-01-01 = never claimed since aging: the kick never fired)'
             psql "$SUPABASE_DB_URL" -c "
               select id, left(question, 60) as question, reason, resolved, coalesce(kb_slug, '') as kb_slug
-                from public.concierge_flags where question like '%${RID}%';" -P title='the planted QA gaps'
+                from public.concierge_flags where answer like '%qa-probe-${RID}%';" -P title='the planted QA gaps'
             psql "$SUPABASE_DB_URL" -c "
               select purpose, model, created_at at time zone 'utc' as at_utc
                 from public.concierge_llm_usage where purpose = 'gap-draft'
@@ -94,7 +94,7 @@ jobs:
               from public.concierge_kb k
              where k.origin = 'gap'
                and k.slug in (select kb_slug from public.concierge_flags
-                               where question like '%${RID}%' and kb_slug is not null);" \
+                               where answer like '%qa-probe-${RID}%' and kb_slug is not null);" \
             -P title='gap draft (born disabled — the merchant completes and enables)'
           psql "$SUPABASE_DB_URL" -c "
             select payload->>'drafted' as drafted, payload->>'skeletons' as skeletons,
@@ -108,7 +108,7 @@ jobs:
             update public.concierge_kb set enabled = true
              where origin = 'gap'
                and slug in (select kb_slug from public.concierge_flags
-                             where question like '%${RID}%' and kb_slug is not null);
+                             where answer like '%qa-probe-${RID}%' and kb_slug is not null);
             update public.concierge_insights set computed_at = '2000-01-01'
              where kind = 'gap_draft';"
           curl -s -o /dev/null --max-time 60 \
@@ -119,7 +119,7 @@ jobs:
           for i in $(seq 1 4); do
             NRES=$(psql "$SUPABASE_DB_URL" -At -c "
               select count(*) from public.concierge_flags
-               where question like '%${RID}%' and resolved;")
+               where answer like '%qa-probe-${RID}%' and resolved;")
             echo "poll $i — cleared gaps: $NRES/2"
             [ "$NRES" = "2" ] && break
             sleep 30
@@ -132,7 +132,7 @@ jobs:
               with c as (update public.concierge_flags set resolved = true
                           where resolved = false
                             and kb_slug in (select kb_slug from public.concierge_flags
-                                             where question like '%${RID}%' and kb_slug is not null)
+                                             where answer like '%qa-probe-${RID}%' and kb_slug is not null)
                           returning 1)
               select count(*) from c;")
             echo "studio-path cleared: $NRES"
@@ -145,8 +145,12 @@ jobs:
           delete from public.concierge_kb
            where origin = 'gap'
              and slug in (select kb_slug from public.concierge_flags
-                           where question like '%${RID}%' and kb_slug is not null);
-          delete from public.concierge_flags where question like '%${RID}%';
+                           where answer like '%qa-probe-${RID}%' and kb_slug is not null);
+          update public.concierge_flags set kb_slug = null
+           where kb_slug in (select kb_slug from public.concierge_flags
+                              where answer like '%qa-probe-${RID}%' and kb_slug is not null)
+             and answer not like '%qa-probe-${RID}%';
+          delete from public.concierge_flags where answer like '%qa-probe-${RID}%';
           delete from public.concierge_cache where pinned and norm_key = '${NK}';
           with cids as (select id from public.concierge_conversations where session_key = '${SES}')
           , d1 as (delete from public.concierge_actions   where conversation_id in (select id from cids) returning 1)
