@@ -2657,58 +2657,72 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <div class="panel-head">
         <span class="micro">The reach-out review, closed loop</span>
         <h2>Judge &amp; coach</h2>
-        <p class="note" style="max-width:760px;">Before the concierge speaks unprompted, a coach briefs the line and a
-          judge reviews it. This page shows what got through, what was blocked and why, whether blocked drafts are
-          <b>learning</b> (each block earns one redraft with the reason attached), and everything the house has flagged —
-          repeated unanswerable questions, system alerts, and your own notes below.</p>
+        <p class="note" style="max-width:760px;">When the concierge speaks up on its own, a coach briefs the line and a reviewer checks it before the visitor sees it. This page reads top to bottom: <strong>how the review is going</strong>, <strong>why lines were blocked</strong>, <strong>your controls</strong> over how strict it is, the <strong>coach's self-healing</strong> drafts and weekly email, and everything that <strong>needs your attention</strong>.</p>
       </div>
+      <!-- CARD 1 — the scoreboard: how the review is going at a glance -->
       <section class="card">
-        <div class="card-head"><h3>The last 14 days</h3><span class="micro" id="jc-sub"></span></div>
+        <div class="card-head"><h3>How the review is going</h3><span class="micro" id="jc-sub">the last 14 days</span></div>
         <div id="jc-strip" class="cal-frow" style="gap:22px;flex-wrap:wrap;"></div>
         <div id="jc-kinds" style="margin-top:16px;overflow-x:auto;"></div>
       </section>
+
+      <!-- CARD 2 — the detail behind the scoreboard -->
       <section class="card">
-        <div class="card-head"><h3>Why lines were blocked</h3><span class="micro">defect families, freshest first</span></div>
+        <div class="card-head"><h3>Why lines were blocked</h3><span class="micro">grouped by kind, freshest first</span></div>
         <div id="jc-classes"></div>
       </section>
+
+      <!-- CARD 3 — YOUR CONTROLS: the two dials that steer the concierge's own voice -->
       <section class="card">
-        <div class="card-head"><h3>The coach&#8217;s drafts &amp; the weekly digest</h3><span class="micro">nothing applies until you enable it</span></div>
+        <div class="card-head"><h3>What the concierge may say on its own</h3><span class="micro">your controls · most shops leave these alone</span></div>
+        <p class="note" style="margin:0 0 12px;">When the concierge speaks up <strong>unprompted</strong> (a nudge, a check-in), a reviewer reads the line first and blocks anything below. Here you set how strict that review is. An <strong>allowed</strong> line still gets sent <em>and</em> still shows in the scoreboard above as “let through,” so nothing happens behind your back.</p>
+
+        <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:6px;">HOW STRICT SHOULD THE REVIEW BE?</div>
+        <div class="cal-frow" style="align-items:center;">
+          <label class="micro">Preset</label>
+          <select id="jc-floor-preset" title="Strict blocks everything the reviewer catches. Standard is the house default. Facts-only keeps the honesty lines hard (no invented offers, no reading records aloud, no breaking your rules) but lets softer style and courtesy lines through.">
+            <option value="standard">Standard — the house default</option>
+            <option value="strict">Strict — block everything, no exceptions</option>
+            <option value="facts_only">Facts-only — hard on honesty, easy on style</option>
+            <option value="custom">Custom — set each line below</option>
+          </select>
+          <span class="micro" style="opacity:.6;">Most shops leave this at Standard.</span>
+        </div>
+        <div id="jc-floor" style="margin-top:12px;"></div>
+        <div class="cal-frow" style="margin-top:12px;">
+          <button id="jc-floor-save" class="btn ghost" type="button" title="Saves your setting, versioned like every setting. It takes effect on the concierge's next unprompted line.">Save these settings</button>
+          <span id="jc-floor-note" class="micro" style="opacity:.7;"></span>
+        </div>
+
+        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline-dim);">
+          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:6px;">A RULE IN YOUR OWN WORDS (OPTIONAL)</div>
+          <p class="note" style="margin:0 0 8px;opacity:.75;">One or two sentences added to the reviewer's checklist on every line — your pen on its standards. Clear the box and save to withdraw it.</p>
+          <div class="cal-frow">
+            <input id="jc-rules" placeholder="e.g. saying a number is on file is fine; only reading the digits aloud is not."
+              style="flex:1 1 340px;min-width:220px;">
+            <button id="jc-rules-save" class="btn ghost" type="button" title="Appended to the reviewer's house rules on every review, versioned like every setting. Clear the box and save to withdraw it.">Save my rule</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CARD 4 — the coach's self-healing + the weekly email -->
+      <section class="card">
+        <div class="card-head"><h3>The coach&#8217;s drafts &amp; the weekly email</h3><span class="micro">nothing applies until you enable it</span></div>
+        <p class="note" style="margin:0 0 12px;">When a defect keeps recurring, the coach drafts a short procedure to prevent it — the drafts arrive <strong>disabled</strong> for your review. The owner also gets a plain-language summary by email once a week, automatically.</p>
         <div id="jc-drafts"></div>
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hairline-dim);">
-          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:2px;">WHAT THE CONCIERGE MAY SAY ON ITS OWN</div>
-          <p class="note" style="margin:0 0 4px;">When the concierge speaks up on its own, a reviewer checks the line first and <strong>blocks</strong> anything on this list. You decide which stay blocked and which the concierge is allowed to say — an allowed line still gets sent, and still appears in the numbers above as “let through,” so nothing happens behind your back.</p>
-          <p class="note" style="margin:0 0 10px;opacity:.75;"><em>Most shops leave this at <strong>Standard</strong> — you only need it if you want the concierge freer or stricter than the default.</em></p>
-          <div class="cal-frow" style="align-items:center;">
-            <label class="micro">Preset</label>
-            <select id="jc-floor-preset" title="Strict blocks everything the reviewer catches. Standard is the house default. Facts-only keeps the honesty lines hard (no invented offers, no reading records aloud, no breaking your rules) but lets softer style and courtesy lines through.">
-              <option value="standard">Standard — block what the judge flags</option>
-              <option value="strict">Strict — block everything, no exceptions</option>
-              <option value="facts_only">Facts-only — hard on honesty, easy on style</option>
-              <option value="custom">Custom — set each below</option>
-            </select>
-          </div>
-          <div id="jc-floor" style="margin-top:10px;"></div>
-          <div class="cal-frow" style="margin-top:10px;">
-            <button id="jc-floor-save" class="btn ghost" type="button" title="Saves your floor, versioned like every setting. It takes effect on the next proactive line.">Save the floor</button>
-            <span id="jc-floor-note" class="micro" style="opacity:.7;"></span>
-          </div>
-        </div>
         <div class="cal-frow" style="margin-top:14px;">
-          <input id="jc-rules" placeholder="Amend the judge in your own words — e.g. saying a number is on file is fine; only reading digits aloud is not."
-            style="flex:1 1 340px;min-width:220px;">
-          <button id="jc-rules-save" class="btn ghost" type="button" title="One or two sentences appended to the judge's house rules on every review — your pen on its standards, versioned like every setting. Clear the box and save to withdraw them.">Amend the judge</button>
-        </div>
-        <div class="cal-frow" style="margin-top:14px;">
-          <button id="jc-digest" class="btn ghost" type="button" title="The owner gets this digest by email once a week, automatically. This previews it without sending.">Preview the weekly digest</button>
-          <button id="jc-digest-send" class="btn ghost" type="button" title="Emails the digest to the owner right now, and lets the coach draft any due procedures (they arrive disabled).">Email it now</button>
+          <button id="jc-digest" class="btn ghost" type="button" title="The owner gets this digest by email once a week, automatically. This previews it without sending.">Preview the weekly email</button>
+          <button id="jc-digest-send" class="btn ghost" type="button" title="Emails the digest to the owner right now, and lets the coach draft any due procedures (they arrive disabled).">Send it now</button>
         </div>
         <div id="jc-digest-out" class="micro" style="margin-top:10px;white-space:pre-wrap;text-transform:none;letter-spacing:0;"></div>
       </section>
+
+      <!-- CARD 5 — the to-do queue: gaps, alerts, your notes -->
       <section class="card">
-        <div class="card-head"><h3>Findings ledger</h3><span class="micro">repeated gaps · system alerts · your notes</span></div>
+        <div class="card-head"><h3>Needs your attention</h3><span class="micro">repeated gaps · system alerts · your notes</span></div>
         <div id="jc-gaps"></div>
         <div class="cal-frow" style="margin-top:14px;">
-          <input id="jc-fb" placeholder="Something unclear or off? Tell the house — it lands in this ledger."
+          <input id="jc-fb" placeholder="Something unclear or off? Tell the house — it lands here."
             style="flex:1 1 340px;min-width:220px;">
           <button id="jc-fb-send" class="btn ghost" type="button">Send</button>
         </div>
