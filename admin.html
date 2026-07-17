@@ -2156,11 +2156,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <!-- Metrics live in ONE place — the Conversion tab — so numbers never
            disagree between views. This tab is the working floor: find, read,
            grade, and act on transcripts. -->
-      <p class="note" style="margin-bottom:18px;">Conversations are listed by their <strong>latest
-        activity</strong>, newest first; the date filter finds every case that was <em>active</em> in that
-        window. A case the concierge has closed (warm goodbye, survey offered) shows <strong>case
-        closed</strong> — the same visitor's next message opens a fresh one. Revenue, conversion, and
-        funnel metrics live on the <a href="#" id="convo-to-conversion">Conversion</a> tab.</p>
+      <p class="note" style="margin-bottom:18px;">A conversation <strong>begins</strong> when a visitor first writes and <strong>ends</strong> when the concierge gives its warm goodbye (with the rating question, when allowed) or the visitor closes the chat. After it ends, the same visitor's next message starts a <strong>fresh</strong> conversation. The list is ordered by <strong>latest activity</strong>, newest first; the date filter finds every conversation <em>active</em> in that window, and a finished one shows <strong>case closed</strong>. Revenue, conversion, and funnel metrics live on the <a href="#" id="convo-to-conversion">Conversion</a> tab.</p>
 
       <div class="conv-toolbar">
         <!-- FILTER zone — what to show. Text/date need Apply; the selects filter live. -->
@@ -2679,11 +2675,12 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="card-head"><h3>The coach&#8217;s drafts &amp; the weekly digest</h3><span class="micro">nothing applies until you enable it</span></div>
         <div id="jc-drafts"></div>
         <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--hairline-dim);">
-          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:2px;">YOUR STANDARDS FLOOR</div>
-          <p class="note" style="margin:0 0 10px;">The review judge blocks a proactive line when it crosses one of these lines. You decide which are hard blocks and which the concierge may cross — a crossed line still <strong>speaks</strong>, and still shows here as “let through by your floor,” so you keep control without going blind. Presets set them all at once; adjust any row below.</p>
+          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:2px;">WHAT THE CONCIERGE MAY SAY ON ITS OWN</div>
+          <p class="note" style="margin:0 0 4px;">When the concierge speaks up on its own, a reviewer checks the line first and <strong>blocks</strong> anything on this list. You decide which stay blocked and which the concierge is allowed to say — an allowed line still gets sent, and still appears in the numbers above as “let through,” so nothing happens behind your back.</p>
+          <p class="note" style="margin:0 0 10px;opacity:.75;"><em>Most shops leave this at <strong>Standard</strong> — you only need it if you want the concierge freer or stricter than the default.</em></p>
           <div class="cal-frow" style="align-items:center;">
             <label class="micro">Preset</label>
-            <select id="jc-floor-preset" title="Strict blocks everything the judge flags. Standard is the house default. Facts-only keeps the honesty lines hard (no invented offers, no reading records aloud, no breaking your rules) but lets softer style/etiquette lines through.">
+            <select id="jc-floor-preset" title="Strict blocks everything the reviewer catches. Standard is the house default. Facts-only keeps the honesty lines hard (no invented offers, no reading records aloud, no breaking your rules) but lets softer style and courtesy lines through.">
               <option value="standard">Standard — block what the judge flags</option>
               <option value="strict">Strict — block everything, no exceptions</option>
               <option value="facts_only">Facts-only — hard on honesty, easy on style</option>
@@ -10430,7 +10427,7 @@ async function loadJudge() {
         ['plumbing', 'Process talk', 'Mentioning prompts, tools, sign-in mechanics, or narrating its own outreach.'],
         ['house_rules', 'Against your written rules', 'Anything your own amendment or house rules forbid.'],
         ['etiquette', 'Unsolicited questions', 'Asking something new when the moment called for restraint.'],
-        ['other', 'Anything else the judge flags', 'Uncategorized blocks.']
+        ['other', 'Anything else the reviewer catches', 'Everything not in the rows above.']
       ];
       const fpSel = $('jc-floor-preset'); const fWrap = $('jc-floor');
       const fpNote = $('jc-floor-note'); const fpBtn = $('jc-floor-save');
@@ -10456,20 +10453,26 @@ async function loadJudge() {
         fWrap.textContent = '';
         FLOOR_FAMS.forEach(function (f) {
           const row = el('div', 'cal-frow');
-          row.style.cssText = 'align-items:center;gap:10px;margin:4px 0;';
-          const cb = el('input'); cb.type = 'checkbox'; cb.id = 'jcf-' + f[0];
-          cb.checked = fl[f[0]] === 'allow';
-          cb.addEventListener('change', function () {
+          row.style.cssText = 'align-items:center;gap:10px;margin:6px 0;';
+          // an explicit Block/Allow select — Block is the default and reads as
+          // protection; never a checkbox whose checked-state means "allow"
+          const sel = el('select'); sel.id = 'jcf-' + f[0];
+          sel.style.cssText = 'min-width:96px;';
+          const oBlock = el('option', '', 'Block'); oBlock.value = 'block';
+          const oAllow = el('option', '', 'Allow'); oAllow.value = 'allow';
+          sel.appendChild(oBlock); sel.appendChild(oAllow);
+          sel.value = fl[f[0]] === 'allow' ? 'allow' : 'block';
+          sel.addEventListener('change', function () {
             jVal.floor = jVal.floor || {};
-            jVal.floor[f[0]] = cb.checked ? 'allow' : 'block';
+            jVal.floor[f[0]] = sel.value === 'allow' ? 'allow' : 'block';
             if (fpSel) fpSel.value = matchPreset(jVal.floor);
           });
-          const lab = el('label', 'micro'); lab.htmlFor = cb.id;
-          lab.appendChild(el('strong', '', cb.checked ? 'Allow' : 'Block'));
-          lab.appendChild(document.createTextNode(' · ' + f[1]));
+          const lab = el('span', 'micro');
+          lab.appendChild(document.createTextNode(f[1]));
           lab.title = f[2];
-          cb.addEventListener('change', function () { lab.firstChild.textContent = cb.checked ? 'Allow' : 'Block'; });
-          row.appendChild(cb); row.appendChild(lab);
+          const hint = el('span', 'micro'); hint.textContent = f[2];
+          hint.style.cssText = 'opacity:.55;flex:1 1 240px;min-width:180px;';
+          row.appendChild(sel); row.appendChild(lab); row.appendChild(hint);
           fWrap.appendChild(row);
         });
       };
