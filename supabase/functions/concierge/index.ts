@@ -6032,6 +6032,10 @@ async function handleChatPost(req: Request): Promise<Response> {
     }
   } catch { /* the survey never breaks the chat */ }
 
+  // When the wrap-up gate OFFERS, the ask is guaranteed: if the model's
+  // goodbye drops the scale (the snooze send-off is a strong habit), the
+  // stream tail appends the house's question + {{nps}} deterministically.
+  let surveyAskDue: string | null = null;
   // ── The natural-close survey ask (NPS.md §3): "that's all" IS the moment.
   // The wrap-up chip posts context.wrapup=1 and typed farewells match the
   // phrase list, so the ask rides the goodbye reply itself. The beat path
@@ -6096,6 +6100,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               "message was also a wind-down, still put {{action:snooze}} alone on the LAST line, after " +
               "the {{nps}} line.]",
           });
+          surveyAskDue = npsCfgW.question;
           if (!(validated.sessionKey || "").startsWith("qa-")) {
             pgInsert("concierge_actions", {
               conversation_id: cidW, user_id: customer?.id ?? null, email: customer?.email ?? null,
@@ -6714,6 +6719,14 @@ async function handleChatPost(req: Request): Promise<Response> {
         // Mid-stream failure: fall through so the front end still gets a
         // clean [DONE] and the partial reply is logged.
       } finally {
+        // The closing survey is deterministic (NPS.md): the gate offered, so
+        // the scale ships — appended to the stream AND the stored transcript
+        // (identical text in both) when the model's goodbye left it out.
+        if (surveyAskDue && !assistantText.includes("{{nps}}")) {
+          const ask = "\n\n" + surveyAskDue + "\n\n{{nps}}";
+          assistantText += ask;
+          try { controller.enqueue(sseFrame({ t: ask })); } catch { /* consumer gone */ }
+        }
         // Log the assistant turn BEFORE [DONE], then emit the meta event.
         // Logging failures never break the stream — [DONE] is always sent.
         try {
