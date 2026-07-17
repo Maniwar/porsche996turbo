@@ -60,10 +60,32 @@ jobs:
               select count(distinct k.slug) from public.concierge_kb k
                 join public.concierge_flags f on f.kb_slug = k.slug
                where f.question like '%${RID}%' and k.origin = 'gap' and not k.enabled;")
-            echo "poll $i — linked gaps: $NLINK/2 · disabled gap-drafts: $NDRAFT"
+            CLAIM=$(psql "$SUPABASE_DB_URL" -At -c "
+              select coalesce(max(to_char(computed_at at time zone 'utc', 'HH24:MI:SS')), 'no claim row')
+                from public.concierge_insights where kind = 'gap_draft';")
+            echo "poll $i — linked gaps: $NLINK/2 · disabled gap-drafts: $NDRAFT · claim (utc): $CLAIM"
             [ "$NLINK" = "2" ] && [ "$NDRAFT" -ge 1 ] && break
+            # re-poke each round — every tap is a fresh chance to kick the pass
+            curl -s -o /dev/null --max-time 30 \
+              -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+              -d "{\"messages\":[{\"role\":\"user\",\"content\":\"QA gap probe ${RID}?\"}],\"context\":{\"section\":\"hero\"},\"session_key\":\"$SES\"}" \
+              "$FN" || true
             sleep 30
           done
+          if [ "$NLINK" != "2" ] || [ "$NDRAFT" -lt 1 ]; then
+            echo "---- diagnosis: where did the pass stall? ----"
+            psql "$SUPABASE_DB_URL" -c "
+              select kind, computed_at at time zone 'utc' as claimed_utc, left(payload::text, 200) as payload
+                from public.concierge_insights where kind = 'gap_draft';" -P title='claim row (2000-01-01 = never claimed since aging: the kick never fired)'
+            psql "$SUPABASE_DB_URL" -c "
+              select id, left(question, 60) as question, reason, resolved, coalesce(kb_slug, '') as kb_slug
+                from public.concierge_flags where question like '%${RID}%';" -P title='the planted QA gaps'
+            psql "$SUPABASE_DB_URL" -c "
+              select purpose, model, created_at at time zone 'utc' as at_utc
+                from public.concierge_llm_usage where purpose = 'gap-draft'
+                 and created_at > now() - interval '20 minutes' order by created_at desc limit 5;" \
+              -P title='gap-draft model calls in the window (none = pass never reached the model)'
+          fi
           test "$NLINK" = "2"
           test "$NDRAFT" -ge 1
           echo "---- the draft the pass authored ----"

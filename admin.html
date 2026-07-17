@@ -14384,6 +14384,7 @@ function renderTranscript(msgs, fbMap) {
   const ratedNodes = [];
   const houseNodes = [];   // acted-on replies, in order — for the house-note jumper
   const msgNodes = [];     // {node, at} per message — lets held/vetoed beats interleave by time
+  let prevDayKey = '';     // day dividers: the transcript names each date it spans
   msgs.forEach(function (m, i) {
     const isUser = m.role === 'user';
     const node = el('div', 'msg ' + (isUser ? 'user' : 'assistant'));
@@ -14441,6 +14442,17 @@ function renderTranscript(msgs, fbMap) {
         else hm.appendChild(el('div', 'hm-text muted', '(note text unavailable — it may have been deleted since)'));
         node.appendChild(hm);
       });
+    }
+    const mDay = new Date(m.created_at);
+    if (!isNaN(mDay.getTime())) {
+      const dayKey = mDay.toDateString();
+      if (dayKey !== prevDayKey) {
+        prevDayKey = dayKey;
+        const div = el('div', 'micro',
+          '— ' + mDay.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) + ' —');
+        div.style.cssText = 'align-self:center; margin:12px 0 4px; letter-spacing:.12em; opacity:.65;';
+        body.appendChild(div);
+      }
     }
     body.appendChild(node);
     msgNodes.push({ node: node, at: new Date(m.created_at).getTime() });

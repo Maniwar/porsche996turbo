@@ -4523,9 +4523,11 @@ async function bakeStarters(force: boolean): Promise<{ statuses: BakeStatus[]; b
   return { statuses, baked };
 }
 let lastStarterBakeCheckMs = 0;
-function scheduleStarterBake(): void {
+function scheduleStarterBake(force = false): void {
   try {
-    if (Date.now() - lastStarterBakeCheckMs < 3600000) return; // one DB peek per isolate-hour
+    // qa- sessions skip the peek throttle (probes must kick deterministically);
+    // the atomic hourly claim below still paces the actual work.
+    if (!force && Date.now() - lastStarterBakeCheckMs < 3600000) return; // one DB peek per isolate-hour
     lastStarterBakeCheckMs = Date.now();
     const p = starterBakeIfDue().catch(() => {});
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
@@ -4736,9 +4738,10 @@ async function draftKbFromGaps(): Promise<{
   return { drafted, grounded, skeletons, swept, covered };
 }
 let lastGapDraftCheckMs = 0;
-function scheduleGapDraft(): void {
+function scheduleGapDraft(force = false): void {
   try {
-    if (Date.now() - lastGapDraftCheckMs < 3600000) return; // one DB peek per isolate-hour
+    // qa- sessions skip the peek throttle — same contract as scheduleStarterBake
+    if (!force && Date.now() - lastGapDraftCheckMs < 3600000) return; // one DB peek per isolate-hour
     lastGapDraftCheckMs = Date.now();
     const p = gapDraftIfDue().catch(() => {});
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
@@ -6373,8 +6376,9 @@ async function handleChatPost(req: Request): Promise<Response> {
   const bookingCtx = await bookingContextBlock(data.config, customer, validated.sessionKey);
   const editionCtx = await editionContextBlock();
   scheduleJudgeDigest(); // piggybacked weekly check — fire-and-forget, never on the reply path
-  scheduleStarterBake(); // starters wire their own answers up — never on the reply path
-  scheduleGapDraft(); // unanswered questions become knowledge drafts — never on the reply path
+  const qaKick = typeof validated.sessionKey === "string" && validated.sessionKey.startsWith("qa-");
+  scheduleStarterBake(qaKick); // starters wire their own answers up — never on the reply path
+  scheduleGapDraft(qaKick); // unanswered questions become knowledge drafts — never on the reply path
   const customerLine = [customerLine0, bookingCtx, editionCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
   // Live goal status from the last evaluation, so the prompt shows which goals
   // are still open and the concierge actively drives them.
