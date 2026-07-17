@@ -387,7 +387,7 @@
   #cal-note.err{ border-color:rgba(208,135,112,.4); border-left-color:var(--st-red); color:#E0A395; }
   #cal-note.warn{ border-left-color:var(--st-amber); }
   /* pulse */
-  .cal-pulse{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:20px; }
+  .cal-pulse{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:20px; }
   .cal-pulse-t{ display:block; padding:10px 14px 9px; text-decoration:none; background:var(--ink-well);
     border:1px solid var(--hairline-dim); border-left:3px solid var(--hairline-dim); border-radius:3px; }
   .cal-pulse-t:hover{ border-color:var(--hairline); }
@@ -505,6 +505,38 @@
   .dchip{ width:26px; height:26px; border-radius:50%; border:1px solid var(--hairline-dim); background:none;
     color:var(--wool-faint); font-family:var(--cal-mono); font-size:10px; cursor:pointer; padding:0; }
   .dchip.on{ border-color:var(--brass-soft); color:var(--brass-soft); background:var(--ink-well); }
+  /* the day book's hands */
+  .cal-tick.dragging{ opacity:.45; }
+  .cal-dragtip{ position:fixed; z-index:460; pointer-events:none; background:var(--loden);
+    border:1px solid var(--hairline); border-radius:3px; padding:4px 8px;
+    font-family:var(--cal-mono); font-size:11px; color:var(--wool); white-space:nowrap; }
+  /* drag-to-paint hours */
+  .cal-paint{ margin:6px 0 2px; user-select:none; -webkit-user-select:none; flex-basis:100%; max-width:580px; }
+  .cal-paint-head{ display:grid; grid-template-columns:44px repeat(7,1fr); gap:0 5px; margin-bottom:3px; }
+  .cal-paint-head span{ text-align:center; font-family:var(--cal-mono); font-size:9.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--wool-faint); }
+  .cal-paint-body{ display:grid; grid-template-columns:44px repeat(7,1fr); gap:0 5px; }
+  .cal-paint-gutter{ position:relative; }
+  .cal-paint-gutter span{ position:absolute; right:7px; transform:translateY(-50%); font-family:var(--cal-mono);
+    font-size:9px; color:var(--wool-faint); }
+  .cal-paint-col{ position:relative; background:var(--ink-well); border:1px solid var(--hairline-dim);
+    border-radius:2px; touch-action:none; cursor:crosshair; }
+  .cal-paint-col .hline{ position:absolute; left:0; right:0; border-top:1px solid var(--hairline-dim);
+    opacity:.45; pointer-events:none; }
+  .cal-paint-blk{ position:absolute; left:2px; right:2px; border-radius:2px; overflow:hidden; cursor:grab;
+    background:color-mix(in srgb, var(--brass-soft) 26%, transparent); border:1px solid var(--brass-soft);
+    display:flex; align-items:center; justify-content:center; }
+  .cal-paint-blk::before, .cal-paint-blk::after{ content:''; position:absolute; left:0; right:0; height:7px; cursor:ns-resize; }
+  .cal-paint-blk::before{ top:0; } .cal-paint-blk::after{ bottom:0; }
+  .cal-paint-blk span{ font-family:var(--cal-mono); font-size:9px; color:var(--wool); text-align:center;
+    line-height:1.25; pointer-events:none; padding:0 2px; }
+  .cal-typed{ display:none; flex-basis:100%; }
+  .cal-typed.is-open{ display:block; }
+  [data-paint-toggle]{ margin:2px 0 6px; opacity:.8; }
+  /* the guided first run */
+  .cal-wizbody{ padding:10px 0 12px 32px; border-top:1px solid var(--hairline-dim); }
+  .cal-step.active .tx{ color:var(--wool); }
+  .cal-step.active .st{ border-color:var(--brass-soft); color:var(--brass-soft); }
   /* preview */
   .cal-preview{ padding:10px 2px 4px; font-size:12.5px; color:var(--wool-dim); flex-basis:100%; }
   .cal-pv-row{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
@@ -1177,9 +1209,9 @@
     <button class="tab" data-tab="tuning" role="tab">Tuning</button>
     <button class="tab" data-tab="knowledge" role="tab">Knowledge</button>
     <button class="tab" data-tab="procedures" role="tab">Procedures</button>
-    <button class="tab" data-tab="evals" role="tab">Evals</button>
+    <button class="tab" data-tab="evals" role="tab">Spot checks</button>
     <button class="tab" data-tab="tools" role="tab">Tools</button>
-    <button class="tab" data-tab="cache" role="tab">Cache</button>
+    <button class="tab" data-tab="cache" role="tab">Saved answers</button>
     <button class="tab" data-tab="judge" role="tab">Judge &amp; coach</button>
     <button class="tab" data-tab="website" role="tab">Website</button>
     <button class="tab" data-tab="edition" role="tab">Edition &amp; access</button>
@@ -1206,7 +1238,7 @@
       <section class="card">
         <div class="card-head">
           <h3>Engine</h3>
-          <span class="micro">concierge_config</span>
+          <span class="micro">the machine room — fine to leave alone</span>
         </div>
         <div class="grid-3">
           <div class="field">
@@ -1987,8 +2019,8 @@ need to ask my partner | Of course — the hold keeps their number while they ta
     <!-- ============ TAB 4 : CACHE ============ -->
     <div id="panel-cache" class="panel">
       <div class="panel-head">
-        <span class="micro">Instant answers</span>
-        <h2>Cache</h2>
+        <span class="micro">Answers served instantly</span>
+        <h2>Saved answers</h2>
         <p class="note">Answers served instantly when a visitor asks something similar to a past question. Edit anything wrong, or disable it — the concierge will think fresh on the next miss. New entries appear automatically.</p>
       </div>
 
@@ -2371,6 +2403,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <a href="#" class="cal-status off" id="cal-mh-status" title="The master switch lives under House rules"><span class="dot"></span><span class="micro">bookings off</span></a>
       </div>
       <div id="cal-setup"></div>
+      <div id="cal-glance"></div>
 
       <section class="card">
         <div class="card-head"><h3>The queue</h3><span class="micro">act first, browse second</span></div>
@@ -2588,13 +2621,13 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <h2>Tools</h2>
       </div>
       <p class="note" style="max-width:720px;">Everything the concierge can <em>do</em> for a signed-in patron lives here. There are two kinds, and they're added in two different ways:</p>
-      <p class="note" style="max-width:720px;">• <strong>Model tools</strong> run code on our side — read the register, cancel, re-send a confirmation, log a mending request. The bot decides when to call them. You control which are switched on and how they're instructed; <strong>creating a brand-new model tool needs a developer</strong> (it has to run real server logic).<br>• <strong>Form tools</strong> hand the patron a little form in the chat and write the result to an order. These are pure configuration — <strong>you can create, edit, and remove them right here</strong>, no deploy.</p>
+      <p class="note" style="max-width:720px;">• <strong>Built-in actions</strong> run code on our side — read the register, cancel, re-send a confirmation, log a mending request. The bot decides when to call them. You control which are switched on and how they're instructed; <strong>creating a brand-new built-in action needs a developer</strong> (it has to run real server logic).<br>• <strong>In-chat forms</strong> hand the patron a little form in the chat and write the result to an order. These are pure configuration — <strong>you can create, edit, and remove them right here</strong>, no deploy.</p>
       <p class="note" style="max-width:720px;">Looking for the satisfaction survey? <strong>There is no survey tool, by design</strong> — the bot can never write or change a rating; only the customer’s tap does, through tested code. Configure the survey (question, timing, cooldown, rating change window) under <strong>Engagement → House rules</strong>, its wording in the <strong>closing-survey SOP</strong>, and read results on the <strong>NPS</strong> tab.</p>
 
       <section class="card">
         <div class="card-head">
-          <h3>Model tools</h3>
-          <span class="micro">code-backed actions the bot can call</span>
+          <h3>Built-in actions</h3>
+          <span class="micro">what the concierge can do — switch each on or off, reword when it's used</span>
         </div>
         <p class="note" style="margin-bottom:16px;">Turn one off to withhold it from the bot entirely, or rewrite its instruction to change when and how the bot uses it. A blank instruction uses the built-in default. Every tool is ownership-scoped and logged; turning a <strong>core</strong> tool off will noticeably dull the concierge. To add a new one, ask your developer — a model tool needs a handler in the concierge function.</p>
         <div id="tools-list"></div>
@@ -2607,13 +2640,13 @@ need to ask my partner | Of course — the hold keeps their number while they ta
 
       <section class="card">
         <div class="card-head">
-          <h3>Form tools</h3>
-          <span class="micro">capabilities you can create — the bot hands these out in chat</span>
+          <h3>In-chat forms</h3>
+          <span class="micro">forms you create — the concierge hands them out in chat</span>
         </div>
         <p class="note" style="margin-bottom:16px;"><strong>This is how you give the concierge a new capability without code.</strong> A form tool renders inside the chat when the concierge emits its <code>{{form:slug:serial}}</code> token, so it's <strong>order-scoped</strong> (it carries a serial). Each binds to one <strong>write path</strong> (a register action such as <code>update_shipping_address</code> or <code>update_gift_details</code>) — pick it when you create the tool. <strong>Fields</strong> are the labelled inputs the patron fills in (JSON: name, label, type <code>text · state · zip</code>, required, maxlength); at least one is required. Submissions run through the same verified, audited path as the bot's own tools, and — because the patron types each labelled field — this is the safe way to collect things the model shouldn't free-type (like an address). Turn one off to stop the bot offering it.</p>
         <div id="forms-list"></div>
         <div class="card-foot">
-          <button id="forms-add" class="btn primary">Create form tool</button>
+          <button id="forms-add" class="btn primary">Create a form</button>
           <button id="forms-refresh" class="btn">Refresh</button>
         </div>
       </section>
@@ -2666,7 +2699,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
     <div id="panel-evals" class="panel">
       <div class="panel-head">
         <span class="micro">Does the concierge still behave?</span>
-        <h2>Evals</h2>
+        <h2>Spot checks</h2>
         <p class="note">Scripted conversations replayed against the <strong>live concierge</strong>, scoring the behaviors that matter — it shows the commission button on a buying signal, never leaks <code>[HOLD]</code>, doesn't loop in discovery, reads the register instead of guessing. Each scenario runs a few times and reports a <strong>pass rate</strong>, so a prompt or model change can't quietly bring back a bug you already fixed.</p>
       </div>
 
@@ -2687,7 +2720,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
 
       <section class="card">
         <div class="card-head">
-          <h3>Run the deck</h3>
+          <h3>Run the checks</h3>
           <span class="micro">live model calls — costs a little each run</span>
         </div>
         <p class="note" style="margin-bottom:16px;">Two kinds of check. <strong>Deterministic</strong> ones are exact (the reply <em>contains</em> a token, asks <em>at most</em> one question, a tool actually ran) — cheap and stable. The fuzzy ones ("did it advance the sale?") go to a <strong>binary LLM judge</strong> (yes/no, pinned) on the server, so no API key ever touches the browser. Signed-in scenarios use <strong>your</strong> admin session, so they read a real register.</p>
@@ -5364,7 +5397,7 @@ function kbEditor(row, spec) {
   chk.appendChild(el('span', 'micro', 'Enabled'));
   top.appendChild(chk);
 
-  const slugEl = el('span', 'slug', row.id ? (row.slug || '') : '(slug from title)');
+  const slugEl = el('span', 'slug', row.id ? (row.slug || '') : '(named automatically)');
   top.appendChild(slugEl);
   top.appendChild(el('span', 'micro ord', '#' + row.sort_order));
   wrap.appendChild(top);
@@ -5382,7 +5415,7 @@ function kbEditor(row, spec) {
   if (!row.id) {
     title.addEventListener('input', function () {
       const s = kebab(title.value);
-      slugEl.textContent = s || '(slug from title)';
+      slugEl.textContent = s || '(named automatically)';
     });
   }
 
@@ -5449,7 +5482,7 @@ function kbEditor(row, spec) {
         toast(spec.noun.charAt(0).toUpperCase() + spec.noun.slice(1) + ' saved — ' + (row.slug || t));
       } else {
         const slug = kebab(t);
-        if (!slug) { toast('Could not derive a slug from that title', true); return; }
+        if (!slug) { toast('The title needs at least one letter or number', true); return; }
         const ins = {
           slug: slug,
           title: t,
@@ -5748,7 +5781,7 @@ function goalEditor(row) {
   const cb = el('input'); cb.type = 'checkbox'; cb.checked = row.enabled !== false;
   chk.appendChild(cb); chk.appendChild(el('span', 'micro', 'Pursued'));
   top.appendChild(chk);
-  const slugEl = el('span', 'slug', row.id ? (row.slug || '') : '(slug from label)');
+  const slugEl = el('span', 'slug', row.id ? (row.slug || '') : '(named automatically)');
   top.appendChild(slugEl);
   wrap.appendChild(top);
 
@@ -5756,7 +5789,7 @@ function goalEditor(row) {
   fLabel.appendChild(el('span', 'micro', 'Goal'));
   const label = el('input'); label.type = 'text'; label.placeholder = 'Short goal name'; label.value = row.label || '';
   fLabel.appendChild(label); wrap.appendChild(fLabel);
-  if (!row.id) { label.addEventListener('input', function () { slugEl.textContent = kebab(label.value) || '(slug from label)'; }); }
+  if (!row.id) { label.addEventListener('input', function () { slugEl.textContent = kebab(label.value) || '(named automatically)'; }); }
 
   const fDesc = el('div', 'field');
   fDesc.appendChild(el('span', 'micro', 'What it means'));
@@ -5805,7 +5838,7 @@ function goalEditor(row) {
         toast('Goal saved');
       } else {
         const slug = kebab(l);
-        if (!slug) { toast('Could not derive a slug', true); return; }
+        if (!slug) { toast('The name needs at least one letter or number', true); return; }
         const res = await sb.from('concierge_goals').insert({
           slug: slug, label: l, description: desc.value.trim(), enabled: cb.checked, sections: secArr, section: secOne, sort_order: row.sort_order, updated_at: nowIso()
         }).select().single();
@@ -6177,7 +6210,7 @@ function evalEditor(row) {
         Object.assign(row, data); toast('Scenario saved');
       } else {
         const slug = kebab(data.name);
-        if (!slug) { toast('Could not derive a slug', true); return; }
+        if (!slug) { toast('The name needs at least one letter or number', true); return; }
         const res = await sb.from('concierge_evals').insert({
           slug: slug, name: data.name, description: data.description, signed_in: data.signed_in,
           enabled: data.enabled, context: data.context, turns: data.turns, sort_order: row.sort_order, updated_at: nowIso()
@@ -10460,6 +10493,231 @@ function calOpts(vals, cur, labels) {
   if (!vals.some((v) => String(v) === String(cur))) html += '<option value="' + cur + '" selected>' + cur + ' (current)</option>';
   return html;
 }
+/* ── drag-to-paint hours ─────────────────────────────────────────────────────
+   One visual week shared by business hours, each person's hours, and an
+   offering's start windows: drag on empty space to paint a block, drag a
+   block's edge to resize it, drag its middle to move it, tap it for exact
+   times, a break split, or removal. The typed rows remain beneath a "type
+   the times instead" toggle and stay THE ledger every save reads — the
+   painter mirrors each gesture into them, so saving writes exactly the rows
+   it always has. */
+const CAL_PAINT_SNAP = 15, CAL_PAINT_PXH = 34;
+function calPaint(blocks, opts) {
+  opts = opts || {};
+  const norm = (bs) => (bs || []).map((x) => ({ dow: x.dow, a: x.a, b: x.b, step: x.step == null ? null : x.step }))
+    .filter((x) => x.b > x.a && x.dow >= 0 && x.dow <= 6);
+  let list = norm(blocks);
+  const wrap = document.createElement('div');
+  wrap.className = 'cal-paint'; wrap.setAttribute('data-paint', '');
+  const pxm = CAL_PAINT_PXH / 60;
+  const snap = (m) => Math.round(m / CAL_PAINT_SNAP) * CAL_PAINT_SNAP;
+  let lo = 480, hi = 1080, drag = null, pendingPop = null;
+  const merge = () => {
+    list.sort((p, q) => p.dow - q.dow || p.a - q.a);
+    for (let i = list.length - 1; i > 0; i--) {
+      const p = list[i - 1], c = list[i];
+      if (p.dow === c.dow && c.a <= p.b && (c.a < p.b || p.step === c.step)) {
+        p.b = Math.max(p.b, c.b); list.splice(i, 1);
+      }
+    }
+  };
+  const render = () => {
+    let l2 = 480, h2 = 1080;
+    list.forEach((x) => { l2 = Math.min(l2, x.a); h2 = Math.max(h2, x.b); });
+    lo = Math.max(0, Math.floor(l2 / 60) * 60 - 60); hi = Math.min(1440, Math.ceil(h2 / 60) * 60 + 60);
+    wrap.setAttribute('data-lo', lo); wrap.setAttribute('data-hi', hi);
+    const H = (hi - lo) * pxm;
+    let gut = '';
+    for (let m = lo + 60; m <= hi - 30; m += 120) gut += '<span style="top:' + ((m - lo) * pxm) + 'px">' + calHm(m) + '</span>';
+    let cols = '';
+    for (let d = 0; d < 7; d++) {
+      let inner = '';
+      for (let m = lo + 60; m < hi; m += 60) inner += '<i class="hline" style="top:' + ((m - lo) * pxm) + 'px"></i>';
+      list.forEach((x, i) => {
+        if (x.dow !== d) return;
+        inner += '<div class="cal-paint-blk" data-pb="' + i + '" style="top:' + ((x.a - lo) * pxm) + 'px;height:' + ((x.b - x.a) * pxm) + 'px;">' +
+          '<span>' + calHm(x.a) + '–' + calHm(x.b) + (opts.withStep && x.step ? '<br>every ' + x.step + 'm' : '') + '</span></div>';
+      });
+      cols += '<div class="cal-paint-col" data-dow="' + d + '" style="height:' + H + 'px;">' + inner + '</div>';
+    }
+    wrap.innerHTML =
+      '<div class="micro" style="margin-bottom:4px;opacity:.75;">drag to paint · drag an edge to adjust · tap a block for exact times, a break, or to remove it</div>' +
+      '<div class="cal-paint-head"><span></span>' + CAL_DAYS.map((d2) => '<span>' + d2 + '</span>').join('') + '</div>' +
+      '<div class="cal-paint-body"><div class="cal-paint-gutter" style="height:' + H + 'px;">' + gut + '</div>' + cols + '</div>';
+  };
+  const changed = () => { if (opts.onChange) opts.onChange(wrap.paintBlocks()); };
+  const commit = () => { merge(); render(); changed(); };
+  const minAt = (d, clientY) => {
+    const col = wrap.querySelector('.cal-paint-col[data-dow="' + d + '"]');
+    if (!col) return lo;
+    const r = col.getBoundingClientRect();
+    return Math.max(lo, Math.min(hi, lo + snap((clientY - r.top) / pxm)));
+  };
+  const blockPop = (x, y, i) => {
+    const blk = list[i];
+    if (!blk) return;
+    calPop(x, y, (pop) => {
+      pop.innerHTML = '<span class="micro">' + CAL_DAYS[blk.dow] + ' — this block</span>' +
+        '<div class="cal-frow" style="margin-top:4px;">' +
+        '<input type="time" data-bp="a" value="' + calT(blk.a) + '"><span class="micro">to</span>' +
+        '<input type="time" data-bp="b" value="' + calT(blk.b) + '"></div>' +
+        (opts.withStep ? '<label class="cal-field" style="margin-top:6px;"><span>starts every</span><select data-bp="step">' +
+          '<option value=""' + (blk.step == null ? ' selected' : '') + '>offering default</option>' +
+          [5, 10, 15, 20, 30, 45, 60].map((v) => '<option value="' + v + '"' + (blk.step === v ? ' selected' : '') + '>' + v + ' min</option>').join('') +
+          '</select></label>' : '') +
+        '<div class="cal-frow" style="margin-top:8px;"><span class="micro">break</span>' +
+        '<input type="time" data-bp="bf" value="12:00"><span class="micro">to</span>' +
+        '<input type="time" data-bp="bt" value="13:00">' +
+        '<button class="btn ghost mini" type="button" data-bp="split">Split around it</button></div>' +
+        '<div class="cal-frow" style="margin-top:8px;">' +
+        '<button class="btn ghost mini" type="button" data-bp="rm">Remove</button>' +
+        '<button class="btn" data-bp="ok" type="button">Done</button></div>';
+      const done = (mut) => { mut(); pop.remove(); commit(); };
+      pop.querySelector('[data-bp="ok"]').addEventListener('click', () => done(() => {
+        const a = calMin(pop.querySelector('[data-bp="a"]').value || '');
+        const b = calMin(pop.querySelector('[data-bp="b"]').value || '');
+        if (a !== null && b !== null && b > a) { blk.a = a; blk.b = b; }
+        const st = pop.querySelector('[data-bp="step"]');
+        if (st) blk.step = st.value === '' ? null : +st.value;
+      }));
+      pop.querySelector('[data-bp="rm"]').addEventListener('click', () => done(() => { list.splice(i, 1); }));
+      pop.querySelector('[data-bp="split"]').addEventListener('click', () => {
+        const bf = calMin(pop.querySelector('[data-bp="bf"]').value || '');
+        const bt = calMin(pop.querySelector('[data-bp="bt"]').value || '');
+        if (bf === null || bt === null || bt <= bf || bf <= blk.a || bt >= blk.b) {
+          calFail(new Error('The break must sit inside the block.')); return;
+        }
+        done(() => { list.push({ dow: blk.dow, a: bt, b: blk.b, step: blk.step }); blk.b = bf; });
+      });
+    });
+  };
+  wrap.addEventListener('pointerdown', (ev) => {
+    const col = ev.target.closest ? ev.target.closest('.cal-paint-col') : null;
+    if (!col || ev.button) return;
+    ev.preventDefault();
+    const d = +col.getAttribute('data-dow');
+    const m0 = minAt(d, ev.clientY);
+    const blkEl = ev.target.closest('.cal-paint-blk');
+    if (blkEl) {
+      const i = +blkEl.getAttribute('data-pb');
+      const r = blkEl.getBoundingClientRect();
+      const edge = (ev.clientY - r.top < 8) ? 'a' : ((r.bottom - ev.clientY < 8) ? 'b' : '');
+      drag = { mode: edge ? 'resize' : 'block', edge: edge, i: i, d: d, m0: m0,
+               a0: list[i].a, b0: list[i].b, moved: false, x: ev.clientX, y: ev.clientY };
+    } else {
+      list.push({ dow: d, a: m0, b: Math.min(hi, m0 + 60), step: null });
+      drag = { mode: 'create', i: list.length - 1, d: d, m0: m0, moved: false };
+      render();
+    }
+    try { wrap.setPointerCapture(ev.pointerId); } catch (e2) { /* capture is a nicety */ }
+  });
+  wrap.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    const m = minAt(drag.d, ev.clientY);
+    if (!drag.moved && m === drag.m0) return;
+    drag.moved = true;
+    const x = list[drag.i];
+    if (!x) { drag = null; return; }
+    if (drag.mode === 'create') {
+      x.a = Math.min(drag.m0, m); x.b = Math.max(drag.m0, m);
+      if (x.b - x.a < CAL_PAINT_SNAP) x.b = x.a + CAL_PAINT_SNAP;
+    } else if (drag.mode === 'resize') {
+      if (drag.edge === 'a') x.a = Math.min(m, drag.b0 - CAL_PAINT_SNAP);
+      else x.b = Math.max(m, drag.a0 + CAL_PAINT_SNAP);
+    } else {
+      const len = drag.b0 - drag.a0;
+      const a = Math.max(lo, Math.min(hi - len, drag.a0 + (m - drag.m0)));
+      x.a = a; x.b = a + len;
+    }
+    render();
+  });
+  const finish = (ev) => {
+    if (!drag) return;
+    const wasTap = drag.mode === 'block' && !drag.moved;
+    const i = drag.i, px = drag.x, py = drag.y;
+    drag = null;
+    if (wasTap) { pendingPop = { x: px, y: py, i: i }; return; }
+    commit();
+  };
+  wrap.addEventListener('pointerup', finish);
+  wrap.addEventListener('pointercancel', finish);
+  /* the tap opens on the CLICK that follows pointerup, so calPop's own
+     dismiss-on-next-click armament (a 0-timeout) cannot swallow it */
+  wrap.addEventListener('click', () => {
+    if (!pendingPop) return;
+    const p = pendingPop; pendingPop = null;
+    blockPop(p.x, p.y, p.i);
+  });
+  wrap.paintBlocks = () => list.map((x) => ({ dow: x.dow, a: x.a, b: x.b, step: x.step == null ? null : x.step }));
+  wrap.setBlocks = (bs) => { list = norm(bs); commit(); };
+  render();
+  return wrap;
+}
+/* the painter and its typed editor as one control: paint by default, "type
+   the times instead" reveals the rows the save actually reads; toggling back
+   re-reads whatever was typed, so the two views never disagree at save time */
+function calPaintPair(typedBox, readBlocks, writeBlocks, opts) {
+  const outer = document.createElement('div');
+  let painter = calPaint(readBlocks(), Object.assign({ onChange: writeBlocks }, opts || {}));
+  outer.appendChild(painter);
+  typedBox.classList.add('cal-typed');
+  outer.repaint = () => {
+    const fresh = calPaint(readBlocks(), Object.assign({ onChange: writeBlocks }, opts || {}));
+    painter.replaceWith(fresh); painter = fresh;
+  };
+  const tog = document.createElement('button');
+  tog.type = 'button'; tog.className = 'btn ghost mini'; tog.setAttribute('data-paint-toggle', '');
+  tog.textContent = 'type the times instead';
+  tog.addEventListener('click', () => {
+    const showTyped = !typedBox.classList.contains('is-open');
+    typedBox.classList.toggle('is-open', showTyped);
+    painter.style.display = showTyped ? 'none' : '';
+    tog.textContent = showTyped ? 'back to the painted grid' : 'type the times instead';
+    if (!showTyped) { outer.repaint(); painter.style.display = ''; }
+  });
+  outer.appendChild(tog);
+  outer.appendChild(typedBox);
+  return outer;
+}
+/* read/write between a painter and the per-day typed rows (.cal-hr-day) */
+function calHoursMirror(box, offWord) {
+  const rangeHtml = (from, to) =>
+    '<span class="cal-hr-range"><input type="time" data-hr="from" value="' + from + '">' +
+    '<span class="micro">to</span><input type="time" data-hr="to" value="' + to + '">' +
+    '<button class="btn ghost mini" type="button" data-del-range aria-label="Remove these hours">×</button></span>';
+  return {
+    read: () => {
+      const out = [];
+      box.querySelectorAll('.cal-hr-day').forEach((day) => {
+        const d = +day.getAttribute('data-dow');
+        day.querySelectorAll('.cal-hr-range').forEach((rg) => {
+          const a = calMin(rg.querySelector('[data-hr="from"]').value || '');
+          const b = calMin(rg.querySelector('[data-hr="to"]').value || '');
+          if (a !== null && b !== null && b > a) out.push({ dow: d, a: a, b: b });
+        });
+      });
+      return out;
+    },
+    write: (blocks) => {
+      box.querySelectorAll('.cal-hr-day').forEach((day) => {
+        const d = +day.getAttribute('data-dow');
+        day.querySelectorAll('.cal-hr-range').forEach((r2) => r2.remove());
+        const c0 = day.querySelector('.cal-closed'); if (c0) c0.remove();
+        const add = day.querySelector('[data-add-range]');
+        const mine = blocks.filter((x) => x.dow === d).sort((p, q) => p.a - q.a);
+        if (!mine.length) {
+          const c = document.createElement('span'); c.className = 'cal-closed'; c.textContent = offWord;
+          day.insertBefore(c, add);
+        } else {
+          mine.forEach((x) => {
+            const sp = document.createElement('span'); sp.innerHTML = rangeHtml(calT(x.a), calT(x.b));
+            day.insertBefore(sp.firstChild, add);
+          });
+        }
+      });
+    },
+  };
+}
 /* the structured business-hours editor: per-day range rows of time pickers */
 function calHoursEditor(locId) {
   const box = document.createElement('div');
@@ -10518,7 +10776,10 @@ function calHoursEditor(locId) {
       });
     }
   });
-  return box;
+  const mir = calHoursMirror(box, 'Closed');
+  const pair = calPaintPair(box, mir.read, mir.write, {});
+  pair.setAttribute('data-hrs-pair', '');
+  return pair;
 }
 /* preview — the same appointment_slots() the chat calls, shown to the owner */
 function calPreview(holder, t) {
@@ -10615,7 +10876,10 @@ function calStaffHoursGrid(staffId, locId) {
     '<button class="btn ghost mini" type="button" data-add-break>Split their days around it</button>' +
     '<span class="info-badge" title="Lunches and breaks: every day whose hours span the break is split in two — 9:00 to 17:00 with a 12 to 1 break becomes 9:00-12:00 and 13:00-17:00 — and no visit can be offered across the gap. Any length works — a 15-minute pause splits the same way. Days that do not span it are left alone; adjust any single day by hand afterwards. Remember to save.">i</span>';
   box.appendChild(brk);
-  return box;
+  const mir = calHoursMirror(box, 'Off');
+  const pair = calPaintPair(box, mir.read, mir.write, {});
+  pair.setAttribute('data-sthrs-pair', '');
+  return pair;
 }
 async function calSaveStaff(holder, st) {
   try {
@@ -10965,7 +11229,7 @@ function calStaffCard(st) {
   });
   const lp = ed.querySelector('[data-f="stloc"]');
   if (lp) lp.addEventListener('change', () => {
-    const old = ed.querySelector('[data-sthrs]');
+    const old = ed.querySelector('[data-sthrs-pair]') || ed.querySelector('[data-sthrs]');
     const fresh = calStaffHoursGrid(st ? st.id : -1, +lp.value);
     old.replaceWith(fresh);
   });
@@ -11174,6 +11438,110 @@ function calTickPop(x, y, r) {
       '</div>';
   });
 }
+/* the UTC instant whose WALL CLOCK in tz reads dayKey + minute (DST-safe) */
+function calZonedIso(dayKey, min2, tz) {
+  const p = dayKey.split('-').map(Number);
+  const want = Date.UTC(p[0], p[1] - 1, p[2], Math.floor(min2 / 60), min2 % 60);
+  let guess = want;
+  for (let k = 0; k < 2; k++) {
+    const parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(new Date(guess)).forEach((x) => { parts[x.type] = x.value; });
+    const shown = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute);
+    guess += want - shown;
+  }
+  return new Date(guess).toISOString();
+}
+/* the drop card: confirm the move, then the same reschedule RPC the chat uses */
+function calMovePop(x, y, r, dayKey, min2) {
+  const locRec = (state.calLocs || []).find((l) => l.title === r.location && l.enabled) ||
+    (state.calLocs || []).find((l) => l.enabled) || (state.calLocs || [])[0];
+  const tz = r.location_tz || (locRec ? locRec.timezone : null);
+  const wd = CAL_DAYS[new Date(dayKey + 'T12:00:00').getDay()];
+  calPop(x, y, (pop) => {
+    pop.innerHTML = '<span class="micro">move this visit</span>' +
+      '<b>' + esc(r.name || '') + '</b> — ' + esc(r.type || '') +
+      '<div>' + esc(calWhen(r.starts_at, tz)) + ' → <b>' + wd + ' ' + esc(dayKey) + ', ' + calHm(min2) + '</b></div>' +
+      (r.staff ? '<div class="micro" style="opacity:.8;">with ' + esc(r.staff) + ' — kept if free at the new time, otherwise a free colleague steps in</div>' : '') +
+      '<div class="cal-frow"><button class="btn" data-mv="go" type="button">Move it</button>' +
+      '<button class="btn ghost" data-mv="no" type="button">Never mind</button></div>';
+    pop.querySelector('[data-mv="no"]').addEventListener('click', () => pop.remove());
+    pop.querySelector('[data-mv="go"]').addEventListener('click', async () => {
+      try {
+        const iso = calZonedIso(dayKey, min2, tz);
+        const res = await calRpc('reschedule_appointment', { p_id: r.id,
+          p_new_location: locRec ? locRec.slug : null, p_new_starts_at: iso, p_visitor_tz: tz });
+        pop.remove();
+        if (res && res.ok === false) {
+          const alts = (res.alternatives || []).map((s2) => s2.shop_label || s2.lead_label).filter(Boolean).slice(0, 3);
+          calFail(new Error(res.reason === 'taken'
+            ? 'That time is not open' + (alts.length ? ' — the register offers: ' + alts.join(' · ') : '.')
+            : 'The move was refused (' + (res.reason || 'unknown') + ').'));
+          return;
+        }
+        loadCalendar();
+      } catch (e) { pop.remove(); calFail(e); }
+    });
+  });
+}
+/* click on an empty stretch: add something right there */
+function calAddPop(x, y, stf, dateStr, clickMin) {
+  calPop(x, y, (pop) => {
+    pop.innerHTML = '<span class="micro">' + esc(stf ? stf.name : 'this day') + ' — ' + esc(dateStr) +
+      (clickMin != null ? ', around ' + calHm(clickMin) : '') + '</span>' +
+      '<div class="cal-frow" style="margin-top:6px;">' +
+      '<button class="btn" data-ad="book" type="button">Book a visit</button>' +
+      (stf ? '<button class="btn ghost" data-ad="off" type="button">Time off</button>' : '') + '</div>';
+    pop.querySelector('[data-ad="book"]').addEventListener('click', () => { pop.remove(); calBookPop(x, y, stf, dateStr, clickMin); });
+    const off = pop.querySelector('[data-ad="off"]');
+    if (off) off.addEventListener('click', () => { pop.remove(); calLanePop(x, y, stf, dateStr, clickMin); });
+  });
+}
+/* the admin books by hand — the same book_appointment the chat uses, so every
+   guardrail (real slot, capacity, the person's own hours) still stands */
+function calBookPop(x, y, stf, dateStr, clickMin) {
+  const types = (state.calTypes || []).filter((t) => t.enabled);
+  const locRec = (state.calLocs || []).find((l) => l.enabled) || (state.calLocs || [])[0];
+  if (!types.length || !locRec) { calFail(new Error('Nothing bookable yet — enable an offering first.')); return; }
+  calPop(x, y, (pop) => {
+    pop.innerHTML = '<span class="micro">book a visit — ' + esc(dateStr) + (stf ? ' with ' + esc(stf.name) : '') + '</span>' +
+      '<div class="cal-frow" style="margin-top:4px;">' +
+      '<label class="cal-field"><span>offering</span><select data-bk="type">' +
+      types.map((t) => '<option value="' + esc(t.slug) + '">' + esc(t.title) + '</option>').join('') + '</select></label>' +
+      '<label class="cal-field"><span>at</span><input type="time" data-bk="at" value="' +
+      calT(clickMin != null ? Math.max(0, Math.min(1425, Math.round(clickMin / 30) * 30)) : 600) + '"></label></div>' +
+      '<div class="cal-frow"><label class="cal-field"><span>visitor</span><input data-bk="name" placeholder="their name" style="width:150px;"></label>' +
+      '<label class="cal-field"><span>phone or email</span><input data-bk="contact" style="width:170px;"></label></div>' +
+      '<div class="cal-frow"><button class="btn" data-bk="go" type="button">Book it</button></div>';
+    pop.querySelector('[data-bk="go"]').addEventListener('click', async () => {
+      try {
+        const slug = pop.querySelector('[data-bk="type"]').value;
+        const at = calMin(pop.querySelector('[data-bk="at"]').value || '');
+        const nm = pop.querySelector('[data-bk="name"]').value.trim();
+        const ct = pop.querySelector('[data-bk="contact"]').value.trim();
+        if (at === null) throw new Error('Pick a time.');
+        if (!nm || !ct) throw new Error('The visitor needs a name and a way to reach them.');
+        const iso = calZonedIso(dateStr, at, locRec.timezone);
+        const res = await calRpc('book_appointment', { p_type: slug, p_location: locRec.slug,
+          p_starts_at: iso, p_name: nm, p_contact: ct,
+          p_contact_kind: ct.indexOf('@') >= 0 ? 'email' : 'phone',
+          p_party: null, p_notes: 'booked from the Day Book', p_visitor_tz: locRec.timezone,
+          p_customer: null, p_conversation: null, p_session: null, p_staff: stf ? stf.name : null });
+        pop.remove();
+        if (res && res.ok === false) {
+          const why = { taken: 'That time is not open on the register — pick one the week shows as free.',
+            limit: 'They already hold the maximum open bookings.',
+            no_one_free: 'Nobody qualified is free then.', nobody_free: 'Nobody qualified is free then.',
+            missing_contact: 'The visitor needs a name and a way to reach them.' }[res.reason] ||
+            ('Refused: ' + (res.reason || 'unknown'));
+          calFail(new Error(why)); return;
+        }
+        loadCalendar();
+      } catch (e) { pop.remove(); calFail(e); }
+    });
+  });
+}
 /* the lane card: give a person time off on the day you clicked */
 function calLanePop(x, y, stf, dateStr, clickMin) {
   calPop(x, y, (pop) => {
@@ -11222,6 +11590,222 @@ function calLanePop(x, y, stf, dateStr, clickMin) {
       } catch (e) { pop.remove(); calFail(e); }
     });
   });
+}
+/* ── the guided first run ────────────────────────────────────────────────────
+   Five small steps, each edited RIGHT HERE with the same writes the cards
+   below make: where you are, when you're open (painted), what people book
+   and when it can start (painted), who takes it, and the switch — with a
+   live "a visitor would be offered…" preview from the real appointment_slots
+   RPC before the doors open. state.calWiz carries the visit across the
+   reload every save triggers. */
+function calWizard(ctx) {
+  state.calWiz = state.calWiz || {};
+  const loc = (ctx.locs || [])[0] || null;
+  const done = [
+    !!loc,
+    ctx.stepA,
+    ctx.stepB,
+    state.calWiz.who === 'skip' || (state.calStaff || []).length > 0,
+    false,
+  ];
+  let active = state.calWiz.step;
+  if (active == null) { active = 1; while (active < 5 && done[active - 1]) active++; }
+  const card = document.createElement('div'); card.className = 'cal-setupcard';
+  const titles = [
+    ['Where', 'Name the place and confirm its timezone.'],
+    ['When', 'Paint the hours you\'re open.'],
+    ['What', 'What can people book, and when can it start?'],
+    ['Who', 'Who takes these visits? Fine to skip.'],
+    ['Open the doors', done[0] && done[1] && done[2]
+      ? 'See what a visitor would be offered, then turn it on.'
+      : 'Unlocks when the earlier steps are done.'],
+  ];
+  card.innerHTML = '<div class="micro" style="margin-bottom:6px;">five small steps to live — everything here stays editable on the cards below</div>';
+  for (let n = 1; n <= 5; n++) {
+    const row = document.createElement('div');
+    row.className = 'cal-step' + (done[n - 1] ? ' done' : '') + (n === active ? ' active' : '');
+    row.innerHTML = '<span class="st">' + (done[n - 1] ? '✓' : n) + '</span>' +
+      '<span class="tx"><b>' + titles[n - 1][0] + '</b> — ' + titles[n - 1][1] + '</span>' +
+      (n === active ? '' : '<button class="btn ghost mini" type="button" data-wstep="' + n + '">' + (done[n - 1] ? 'Change' : 'Open') + '</button>');
+    card.appendChild(row);
+    if (n === active) card.appendChild(calWizBody(n, ctx));
+  }
+  card.querySelectorAll('[data-wstep]').forEach((b) => b.addEventListener('click', () => {
+    state.calWiz.step = +b.getAttribute('data-wstep'); loadCalendar();
+  }));
+  return card;
+}
+function calWizBody(n, ctx) {
+  const body = document.createElement('div'); body.className = 'cal-wizbody';
+  const loc = (ctx.locs || [])[0] || null;
+  const wDone = () => { state.calWiz.step = null; loadCalendar(); };
+  if (n === 1) {
+    body.innerHTML = '<div class="cal-frow">' +
+      '<label class="cal-field"><span>the place</span><input data-wz="name" value="' + esc(loc ? loc.title : '') + '" placeholder="e.g. The Studio" style="width:200px;"></label>' +
+      '<label class="cal-field"><span>timezone</span>' + calTzSelect('data-wz="tz"', loc ? loc.timezone : '') + '</label>' +
+      '<button class="btn" data-wz="save" type="button">' + (loc ? 'Save' : 'Create it') + '</button></div>';
+    body.querySelector('[data-wz="save"]').addEventListener('click', async () => {
+      try {
+        const name = body.querySelector('[data-wz="name"]').value.trim();
+        const tz = body.querySelector('[data-wz="tz"]').value;
+        if (!name) throw new Error('Give the place a name.');
+        if (loc) {
+          const r = await sb.from('concierge_locations').update({ title: name, timezone: tz, enabled: true }).eq('id', loc.id);
+          if (r.error) throw new Error(r.error.message);
+        } else {
+          const r = await sb.from('concierge_locations').insert([{ slug: calSlug(name), title: name, timezone: tz }]);
+          if (r.error) throw new Error(r.error.message);
+        }
+        wDone();
+      } catch (e) { calFail(e); }
+    });
+    return body;
+  }
+  if (!loc) { body.innerHTML = '<p class="note">Name the place first — that\'s step 1.</p>'; return body; }
+  if (n === 2) {
+    const painter = calPaint((state.calHours || []).filter((h) => h.location_id === loc.id)
+      .map((h) => ({ dow: h.dow, a: h.open_min, b: h.close_min })), {});
+    const quick = document.createElement('div'); quick.className = 'cal-tpl';
+    quick.innerHTML = '<span class="micro" style="align-self:center;">quick fill</span>' +
+      '<button class="btn ghost mini" type="button" data-tpl="wk">Mon–Fri 9–5</button>' +
+      '<button class="btn ghost mini" type="button" data-tpl="all">Every day 10–6</button>';
+    quick.querySelectorAll('[data-tpl]').forEach((b) => b.addEventListener('click', () => {
+      const wk = b.getAttribute('data-tpl') === 'wk';
+      painter.setBlocks((wk ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6])
+        .map((d2) => ({ dow: d2, a: wk ? 540 : 600, b: wk ? 1020 : 1080 })));
+    }));
+    body.appendChild(quick); body.appendChild(painter);
+    const go = document.createElement('div'); go.className = 'cal-frow';
+    go.innerHTML = '<button class="btn" data-wz="save" type="button">Save the hours</button>';
+    go.querySelector('[data-wz="save"]').addEventListener('click', async () => {
+      try {
+        const rows = painter.paintBlocks().map((x) => ({ location_id: loc.id, dow: x.dow, open_min: x.a, close_min: x.b }));
+        if (!rows.length) throw new Error('Paint at least one stretch of open hours.');
+        const del = await sb.from('concierge_business_hours').delete().eq('location_id', loc.id);
+        if (del.error) throw new Error(del.error.message);
+        const ins = await sb.from('concierge_business_hours').insert(rows);
+        if (ins.error) throw new Error(ins.error.message);
+        wDone();
+      } catch (e) { calFail(e); }
+    });
+    body.appendChild(go);
+    return body;
+  }
+  if (n === 3) {
+    const t = (ctx.types || [])[0] || null;
+    const hrsBlocks = (state.calHours || []).filter((h) => h.location_id === loc.id)
+      .map((h) => ({ dow: h.dow, a: h.open_min, b: h.close_min }));
+    const avBlocks = t ? (state.calAvail || []).filter((a) => a.type_id === t.id && a.location_id === loc.id)
+      .map((a) => ({ dow: a.dow, a: a.start_min, b: a.end_min, step: a.step_min == null ? null : a.step_min })) : [];
+    body.innerHTML = '<div class="cal-frow">' +
+      '<label class="cal-field"><span>people book a…</span><input data-wz="title" value="' + esc(t ? t.title : '') + '" placeholder="e.g. Viewing" style="width:180px;"></label>' +
+      '<label class="cal-field"><span>each one runs</span><select data-wz="dur">' +
+      calOpts([15, 20, 30, 45, 60, 90, 120], t ? t.duration_min : 45,
+        { 15: '15 min', 20: '20 min', 30: '30 min', 45: '45 min', 60: '1 hour', 90: '1½ hours', 120: '2 hours' }) +
+      '</select></label></div>' +
+      '<div class="micro" style="margin:8px 0 2px;">when it can start — prefilled from your open hours; repaint only if it differs</div>';
+    const painter = calPaint(avBlocks.length ? avBlocks : hrsBlocks, { withStep: true });
+    body.appendChild(painter);
+    const go = document.createElement('div'); go.className = 'cal-frow';
+    go.innerHTML = '<button class="btn" data-wz="save" type="button">Save the offering</button>';
+    go.querySelector('[data-wz="save"]').addEventListener('click', async () => {
+      try {
+        const title = body.querySelector('[data-wz="title"]').value.trim();
+        if (!title) throw new Error('Name what people book.');
+        const blocks = painter.paintBlocks();
+        if (!blocks.length) throw new Error('Paint when it can start — your open hours are a fine first answer.');
+        const row = Object.assign(
+          { slug: calSlug(title), step_min: 30, mode: 'in-person', buffer_min: 0, lead_time_min: 240,
+            horizon_days: 21, capacity: 1, max_party: 0, confirm_mode: 'auto', intake_prompt: '' },
+          t || {},
+          { title: title, duration_min: +body.querySelector('[data-wz="dur"]').value, enabled: true });
+        delete row.id; delete row.created_at;
+        const up = await sb.from('concierge_appointment_types').upsert([row], { onConflict: 'slug' }).select('id');
+        if (up.error) throw new Error(up.error.message);
+        const tid = up.data && up.data[0] && up.data[0].id;
+        if (tid) {
+          const del = await sb.from('concierge_availability').delete().eq('type_id', tid).eq('location_id', loc.id);
+          if (del.error) throw new Error(del.error.message);
+          const ins = await sb.from('concierge_availability').insert(blocks.map((x) => ({
+            type_id: tid, location_id: loc.id, dow: x.dow, start_min: x.a, end_min: x.b,
+            step_min: x.step == null ? null : x.step })));
+          if (ins.error) throw new Error(ins.error.message);
+        }
+        wDone();
+      } catch (e) { calFail(e); }
+    });
+    body.appendChild(go);
+    return body;
+  }
+  if (n === 4) {
+    body.innerHTML = '<div class="cal-frow">' +
+      '<label class="cal-field"><span>their name</span><input data-wz="who" placeholder="e.g. Maya" style="width:170px;"></label>' +
+      '<label class="cal-field"><span>email (optional)</span><input data-wz="mail" placeholder="for their day-sheet" style="width:200px;"></label>' +
+      '<button class="btn" data-wz="add" type="button">Add them</button>' +
+      '<button class="btn ghost" data-wz="skip" type="button">Just me — skip</button></div>' +
+      '<p class="note" style="margin-top:6px;">They start with your open hours and take every offering — tune both on the Team card any time.</p>';
+    body.querySelector('[data-wz="skip"]').addEventListener('click', () => { state.calWiz.who = 'skip'; wDone(); });
+    body.querySelector('[data-wz="add"]').addEventListener('click', async () => {
+      try {
+        const who = body.querySelector('[data-wz="who"]').value.trim();
+        if (!who) throw new Error('Give them a name (or skip this step).');
+        const mail = body.querySelector('[data-wz="mail"]').value.trim();
+        const r = await sb.from('concierge_staff').insert([{ name: who, enabled: true, email: mail, phone: '' }]).select('id');
+        if (r.error) throw new Error(r.error.message);
+        const sid = r.data && r.data[0] && r.data[0].id;
+        if (sid) {
+          const hrs = (state.calHours || []).filter((h) => h.location_id === loc.id)
+            .map((h) => ({ staff_id: sid, location_id: loc.id, dow: h.dow, open_min: h.open_min, close_min: h.close_min }));
+          if (hrs.length) { const r2 = await sb.from('concierge_staff_hours').insert(hrs); if (r2.error) throw new Error(r2.error.message); }
+          const tids = (state.calTypes || []).map((t2) => t2.id);
+          if (tids.length) {
+            const r3 = await sb.from('concierge_staff_services').insert(tids.map((tid) => ({ staff_id: sid, type_id: tid })));
+            if (r3.error) throw new Error(r3.error.message);
+          }
+        }
+        wDone();
+      } catch (e) { calFail(e); }
+    });
+    return body;
+  }
+  const ready = ctx.stepA && ctx.stepB;
+  body.innerHTML = '<div class="cal-preview" data-wz="pv">' +
+    (ready ? 'Asking the live register…' : 'Finish the earlier steps to see the preview.') + '</div>' +
+    '<div class="cal-frow"><button class="btn" data-wz="on" type="button"' + (ready ? '' : ' disabled') + '>Open the doors</button>' +
+    '<span class="micro">the concierge starts offering visits the moment this is on</span></div>';
+  if (ready) {
+    const t2 = (ctx.types || []).find((x) => x.enabled) || (ctx.types || [])[0];
+    const l2 = (ctx.locs || []).find((x) => x.enabled) || loc;
+    const tzv = (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || null;
+    const iso = (d2) => d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0') + '-' + String(d2.getDate()).padStart(2, '0');
+    const d0 = new Date(), d1 = new Date(); d1.setDate(d1.getDate() + 7);
+    sb.rpc('appointment_slots', { p_type: t2.slug, p_location: l2.slug, p_from: iso(d0), p_to: iso(d1), p_visitor_tz: tzv })
+      .then((r) => {
+        const pv = body.querySelector('[data-wz="pv"]'); if (!pv || !document.contains(pv)) return;
+        if (r.error) { pv.textContent = 'Preview failed — ' + r.error.message; return; }
+        const dd = r.data || {};
+        const slots = dd.slots || [];
+        if (dd.ok === false || !slots.length) {
+          pv.textContent = 'No open times in the next 7 days yet — check the painted hours (a long minimum notice can also hide the first days).';
+          return;
+        }
+        pv.innerHTML = '<span class="micro">a visitor asking today would be offered</span><div class="cal-pv-row">' +
+          slots.slice(0, 10).map((s2) => '<span class="cal-pv">' + esc(s2.shop_label || s2.lead_label || '') + '</span>').join('') +
+          (slots.length > 10 ? '<span class="micro" style="align-self:center;">+' + (slots.length - 10) + ' more</span>' : '') + '</div>';
+      });
+  }
+  body.querySelector('[data-wz="on"]').addEventListener('click', async () => {
+    try {
+      const v = Object.assign({}, ctx.bcfg, { enabled: true });
+      if (!v.callbacks) v.callbacks = { enabled: true };
+      const r = await sb.from('concierge_config').upsert([{ key: 'bookings', value: v, updated_at: nowIso() }], { onConflict: 'key' });
+      if (r.error) throw new Error(r.error.message);
+      state.calWiz.step = null;
+      await loadCalendar();
+      const n2 = $('cal-note'); if (n2) n2.textContent = 'Bookings are ON — the concierge is offering visits.';
+    } catch (e) { calFail(e); }
+  });
+  return body;
 }
 async function loadCalendar() {
   const noteEl = $('cal-note'); noteEl.textContent = ''; noteEl.className = 'micro';
@@ -11283,20 +11867,8 @@ async function loadCalendar() {
     if (setup) {
       setup.textContent = '';
       if (!isOn) {
-        const card = document.createElement('div'); card.className = 'cal-setupcard';
-        const step = (done, n, tx, target, cta) =>
-          '<div class="cal-step' + (done ? ' done' : '') + '"><span class="st">' + (done ? '✓' : n) + '</span>' +
-          '<span class="tx">' + tx + '</span>' +
-          (done ? '' : '<button class="btn ghost mini" type="button" data-go="' + target + '">' + cta + '</button>') + '</div>';
-        card.innerHTML = '<div class="micro" style="margin-bottom:6px;">three steps to live</div>' +
-          step(stepA, '1', 'Tell us when you\'re open — confirm the timezone and set business hours.', 'cal-locs', 'Set hours') +
-          step(stepB, '2', 'Add something people can book, with the times it can start.', 'cal-types', 'Add an offering') +
-          step(false, '3', stepA && stepB ? 'Turn it on — the concierge starts offering visits.' :
-            'Turn it on (unlocks when 1 and 2 are done).', 'cal-rules-card', 'Open the switch');
-        card.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
-          const c = $(b.getAttribute('data-go')); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }));
-        setup.appendChild(card);
+        setup.appendChild(calWizard({ locs: locs, hours: hours, types: types, avail: avail,
+          bcfg: bcfg, stepA: stepA, stepB: stepB }));
       }
     }
     $('cal-on').disabled = !isOn && !(stepA && stepB);
@@ -11366,8 +11938,22 @@ async function loadCalendar() {
     tile(cbs.length, 'blue', 'callbacks owed', sub2, hot2, 'cal-sect-cb');
     tile(tdy.length, 'green', 'today', sub3, false, 'cal-sect-today');
     tile(ncl.length, 'red', 'to close out', sub4, false, 'cal-sect-close');
+    /* time-off decisions: requests waiting on the owner, today or later */
+    const glT = new Date();
+    const glKey = glT.getFullYear() + '-' + String(glT.getMonth() + 1).padStart(2, '0') + '-' + String(glT.getDate()).padStart(2, '0');
+    const offPend = exc.filter((x) => x.staff_id && (x.status || '') === 'requested' && String(x.on_date) >= glKey);
+    let sub6 = '';
+    if (offPend.length) {
+      const nms = [...new Set(offPend.map((x) => (((state.calStaff || []).find((s2) => s2.id === x.staff_id)) || {}).name).filter(Boolean))];
+      sub6 = nms.slice(0, 2).join(', ') + (nms.length > 2 ? ' +' + (nms.length - 2) : '');
+    }
+    tile(offPend.length, 'amber', 'time-off decisions', sub6, false, 'cal-team-card');
     tile(wkBooked, '', 'this week', sub5, false, 'cal-week');
-    qEl.appendChild(pulse);
+    /* the glance is the tab's front page — the numbers land under the
+       masthead; the queue below keeps its sections for the work itself */
+    const glanceEl = $('cal-glance');
+    if (glanceEl) { glanceEl.textContent = ''; glanceEl.appendChild(pulse); }
+    else qEl.appendChild(pulse);
     if (!pending && !tdy.length) {
       qEl.appendChild(el('div', 'cal-empty all-clear', 'The book is clear — nothing needs your hand today.'));
     }
@@ -11552,6 +12138,7 @@ async function loadCalendar() {
     const nowMin = calMinOfDay(new Date().toISOString(), enabledLocs[0] ? enabledLocs[0].timezone : undefined);
     days.forEach((d) => {
       const row = document.createElement('div'); row.className = 'cal-wk-row' + (d.today ? ' today' : '');
+      row.setAttribute('data-day', d.dt.getFullYear() + '-' + String(d.dt.getMonth() + 1).padStart(2, '0') + '-' + String(d.dt.getDate()).padStart(2, '0'));
       const anyReq = d.rows.some((b) => b.r.status === 'requested');
       row.innerHTML =
         '<span class="cal-wk-lab">' + CAL_DAYS[d.dt.getDay()] + ' ' + d.dt.getDate() + '</span>' +
@@ -11596,7 +12183,7 @@ async function loadCalendar() {
           }).join('');
           lane.innerHTML = '<span class="cal-lane-name">' + esc(stf.name) + '</span>' +
             '<span class="cal-lane-track" data-lane="' + stf.id + '" data-day="' + dayKey + '"' +
-            ' title="' + esc(stf.name) + ' — click to add time off">' + wins2 + offs + ticks2 + '</span>' +
+            ' title="' + esc(stf.name) + ' — click to book a visit or add time off">' + wins2 + offs + ticks2 + '</span>' +
             '<span class="cal-wk-n lane-n ' + (mine.length ? '' : 'zero') + '">' + (mine.length || '') + '</span>';
           wk.appendChild(lane);
         });
@@ -11628,9 +12215,76 @@ async function loadCalendar() {
           const lohi = state.calWkLoHi || [540, 1020];
           const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / (rect.width || 1)));
           const min2 = Math.round((lohi[0] + frac * (lohi[1] - lohi[0])) / 30) * 30;
-          calLanePop(ev.clientX, ev.clientY, stf, lane.getAttribute('data-day'), min2);
+          calAddPop(ev.clientX, ev.clientY, stf, lane.getAttribute('data-day'), min2);
         }
+        return;
       }
+      /* an empty stretch of a day row: book someone in right there */
+      const dayRow = ev.target.closest ? ev.target.closest('.cal-wk-row[data-day]') : null;
+      if (dayRow && ev.target.closest('.cal-ribbon')) {
+        const rect = dayRow.querySelector('.cal-ribbon').getBoundingClientRect();
+        const lohi = state.calWkLoHi || [540, 1020];
+        const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / (rect.width || 1)));
+        const min2 = Math.round((lohi[0] + frac * (lohi[1] - lohi[0])) / 30) * 30;
+        calAddPop(ev.clientX, ev.clientY, null, dayRow.getAttribute('data-day'), min2);
+      }
+    };
+    /* the Day Book's hands: drag a mark to another time or day — the floating
+       clock names the drop; the register answers whether it can move */
+    let wkDrag = null;
+    const wkMinAt = (rib, clientX) => {
+      const rect = rib.getBoundingClientRect();
+      const lohi = state.calWkLoHi || [540, 1020];
+      const frac = Math.max(0, Math.min(1, (clientX - rect.left) / (rect.width || 1)));
+      return Math.round((lohi[0] + frac * (lohi[1] - lohi[0])) / 15) * 15;
+    };
+    wEl.onpointerdown = (ev) => {
+      const tick = ev.target.closest ? ev.target.closest('.cal-tick[data-qid]') : null;
+      if (!tick || ev.button) return;
+      const r = state.calWkById[+tick.getAttribute('data-qid')];
+      if (!r || !r.starts_at) return;
+      wkDrag = { r: r, x0: ev.clientX, y0: ev.clientY, live: false, day: null, min: null, tick: tick, tip: null };
+    };
+    wEl.onpointermove = (ev) => {
+      if (!wkDrag) return;
+      if (!wkDrag.live && Math.abs(ev.clientX - wkDrag.x0) < 6 && Math.abs(ev.clientY - wkDrag.y0) < 6) return;
+      if (!wkDrag.live) {
+        wkDrag.live = true;
+        wkDrag.tick.classList.add('dragging');
+        wkDrag.tip = document.createElement('div'); wkDrag.tip.className = 'cal-dragtip';
+        document.body.appendChild(wkDrag.tip);
+        try { wEl.setPointerCapture(ev.pointerId); } catch (e2) { /* capture is a nicety */ }
+      }
+      let day = null, rib = null;
+      for (const n of document.elementsFromPoint(ev.clientX, ev.clientY)) {
+        if (!n.closest) continue;
+        const lt = n.closest('.cal-lane-track[data-day]');
+        if (lt) { day = lt.getAttribute('data-day'); rib = lt; break; }
+        const rw = n.closest('.cal-wk-row[data-day]');
+        if (rw) { day = rw.getAttribute('data-day'); rib = rw.querySelector('.cal-ribbon'); break; }
+      }
+      if (!day || !rib) { wkDrag.day = null; wkDrag.tip.textContent = 'release over a day'; }
+      else {
+        const m = wkMinAt(rib, ev.clientX);
+        wkDrag.day = day; wkDrag.min = m;
+        wkDrag.tip.textContent = CAL_DAYS[new Date(day + 'T12:00:00').getDay()] + ' ' + day.slice(5) + ' · ' + calHm(m) + ' — release to move';
+      }
+      wkDrag.tip.style.left = (ev.clientX + 14) + 'px';
+      wkDrag.tip.style.top = (ev.clientY - 12) + 'px';
+    };
+    wEl.onpointerup = (ev) => {
+      if (!wkDrag) return;
+      const d2 = wkDrag; wkDrag = null;
+      if (d2.tip) d2.tip.remove();
+      d2.tick.classList.remove('dragging');
+      if (!d2.live || !d2.day || d2.min == null) return;
+      calMovePop(ev.clientX, ev.clientY, d2.r, d2.day, d2.min);
+    };
+    wEl.onpointercancel = () => {
+      if (!wkDrag) return;
+      if (wkDrag.tip) wkDrag.tip.remove();
+      wkDrag.tick.classList.remove('dragging');
+      wkDrag = null;
     };
     if (!(week || []).length) {
       wEl.appendChild(el('div', 'cal-empty', anyWin
@@ -11996,6 +12650,37 @@ function calTypeRow(t) {
     fld('extra question (optional)<span class="info-badge" title="Asked once during booking. The answer rides the request into the queue and the owner email — never used for anything else.">i</span>', '<input data-f="intake_prompt" value="' + esc(t.intake_prompt) + '" placeholder="asked once while booking" style="width:230px;">') +
     '<button class="btn ghost" data-save-type>Save</button>' +
     (isNew ? '' : '<button class="btn ghost mini" type="button" data-rm-type>Remove…</button>') + '</div>';
+  /* the windows, painted — the winHtml rows stay the ledger the save reads */
+  const readWins = () => {
+    const out = [];
+    box.querySelectorAll('[data-win]').forEach((w) => {
+      const days = Array.from(w.querySelectorAll('.dchip.on')).map((c2) => +c2.getAttribute('data-dow'));
+      const a = calMin(w.querySelector('[data-w="from"]').value || '');
+      const b = calMin(w.querySelector('[data-w="to"]').value || '');
+      const sv = w.querySelector('[data-w="step"]').value;
+      if (a === null || b === null || b <= a) return;
+      days.forEach((d2) => out.push({ dow: d2, a: a, b: b, step: sv === '' ? null : +sv }));
+    });
+    return out;
+  };
+  const writeWins = (blocks) => {
+    const gs = {};
+    blocks.forEach((x) => {
+      const k = x.a + '|' + x.b + '|' + (x.step == null ? '' : x.step);
+      (gs[k] = gs[k] || { days: [], from: calT(x.a), to: calT(x.b), step: x.step == null ? null : x.step }).days.push(x.dow);
+    });
+    box.querySelector('[data-wins]').innerHTML = Object.values(gs).map((g) => winHtml(g.days, g.from, g.to, g.step)).join('');
+  };
+  const winsEl0 = box.querySelector('[data-wins]');
+  const typedWrap = document.createElement('div');
+  winsEl0.parentNode.insertBefore(typedWrap, winsEl0);
+  typedWrap.appendChild(winsEl0);
+  const addWinBtn = box.querySelector('[data-add-win]');
+  if (addWinBtn) typedWrap.appendChild(addWinBtn);
+  const winMark = document.createElement('span');
+  box.insertBefore(winMark, typedWrap);
+  const winPair = calPaintPair(typedWrap, readWins, writeWins, { withStep: true });
+  winMark.replaceWith(winPair);
   holder.appendChild(box);
   sum.querySelector('.edit').addEventListener('click', () => {
     const collapsed = box.classList.toggle('is-collapsed');
@@ -12025,6 +12710,7 @@ function calTypeRow(t) {
       (gs[k] = gs[k] || { days: [], from: calT(a.start_min), to: calT(a.end_min), step: a.step_min == null ? null : a.step_min }).days.push(a.dow);
     });
     box.querySelector('[data-wins]').innerHTML = Object.values(gs).map((g) => winHtml(g.days, g.from, g.to, g.step)).join('');
+    if (winPair.repaint) winPair.repaint();
   });
   const rmT = box.querySelector('[data-rm-type]');
   if (rmT) rmT.addEventListener('click', () => calRemove('remove_offering', t.id, '"' + (t.title || '') + '"'));
