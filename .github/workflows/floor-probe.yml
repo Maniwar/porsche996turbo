@@ -44,14 +44,14 @@ jobs:
           SQL
       - name: "judge_findings counts the floored line as floored — not as a veto"
         run: |
-          T=$(psql "$SUPABASE_DB_URL" -At -c "select public.judge_findings(1)->'totals';")
+          # the DB_URL session is the service role; the JWT shim must say so for
+          # the RPC's own admin/service gate (we reflect the role, never loosen it)
+          CLAIM="select set_config('request.jwt.claims','{\"role\":\"service_role\"}',false);"
+          T=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select public.judge_findings(1)->'totals';" | tail -1)
           echo "totals: $T"
-          FLOORED=$(psql "$SUPABASE_DB_URL" -At -c "
-            select (public.judge_findings(1)->'totals'->>'floored')::int;")
-          VETOED=$(psql "$SUPABASE_DB_URL" -At -c "
-            select (public.judge_findings(1)->'totals'->>'vetoed')::int;")
-          SPOKE=$(psql "$SUPABASE_DB_URL" -At -c "
-            select (public.judge_findings(1)->'totals'->>'spoke')::int;")
+          FLOORED=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(1)->'totals'->>'floored')::int;" | tail -1)
+          VETOED=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(1)->'totals'->>'vetoed')::int;" | tail -1)
+          SPOKE=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(1)->'totals'->>'spoke')::int;" | tail -1)
           echo "floored=$FLOORED  vetoed=$VETOED  spoke=$SPOKE"
           test "$FLOORED" -ge 1 && echo "✓ the floored spoke shows as 'let through by your floor'"
           test "$VETOED"  -ge 1 && echo "✓ the family the floor did NOT allow stays a block"
