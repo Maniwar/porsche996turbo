@@ -367,6 +367,15 @@ export function starterFeedsGap(starter: string, gapQ: string): boolean {
   return hit >= 2 || (g.size <= 2 && hit === g.size);
 }
 
+/** The exact-match key for a baked starter answer: casefolded, whitespace
+ * collapsed, trailing punctuation dropped — so the tap, a retyped copy, and
+ * the pinned row all agree. Pure and mirrored nowhere: every writer and
+ * reader calls THIS. */
+export function normalizeQuestionKey(q: string): string {
+  return String(q ?? "").toLowerCase().replace(/\s+/g, " ").trim()
+    .replace(/[\s?.!…]+$/u, "");
+}
+
 export type NpsSegment = "promoter" | "passive" | "detractor";
 
 /** Standard NPS banding: 9–10 promoter, 7–8 passive, 0–6 detractor. */

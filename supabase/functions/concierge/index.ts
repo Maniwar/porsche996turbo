@@ -34,6 +34,7 @@ import {
   type BeatDecision,
   chooseBeatAction,
   starterFeedsGap,
+  normalizeQuestionKey,
   extractSubjects,
   hasPendingAsk,
   type LearningDigest,
@@ -4369,6 +4370,211 @@ async function composeJudgeDigest(
   };
 }
 
+// ── Baked starter answers — the bake pass (KNOWLEDGE.md) ─────────────────────
+// One setup-time model call per starter authors its pinned answer from HOUSE
+// KNOWLEDGE ONLY, names the KB entry that grounds it (drafting one when the
+// facts exist but no single row holds them), refuses live-state questions
+// (availability, counts, a patron's own register), and files unanswerable
+// starters in the findings ledger instead of inventing. Merchant-edited
+// answers (hand_edited) are never overwritten.
+const STARTER_BAKE_CAP = 8;   // model calls per pass; the hourly loop finishes the rest
+const ZERO_VEC = "[" + new Array(384).fill(0).join(",") + "]";
+interface BakeStatus { starter: string; status: string; kb?: string | null }
+async function bakeStarters(force: boolean): Promise<{ statuses: BakeStatus[]; baked: number }> {
+  const data = await loadConciergeData();
+  const cfg = data.config as Record<string, unknown> | null;
+  const smap = (cfg?.starters && typeof cfg.starters === "object" && !Array.isArray(cfg.starters))
+    ? cfg.starters as Record<string, unknown> : {};
+  const seen = new Set<string>();
+  const starters: string[] = [];
+  for (const arr of Object.values(smap)) {
+    if (!Array.isArray(arr)) continue;
+    for (const s of arr) {
+      if (typeof s !== "string" || !s.trim()) continue;
+      const k = normalizeQuestionKey(s);
+      if (!k || seen.has(k)) continue;
+      seen.add(k); starters.push(s.trim());
+    }
+  }
+  const statuses: BakeStatus[] = [];
+  if (!starters.length) return { statuses, baked: 0 };
+  const pinned = await pgSelect<{ norm_key: string; stale: boolean; hand_edited: boolean; kb_slug: string | null }>(
+    "concierge_cache?select=norm_key,stale,hand_edited,kb_slug&pinned=eq.true") ?? [];
+  const byKey = new Map(pinned.map((r) => [r.norm_key, r]));
+  const kbRows = await pgSelect<{ slug: string; title: string; content_md: string }>(
+    "concierge_kb?select=slug,title,content_md&enabled=eq.true&order=sort_order") ?? [];
+  const kbSlugs = new Set(kbRows.map((r) => r.slug));
+  const kbBlock = kbRows.map((r) => `[${r.slug}] ${r.title}\n${String(r.content_md || "").slice(0, 900)}`)
+    .join("\n\n").slice(0, 9000);
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  let baked = 0;
+  const wasClean = new Set(pinned.filter((r) => !r.stale).map((r) => r.norm_key));
+  const kbCreates: Array<{ slug: string; title: string; content_md: string }> = [];
+  const rowWrites: Array<Record<string, unknown>> = [];
+  for (const starter of starters) {
+    const key = normalizeQuestionKey(starter);
+    const have = byKey.get(key);
+    if (have?.hand_edited) { statuses.push({ starter, status: "yours", kb: have.kb_slug }); continue; }
+    if (have && !have.stale && !force) { statuses.push({ starter, status: "baked", kb: have.kb_slug }); continue; }
+    if (CACHE_SKIP.test(starter)) { statuses.push({ starter, status: "live" }); continue; }
+    if (!apiKey || baked >= STARTER_BAKE_CAP) { statuses.push({ starter, status: "queued" }); continue; }
+    baked++;
+    let verdict = "", answer = "", kbSlug = "", factsMd = "";
+    try {
+      const res = await llmFetch("starter-bake", {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({
+          model: BEAT_JUDGE_MODEL, max_tokens: 700, temperature: 0,
+          system:
+            "You pre-author the reply a sales concierge will give when a visitor taps one suggested " +
+            "question. Answer in a warm, brief, plain voice (2-4 short sentences) using ONLY the HOUSE " +
+            "KNOWLEDGE below — never invent facts, numbers, prices, or policies. Verdicts: 'live' when a " +
+            "correct answer needs live state (availability, open slots, remaining counts, or a specific " +
+            "customer's own orders); 'ungroundable' when the knowledge cannot fully answer; else 'ok'. " +
+            "kb_slug = the [slug] of the ONE knowledge entry that most grounds your answer, or '' if no " +
+            "single entry does. facts_md = the 1-3 knowledge facts you used, faithfully restated.\n\n" +
+            "HOUSE KNOWLEDGE:\n" + kbBlock,
+          tools: [{
+            name: "bake",
+            description: "The pre-authored starter reply.",
+            input_schema: {
+              type: "object",
+              properties: {
+                verdict: { type: "string", enum: ["ok", "ungroundable", "live"] },
+                answer: { type: "string" }, kb_slug: { type: "string" }, facts_md: { type: "string" },
+              },
+              required: ["verdict", "answer"],
+            },
+          }],
+          tool_choice: { type: "tool", name: "bake" },
+          messages: [{ role: "user", content: "Suggested question: " + starter }],
+        }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        const tu = Array.isArray(j.content) ? j.content.find((b: { type?: string }) => b.type === "tool_use") : null;
+        const inp = (tu?.input ?? {}) as Record<string, unknown>;
+        verdict = String(inp.verdict ?? "");
+        answer = String(inp.answer ?? "").trim().slice(0, 1500);
+        kbSlug = String(inp.kb_slug ?? "").trim();
+        factsMd = String(inp.facts_md ?? "").trim().slice(0, 1500);
+      }
+    } catch { /* one failed bake never stops the pass */ }
+    if (verdict === "live" || (answer && !cacheableAnswer(answer))) {
+      statuses.push({ starter, status: "live" }); continue;
+    }
+    if (verdict !== "ok" || !answer) {
+      // the root cause lands where the merchant already works — never invented
+      try {
+        const q = "(starter) \u201C" + starter.slice(0, 140) + "\u201D — the knowledge can't answer its own " +
+          "conversation starter; add the facts to Knowledge, or reword the starter";
+        const dup = await pgSelect<{ id: number }>(
+          `concierge_flags?select=id&resolved=eq.false&reason=eq.starter_bake&question=eq.${encodeURIComponent(q)}&limit=1`);
+        if (!dup || !dup.length) {
+          await pgInsert("concierge_flags", { question: q, answer: "", reason: "starter_bake" });
+        }
+      } catch { /* filing is best-effort */ }
+      statuses.push({ starter, status: "needs-knowledge" }); continue;
+    }
+    if (!kbSlug || !kbSlugs.has(kbSlug)) {
+      // the facts exist but no single entry holds them — draft one (capped)
+      const slug = ("starter-" + starter.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")).slice(0, 40).replace(/-+$/g, "");
+      if (factsMd && !kbSlugs.has(slug) && kbCreates.length < 5) {
+        kbCreates.push({ slug, title: starter.slice(0, 120), content_md: factsMd });
+        kbSlugs.add(slug); kbSlug = slug;
+      } else if (kbSlugs.has(slug)) { kbSlug = slug; } else { kbSlug = ""; }
+    }
+    const emb = await embed(starter);
+    rowWrites.push({
+      question: starter, answer_md: answer,
+      embedding: emb ? vecLiteral(emb) : ZERO_VEC,
+      model: "baked", pinned: true, stale: false, hand_edited: false,
+      kb_slug: kbSlug || null, norm_key: key, enabled: true,
+    });
+    statuses.push({ starter, status: "baked", kb: kbSlug || null });
+  }
+  // KB drafts FIRST (each insert flushes the learned cache + stales pinned
+  // rows), THEN the pinned upserts — so every row written below lands fresh.
+  for (const kbi of kbCreates) {
+    await pgInsert("concierge_kb", { ...kbi, enabled: true, sort_order: 900, updated_at: new Date().toISOString() });
+  }
+  for (const row of rowWrites) {
+    await fetch(
+      `${SUPABASE_URL}/rest/v1/concierge_cache?pinned=eq.true&norm_key=eq.${encodeURIComponent(String(row.norm_key))}`,
+      { method: "DELETE", headers: PG_HEADERS },
+    ).then((r) => r.body?.cancel()).catch(() => { /* the insert below still lands */ });
+    await pgInsert("concierge_cache", row);
+  }
+  // our own KB drafts only ADD knowledge — rows that were clean before this
+  // pass and untouched by it did not go stale on the merchant's account
+  if (kbCreates.length) {
+    const touched = new Set(rowWrites.map((r) => String(r.norm_key)));
+    const restore = [...wasClean].filter((k) => !touched.has(k));
+    if (restore.length) {
+      const list = restore.map((k) => `"${k.replace(/"/g, "")}"`).join(",");
+      await pgPatch(`concierge_cache?pinned=eq.true&norm_key=in.(${encodeURIComponent(list)})`, { stale: false })
+        .catch(() => { /* the hourly pass would fix it anyway */ });
+    }
+  }
+  return { statuses, baked };
+}
+let lastStarterBakeCheckMs = 0;
+function scheduleStarterBake(): void {
+  try {
+    if (Date.now() - lastStarterBakeCheckMs < 3600000) return; // one DB peek per isolate-hour
+    lastStarterBakeCheckMs = Date.now();
+    const p = starterBakeIfDue().catch(() => {});
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
+  } catch { /* wiring never touches a conversation */ }
+}
+async function starterBakeIfDue(): Promise<void> {
+  // cheap peek: is there anything to bake at all?
+  const data = await loadConciergeData();
+  const cfg = data.config as Record<string, unknown> | null;
+  const smap = (cfg?.starters && typeof cfg.starters === "object" && !Array.isArray(cfg.starters))
+    ? cfg.starters as Record<string, unknown> : {};
+  const keys = new Set<string>();
+  for (const arr of Object.values(smap)) {
+    if (!Array.isArray(arr)) continue;
+    for (const s of arr) { if (typeof s === "string" && s.trim()) { const k = normalizeQuestionKey(s); if (k) keys.add(k); } }
+  }
+  if (!keys.size) return;
+  const pinned = await pgSelect<{ norm_key: string; stale: boolean; hand_edited: boolean }>(
+    "concierge_cache?select=norm_key,stale,hand_edited&pinned=eq.true") ?? [];
+  const clean = new Set(pinned.filter((r) => !r.stale || r.hand_edited).map((r) => r.norm_key));
+  let pending = 0;
+  for (const k of keys) if (!clean.has(k)) pending++;
+  if (!pending) return;
+  // claim the hour atomically — exactly one isolate bakes
+  const seeded = await pgSelect<{ computed_at: string }>(
+    "concierge_insights?select=computed_at&kind=eq.starter_bake&limit=1");
+  if (!seeded) return;
+  if (!seeded.length) {
+    const planted = await pgInsert("concierge_insights", {
+      kind: "starter_bake", payload: {}, computed_at: new Date().toISOString(),
+    });
+    if (!planted) return; // lost the race
+  } else {
+    const cut = new Date(Date.now() - 55 * 60000).toISOString();
+    const won = await pgPatch<{ kind: string }>(
+      `concierge_insights?kind=eq.starter_bake&computed_at=lt.${encodeURIComponent(cut)}`,
+      { computed_at: new Date().toISOString() });
+    if (!won || !won.length) return;
+  }
+  const r = await bakeStarters(false);
+  // the full per-starter ledger — the studio and the live probe both read it
+  await pgPatch("concierge_insights?kind=eq.starter_bake",
+    { payload: { baked: r.baked, statuses: r.statuses } }).catch(() => {});
+}
+async function handleBakeStartersGet(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const force = new URL(req.url).searchParams.get("force") === "1";
+  const r = await bakeStarters(force);
+  return jsonResponse(req, 200, { ok: true, baked: r.baked, statuses: r.statuses });
+}
 let lastJudgeDigestCheckMs = 0;
 function scheduleJudgeDigest(): void {
   try {
@@ -5950,6 +6156,7 @@ async function handleChatPost(req: Request): Promise<Response> {
   const bookingCtx = await bookingContextBlock(data.config, customer, validated.sessionKey);
   const editionCtx = await editionContextBlock();
   scheduleJudgeDigest(); // piggybacked weekly check — fire-and-forget, never on the reply path
+  scheduleStarterBake(); // starters wire their own answers up — never on the reply path
   const customerLine = [customerLine0, bookingCtx, editionCtx].filter((s) => s && String(s).trim()).join("\n\n") || null;
   // Live goal status from the last evaluation, so the prompt shows which goals
   // are still open and the concierge actively drives them.
@@ -6205,6 +6412,46 @@ async function handleChatPost(req: Request): Promise<Response> {
     }
   } catch { /* corrections never break the chat */ }
 
+  // ── Baked starter answers — exact match, ZERO calls (KNOWLEDGE.md) ────────
+  // Starters are the most-tapped inputs on the page, so their answers are
+  // pre-authored and PINNED: matched by normalized key and served without a
+  // model call OR an embedding call, any visitor, any turn.
+  if (!isNudge && !isOpener) {
+    const lastUserP = [...validated.messages].reverse().find((m) => m.role === "user");
+    if (lastUserP && lastUserP.content.length <= 300) {
+      const keyP = normalizeQuestionKey(lastUserP.content);
+      if (keyP) {
+        const pinnedRows = await pgSelect<{ id: string; answer_md: string; hits: number }>(
+          `concierge_cache?select=id,answer_md,hits&pinned=eq.true&enabled=eq.true&norm_key=eq.${encodeURIComponent(keyP)}&limit=1`);
+        if (pinnedRows && pinnedRows.length) {
+          const hitP = pinnedRows[0];
+          pgPatch(`concierge_cache?id=eq.${hitP.id}`,
+            { hits: (Number(hitP.hits) || 0) + 1, last_hit_at: new Date().toISOString() })
+            .catch(() => { /* the counter never blocks the reply */ });
+          const streamP = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              try {
+                controller.enqueue(sseFrame({ c: 1 }));
+                for (const piece of chunked(hitP.answer_md)) {
+                  controller.enqueue(sseFrame({ t: piece }));
+                }
+                const cid = await conversationPromise;
+                const meta = await logAssistantTurn(
+                  cid, hitP.answer_md, "baked", Date.now() - startedAt,
+                );
+                if (meta) controller.enqueue(encoder.encode(`data: ${meta}\n\n`));
+              } catch { /* still close cleanly */ }
+              try {
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+              } catch { /* consumer gone */ }
+            },
+          });
+          return sseResponse(req, streamP);
+        }
+      }
+    }
+  }
   // ── Semantic cache — anonymous, single-turn questions only ────────────────
   // Multi-turn answers depend on conversation context; signed-in answers on
   // the register. Neither may be cached or served from cache.
@@ -7527,6 +7774,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("judgedigest")) {
     return await handleJudgeDigestGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("bakestarters")) {
+    return await handleBakeStartersGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("npsreport")) {
     return await handleNpsReportGet(req);

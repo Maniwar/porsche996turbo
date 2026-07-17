@@ -2030,6 +2030,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       </div>
 
       <div class="row-tools">
+        <button id="cache-bake" class="btn primary">Bake starter answers</button>
         <button id="cache-refresh" class="btn">Refresh</button>
       </div>
 
@@ -3264,6 +3265,20 @@ function wireStatic() {
   $('evals-run').addEventListener('click', function () { withBusy($('evals-run'), runEnabledEvals); });
   $('cache-refresh').addEventListener('click', function () {
     withBusy($('cache-refresh'), loadCache);
+  });
+  $('cache-bake').addEventListener('click', function () {
+    withBusy($('cache-bake'), async function () {
+      try {
+        const d = await adminGet('?bakestarters=1');
+        const n = {};
+        (d.statuses || []).forEach(function (s) { n[s.status] = (n[s.status] || 0) + 1; });
+        toast('Baked ' + (d.baked || 0) + ' · ready ' + (n.baked || 0) +
+          (n.queued ? ' · queued ' + n.queued : '') +
+          (n['needs-knowledge'] ? ' · needs knowledge ' + n['needs-knowledge'] : '') +
+          (n.live ? ' · stays live ' + n.live : ''));
+        await loadCache();
+      } catch (e) { fail('Bake starter answers', e); }
+    });
   });
 
   $('convo-refresh').addEventListener('click', function () {
@@ -5292,7 +5307,12 @@ async function saveStarters() {
     { onConflict: 'key' }
   );
   if (res.error) { fail('Save starters', res.error); return; }
-  toast('Starters saved');
+  toast('Starters saved \u2014 answers are baking');
+  // fire-and-forget: each saved starter gets its pre-authored, KB-backed
+  // answer so taps never spend a model call (Saved answers shows them)
+  adminGet('?bakestarters=1').then(function (d) {
+    toast('Starter answers: ' + (d.baked || 0) + ' baked \u2014 see Saved answers');
+  }).catch(function () { /* the hourly pass will catch up */ });
 }
 
 /* ============================================================
@@ -6702,7 +6722,7 @@ function renderGaps() {
 
 async function loadCache() {
   const res = await sb.from('concierge_cache')
-    .select('id,question,answer_md,hits,enabled,model,created_at,last_hit_at')
+    .select('id,question,answer_md,hits,enabled,model,created_at,last_hit_at,pinned,stale,hand_edited,kb_slug')
     .order('hits', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(100);
@@ -6722,10 +6742,22 @@ function renderCache() {
 
   if (!state.cache.length) {
     list.appendChild(el('div', 'empty micro',
-      'Nothing cached yet — entries appear as visitors ask questions.'));
+      'Nothing saved yet — starter answers appear after a bake; learned answers as visitors ask.'));
     return;
   }
-  state.cache.forEach(function (row) { list.appendChild(cacheEditor(row)); });
+  const pinnedRows = state.cache.filter(function (r) { return r.pinned; });
+  const learned = state.cache.filter(function (r) { return !r.pinned; });
+  if (pinnedRows.length) {
+    const h1 = el('div', 'micro', 'STARTER ANSWERS — pre-authored, served instantly, no model call');
+    h1.style.cssText = 'letter-spacing:.12em;margin:4px 0 8px;opacity:.8;';
+    list.appendChild(h1);
+    pinnedRows.forEach(function (row) { list.appendChild(cacheEditor(row)); });
+  }
+  const h2 = el('div', 'micro', 'LEARNED FROM CONVERSATIONS — refreshed whenever the knowledge changes');
+  h2.style.cssText = 'letter-spacing:.12em;margin:14px 0 8px;opacity:.8;';
+  list.appendChild(h2);
+  if (!learned.length) list.appendChild(el('div', 'empty micro', 'Nothing learned yet — entries appear as visitors ask questions.'));
+  learned.forEach(function (row) { list.appendChild(cacheEditor(row)); });
   if ($('panel-cache').classList.contains('on')) autoGrowAll('#cache-list');
 }
 
@@ -6740,6 +6772,20 @@ function cacheEditor(row) {
   chk.appendChild(cb);
   chk.appendChild(el('span', 'micro', 'Enabled'));
   top.appendChild(chk);
+  if (row.pinned) {
+    const st = row.hand_edited ? ['your wording — auto-bake won\u2019t touch it', 'var(--brass-soft)']
+      : row.stale ? ['knowledge changed — re-bakes within the hour', 'var(--st-amber)']
+      : ['baked \u2713', 'var(--st-green)'];
+    const chip = el('span', 'micro', st[0]);
+    chip.style.cssText = 'color:' + st[1] + ';';
+    top.appendChild(chip);
+    if (row.kb_slug) {
+      const kbl = el('a', 'micro', 'backed by: ' + row.kb_slug);
+      kbl.href = '#knowledge';
+      kbl.addEventListener('click', function () { activateTab('knowledge'); });
+      top.appendChild(kbl);
+    }
+  }
   top.appendChild(el('span', 'micro', (row.hits || 0) + ' hit' + (row.hits === 1 ? '' : 's')));
   top.appendChild(el('span', 'micro ord', fmtWhen(row.last_hit_at || row.created_at)));
   wrap.appendChild(top);
@@ -6764,10 +6810,9 @@ function cacheEditor(row) {
 
   btnSave.addEventListener('click', function () {
     withBusy(btnSave, async function () {
-      const res = await sb.from('concierge_cache').update({
-        answer_md: body.value,
-        enabled: cb.checked
-      }).eq('id', row.id);
+      const patch = { answer_md: body.value, enabled: cb.checked };
+      if (row.pinned && body.value !== row.answer_md) { patch.hand_edited = true; patch.stale = false; }
+      const res = await sb.from('concierge_cache').update(patch).eq('id', row.id);
       if (res.error) { fail('Save cache entry', res.error); return; }
       row.answer_md = body.value; row.enabled = cb.checked;
       toast('Cache entry saved');

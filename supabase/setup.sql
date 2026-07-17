@@ -176,6 +176,19 @@ create table if not exists public.concierge_cache (
   created_at timestamptz not null default now(), last_hit_at timestamptz);
 create index if not exists concierge_cache_embedding_idx on public.concierge_cache
   using hnsw (embedding extensions.vector_ip_ops);
+-- Baked starter answers (KNOWLEDGE.md): a pinned row is a conversation
+-- starter's pre-authored reply — exact-matched by norm_key and served with
+-- ZERO model or embedding calls. kb_slug names the knowledge entry that
+-- grounds it; hand_edited marks the merchant's own wording (auto-bake never
+-- touches it); stale means the knowledge changed since the bake.
+alter table public.concierge_cache
+  add column if not exists pinned boolean not null default false,
+  add column if not exists stale boolean not null default false,
+  add column if not exists hand_edited boolean not null default false,
+  add column if not exists kb_slug text,
+  add column if not exists norm_key text;
+create index if not exists concierge_cache_pinned_key_idx
+  on public.concierge_cache (norm_key) where pinned;
 
 create table if not exists public.concierge_flags (
   id bigint generated always as identity primary key,
@@ -565,7 +578,11 @@ revoke execute on function public.match_cached_answer(extensions.vector, float) 
 create or replace function public.flush_concierge_cache() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  delete from public.concierge_cache where true;
+  -- learned rows flush clean; PINNED starter answers are never deleted by a
+  -- source edit — they are marked stale and the bake pass re-authors them,
+  -- so a starter tap never falls back to a live model call.
+  delete from public.concierge_cache where not pinned;
+  update public.concierge_cache set stale = true where pinned and not stale;
   return null;
 end; $$;
 do $$

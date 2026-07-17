@@ -6,6 +6,7 @@
 //   deno test supabase/functions/concierge/beats_test.ts
 
 import {
+  normalizeQuestionKey,
   starterFeedsGap,
   chooseBeatAction,
   DEFAULT_PROPOSAL_REST_HOURS,
@@ -160,6 +161,16 @@ Deno.test("proactiveStyle 'offer' makes the presence beat offer-first, not recit
   assert(offer.detail.includes("OFFER-FIRST"), "offer brief invites, not recites");
   assert(/NEVER recite/.test(offer.detail), "offer brief forbids reciting facts at the shopper");
   assert(!offer.detail.includes("GIVE FIRST"), "offer brief is not the expertise brief");
+});
+
+Deno.test("normalizeQuestionKey: tap, retype, and pinned row all agree", () => {
+  assertEq(normalizeQuestionKey("  What makes the wool special?  "),
+    "what makes the wool special", "case, edges, and the trailing ? fold away");
+  assertEq(normalizeQuestionKey("What  makes\nthe wool special"),
+    "what makes the wool special", "inner whitespace collapses");
+  assertEq(normalizeQuestionKey("Wie wäscht man sie?!…"),
+    "wie wäscht man sie", "non-ascii survives; trailing punctuation run drops");
+  assertEq(normalizeQuestionKey(""), "", "empty stays empty");
 });
 
 Deno.test("starterFeedsGap: the live edition pair matches; strangers don't", () => {

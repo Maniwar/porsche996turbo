@@ -1,0 +1,140 @@
+name: Starter probe (baked answers, live)
+# Definitive proof of the baked-starter feature against the LIVE concierge:
+#   A. Zero-call serving — a planted pinned row is tapped over the real wire;
+#      the streamed reply must be BYTE-IDENTICAL to the stored answer, arrive
+#      with the cache marker, be logged as model='baked', and leave ZERO rows
+#      in concierge_llm_usage for that conversation. Not "cheap" — zero.
+#   B. Auto-wiring — the same tap kicks the hourly bake pass (the claim is
+#      aged first so it is due); the probe then watches the real starters
+#      until every one is either served-from-pinned or accounted for in the
+#      pass ledger (live / needs-knowledge / queued / yours). Silent gaps fail.
+# qa- sessions never touch metrics; every row the probe creates is removed.
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      FN: https://amexzypgvntohhntahuj.supabase.co/functions/v1/concierge
+      # publishable key — public by design, ships in the page source
+      K: sb_publishable_zt3jU2wLqqoWBaUgajs1tw_a-Sxi1sk
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: "Plant the QA pinned row + age the bake claim so it is due"
+        run: |
+          SES="qa-bake-probe-${GITHUB_RUN_ID}"
+          Q="QA baked probe ${GITHUB_RUN_ID}?"
+          NK="qa baked probe ${GITHUB_RUN_ID}"
+          echo "SES=$SES" >> "$GITHUB_ENV"
+          echo "Q=$Q"     >> "$GITHUB_ENV"
+          echo "NK=$NK"   >> "$GITHUB_ENV"
+          printf 'Baked answer probe — **exact** bytes, line one.\nSecond line: ü, an em-dash —, and a [link](https://example.com).' > /tmp/planted.txt
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          insert into public.concierge_cache
+            (question, answer_md, embedding, model, pinned, stale, hand_edited, norm_key, enabled)
+          values ('$Q', \$planted\$$(cat /tmp/planted.txt)\$planted\$,
+                  ('[' || repeat('0,', 383) || '0]')::extensions.vector,
+                  'baked', true, false, false, '$NK', true);
+          update public.concierge_insights set computed_at = '2000-01-01'
+           where kind = 'starter_bake';
+          SQL
+      - name: "Tap it over the real wire — the reply must stream from the pinned row"
+        run: |
+          code=$(curl -s -o /tmp/sse -w '%{http_code} in %{time_total}s' --max-time 60 \
+            -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+            -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$Q\"}],\"context\":{\"section\":\"hero\"},\"session_key\":\"$SES\"}" \
+            "$FN")
+          echo "tap HTTP $code"
+          echo "$code" | grep -q '^200 '
+          grep -q '^data: {"c":1}' /tmp/sse && echo "✓ cache marker frame present"
+          grep '^data: {' /tmp/sse | sed 's/^data: //' | jq -j 'select(has("t")) | .t' > /tmp/reply.txt
+          echo "---- streamed reply ----"; cat /tmp/reply.txt; echo; echo "------------------------"
+      - name: "A. Byte-equality + model='baked' + ZERO llm-usage rows"
+        run: |
+          M_PLANT=$(md5sum /tmp/planted.txt | cut -d' ' -f1)
+          M_WIRE=$(md5sum /tmp/reply.txt   | cut -d' ' -f1)
+          M_ROW=$(psql "$SUPABASE_DB_URL" -At -c \
+            "select md5(answer_md) from public.concierge_cache where pinned and norm_key = '$NK';")
+          echo "planted=$M_PLANT  wire=$M_WIRE  row=$M_ROW"
+          test "$M_PLANT" = "$M_WIRE" && test "$M_WIRE" = "$M_ROW" \
+            && echo "✓ planted, stored, and streamed bytes all identical"
+          BAKED_MSGS=$(psql "$SUPABASE_DB_URL" -At -c "
+            select count(*) from public.concierge_messages m
+              join public.concierge_conversations c on c.id = m.conversation_id
+             where c.session_key = '$SES' and m.role = 'assistant' and m.model = 'baked';")
+          USAGE=$(psql "$SUPABASE_DB_URL" -At -c "
+            select count(*) from public.concierge_llm_usage u
+              join public.concierge_conversations c on c.id = u.conversation_id
+             where c.session_key = '$SES';")
+          HITS=$(psql "$SUPABASE_DB_URL" -At -c \
+            "select hits from public.concierge_cache where pinned and norm_key = '$NK';")
+          echo "assistant turns logged as baked: $BAKED_MSGS · llm-usage rows: $USAGE · hit counter: $HITS"
+          test "$BAKED_MSGS" = "1"
+          test "$USAGE" = "0" && echo "✓ ZERO model/embedding spend for the tapped starter"
+      - name: "B. The real starters — watch the auto-bake account for every one"
+        run: |
+          WITH_S="with s as (
+            select distinct btrim(x.starter) as starter,
+                   regexp_replace(btrim(regexp_replace(lower(x.starter), '\s+', ' ', 'g')), '[\s?.!…]+\$', '') as k
+              from public.concierge_config c
+                   cross join lateral jsonb_each(c.value) v(sec, arr)
+                   cross join lateral jsonb_array_elements_text(v.arr) x(starter)
+             where c.key = 'starters' and jsonb_typeof(c.value) = 'object'
+               and jsonb_typeof(v.arr) = 'array' and btrim(x.starter) <> '' and x.starter <> '$Q')"
+          CLEAN="select norm_key from public.concierge_cache
+                  where pinned and enabled and (not stale or hand_edited)
+                    and norm_key is not null and norm_key <> '$NK'"
+          LEDGER="select regexp_replace(btrim(regexp_replace(lower(st->>'starter'), '\s+', ' ', 'g')), '[\s?.!…]+\$', '') as k,
+                         st->>'status' as status
+                    from public.concierge_insights i
+                         cross join lateral jsonb_array_elements(i.payload->'statuses') st
+                   where i.kind = 'starter_bake' and jsonb_typeof(i.payload->'statuses') = 'array'
+                     and i.computed_at > now() - interval '15 minutes'"
+          for i in $(seq 1 8); do
+            PEND=$(psql "$SUPABASE_DB_URL" -At -c "$WITH_S select count(distinct k) from s where k not in ($CLEAN);")
+            UNACC=$(psql "$SUPABASE_DB_URL" -At -c "$WITH_S, led as ($LEDGER)
+              select count(distinct s.k) from s
+               where s.k not in ($CLEAN)
+                 and not exists (select 1 from led
+                                  where led.k = s.k and led.status in ('live','needs-knowledge','queued','yours'));")
+            echo "poll $i — starters not yet pinned: $PEND · unaccounted: $UNACC"
+            [ "$PEND" = "0" ] && break
+            [ "$UNACC" = "0" ] && break
+            sleep 30
+          done
+          echo "---- coverage (every configured starter) ----"
+          psql "$SUPABASE_DB_URL" -c "$WITH_S, led as ($LEDGER)
+            select left(s.starter, 58) as starter,
+                   case when p.hand_edited then 'yours (hand-edited)'
+                        when p.norm_key is not null and not p.stale then 'baked ✓ zero-call'
+                        when p.norm_key is not null then 'stale — re-bakes hourly'
+                        else coalesce((select led.status from led where led.k = s.k limit 1), 'MISSING') end as state,
+                   coalesce(p.kb_slug, '') as grounded_by
+              from s left join public.concierge_cache p
+                on p.pinned and p.enabled and p.norm_key = s.k
+             order by 2, 1;" -P title='starter coverage — pinned rows + pass ledger'
+          FINAL_UNACC=$(psql "$SUPABASE_DB_URL" -At -c "$WITH_S, led as ($LEDGER)
+            select count(distinct s.k) from s
+             where s.k not in ($CLEAN)
+               and not exists (select 1 from led
+                                where led.k = s.k and led.status in ('live','needs-knowledge','queued','yours'));")
+          CLAIMED=$(psql "$SUPABASE_DB_URL" -At -c \
+            "select coalesce(max((computed_at > now() - interval '15 minutes')::int), 0)
+               from public.concierge_insights where kind = 'starter_bake';")
+          echo "unaccounted after watch: $FINAL_UNACC · bake claimed this run: $CLAIMED"
+          if [ "$FINAL_UNACC" != "0" ]; then
+            echo "Starters exist that are neither pinned nor accounted for by the pass ledger."
+            echo "If 'bake claimed this run' is 0 the kick never fired (warm isolates can defer the"
+            echo "peek up to an hour) — re-run after the hourly pass, or press 'Bake starter answers'"
+            echo "in the studio. Failing so a silent gap can never look like a pass."
+            exit 1
+          fi
+      - name: "Zero residue — the QA row and the probe conversation are removed"
+        if: always()
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            delete from public.concierge_cache where pinned and norm_key = '$NK';
+            with cids as (select id from public.concierge_conversations where session_key = '$SES')
+            , d1 as (delete from public.concierge_actions   where conversation_id in (select id from cids) returning 1)
+            , d2 as (delete from public.concierge_messages  where conversation_id in (select id from cids) returning 1)
+            , d3 as (delete from public.concierge_llm_usage where conversation_id in (select id from cids) returning 1)
+            delete from public.concierge_conversations where session_key = '$SES';"
