@@ -129,7 +129,7 @@ jobs:
           if [ -n "$EMAIL_FROM" ]; then supabase secrets set EMAIL_FROM="$EMAIL_FROM"; fi
 
       - name: Deploy concierge function
-        run: supabase functions deploy concierge --no-verify-jwt
+        run: supabase functions deploy concierge --no-verify-jwt --use-api
 
       # QA gate: hit the REAL production endpoints right after deploying. Local
       # checks (deno check) prove the code parses and types — they cannot prove
