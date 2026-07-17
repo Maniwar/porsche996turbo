@@ -6096,9 +6096,12 @@ async function handleChatPost(req: Request): Promise<Response> {
               "they'd be willing to answer one quick question before they go — ask exactly this — “" +
               npsCfgW.question + "” — and put the token {{nps}} ALONE on its own line after it. Tapping " +
               "a number answers it; walking away declines it; both are perfectly fine and neither is " +
-              "ever mentioned again. This works WITH the snooze send-off, never instead of it: if their " +
-              "message was also a wind-down, still put {{action:snooze}} alone on the LAST line, after " +
-              "the {{nps}} line.]",
+              "ever mentioned again. This works WITH the snooze send-off, never instead of it. " +
+              "SHAPE OF THIS REPLY — adapt the words, keep the shape exactly:\n" +
+              "Thank you for stopping by — the door's open whenever you're ready.\n" +
+              npsCfgW.question + "\n" +
+              "{{nps}}\n" +
+              "{{action:snooze}}]",
           });
           surveyAskDue = npsCfgW.question;
           if (!(validated.sessionKey || "").startsWith("qa-")) {
@@ -6726,6 +6729,16 @@ async function handleChatPost(req: Request): Promise<Response> {
           const ask = "\n\n" + surveyAskDue + "\n\n{{nps}}";
           assistantText += ask;
           try { controller.enqueue(sseFrame({ t: ask })); } catch { /* consumer gone */ }
+          // Meter the miss: every append is a compliance failure the model
+          // should have avoided — countable, so prompt work has a scoreboard.
+          if (!(validated.sessionKey || "").startsWith("qa-")) {
+            conversationPromise.then((cidF) => cidF && pgInsert("concierge_actions", {
+              conversation_id: cidF, user_id: customer?.id ?? null, email: customer?.email ?? null,
+              action: "beat_action", serial: null,
+              payload: { action: "REQUEST_NPS_APPENDED", via: "wrapup-fallback" },
+              result: "REQUEST_NPS_APPENDED",
+            })).catch(() => { /* the meter never blocks the stream */ });
+          }
         }
         // Log the assistant turn BEFORE [DONE], then emit the meta event.
         // Logging failures never break the stream — [DONE] is always sent.
