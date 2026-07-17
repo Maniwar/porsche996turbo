@@ -3547,6 +3547,15 @@ const BEAT_JUDGE_CRITERION =
 // source that binds the drafting prompt, and the block the kit stamps per product).
 // It reads the house's TRUTH (price posture, scope, what may be claimed/offered),
 // never the selling dial — so a harder or softer sell can never move the gate.
+/** The merchant's own words to the judge (config judge.rules — versioned like
+ * every setting; the Judge & coach page writes it). Appended to the house
+ * rules on every review, so over- or under-strictness is tunable in plain
+ * language without touching code. */
+function extraJudgeRules(cfg: Record<string, unknown> | null | undefined): string {
+  const j = (cfg && cfg.judge ? cfg.judge : null) as Record<string, unknown> | null;
+  const r = j && typeof j.rules === "string" ? j.rules.trim() : "";
+  return r ? "\nHOUSE AMENDMENTS TO THIS JUDGE (authoritative):\n" + r.slice(0, 800) : "";
+}
 function houseHonestyRules(cfg: { voice_base?: unknown } | null | undefined): string {
   const base = (cfg && typeof cfg.voice_base === "string" && cfg.voice_base.trim())
     ? cfg.voice_base
@@ -3561,6 +3570,7 @@ async function judgeBeatLine(
   kind: string,
   houseRules = "",
   recentUser = "",
+  factsOnFile = "",
 ): Promise<{ veto: boolean; reason: string }> {
   // Deterministic pre-filter (JUDGE_COACH_LOOP.md tier 0): the most-repeated
   // live veto cluster is mechanical plumbing — {{action:...}} tokens and
@@ -3626,6 +3636,12 @@ async function judgeBeatLine(
           role: "user",
           content: "CRITERION:\n" + BEAT_JUDGE_CRITERION +
             (houseRules ? "\n\nHOUSE RULES (authoritative for this house):\n" + houseRules : "") +
+            (factsOnFile
+              ? "\n\nFACTS ON FILE (ground truth from the register THIS TURN — a line consistent " +
+                "with these is GROUNDED, not invented; acknowledging that something is on file is " +
+                "service; only quoting stored digits or addresses aloud remains defect 7):\n" +
+                factsOnFile.slice(0, 1200)
+              : "") +
             (recentUser
               ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
                 recentUser.slice(0, 400)
@@ -5490,15 +5506,25 @@ async function handleChatPost(req: Request): Promise<Response> {
         // streak stops at the first beat that actually spoke or was vetoed.
         try {
           if (convId) {
-            const brows = await pgSelect<{ action: string }>(
-              `concierge_actions?select=action&conversation_id=eq.${encodeURIComponent(convId)}` +
-                `&action=like.beat_*&order=created_at.desc&limit=8`);
+            const [brows, lastU] = await Promise.all([
+              pgSelect<{ action: string; created_at: string }>(
+                `concierge_actions?select=action,created_at&conversation_id=eq.${encodeURIComponent(convId)}` +
+                  `&action=like.beat_*&order=created_at.desc&limit=8`),
+              pgSelect<{ created_at: string }>(
+                `concierge_messages?select=created_at&conversation_id=eq.${encodeURIComponent(convId)}` +
+                  `&role=eq.user&order=created_at.desc&limit=1`),
+            ]);
             let streak = 0;
             for (const b of brows || []) {
               if (b.action === "beat_hold") streak++;
               else break;
             }
             ledger.heldStreak = streak;
+            // Beats since their last word — spoken lines they ignored are as
+            // dry a signal as silent holds (the graceful close + survey read both).
+            const lastUserMs = lastU && lastU[0] ? (Date.parse(lastU[0].created_at) || 0) : 0;
+            ledger.unansweredBeats = (brows || [])
+              .filter((b) => (Date.parse(b.created_at) || 0) > lastUserMs).length;
           }
         } catch { /* the streak is best-effort — absent reads as 0 */ }
         beatDecision = chooseBeatAction(
@@ -5526,7 +5552,8 @@ async function handleChatPost(req: Request): Promise<Response> {
             ]);
             const gate = npsTriggerGate({
               enabled: npsCfg.enabled,
-              concluded: ledger.postSaleWindow || goalMet || (ledger.heldStreak ?? 0) >= 3,
+              concluded: ledger.postSaleWindow || goalMet || (ledger.heldStreak ?? 0) >= 3 ||
+                (ledger.unansweredBeats ?? 0) >= 4,
               alreadySurveyedSession: !!(convRows && convRows.length),
               sessionDurationMs: convCreatedMs ? Date.now() - convCreatedMs : 0,
               minDurationMs: npsCfg.minMs,
@@ -6194,8 +6221,12 @@ async function handleChatPost(req: Request): Promise<Response> {
               const lastUserJ = [...validated.messages].reverse().find((m) => m.role === "user");
               const recentU = (lastUserJ && typeof lastUserJ.content === "string") ? maskContacts(lastUserJ.content) : "";
               const jk = isNudge ? "nudge" : "opener";
-              const rules = houseHonestyRules(jcfg);
-              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU);
+              const rules = houseHonestyRules(jcfg) + extraJudgeRules(jcfg as Record<string, unknown>);
+              // The judge grades against the SAME register truth the drafter
+              // was handed — a real callback or visit is never an "invention".
+              const beatFacts = [bookingCtx, editionCtx]
+                .filter((s) => s && String(s).trim()).join("\n").slice(0, 1200);
+              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts);
               if (v.veto) {
                 // One bounded redraft (approved budget: exactly one) — the block
                 // becomes a lesson instead of a silent death. Judged again; a
@@ -6209,7 +6240,7 @@ async function handleChatPost(req: Request): Promise<Response> {
                   "Draft ONE different line that fully avoids this defect — or hold. Never mention the review.");
                 redrafted = true;
                 if (second.speak && second.text) {
-                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU);
+                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU, beatFacts);
                   text = second.text;
                   if (v2.veto) vetoReason = v2.reason || "vetoed again after redraft";
                 } else {
@@ -7156,7 +7187,8 @@ async function handleReengage(req: Request): Promise<Response> {
     try {
       const oj = data.config?.outreach as Record<string, unknown> | undefined;
       if (oj?.beatJudge !== false) {
-        const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble", houseHonestyRules(data.config));
+        const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble",
+          houseHonestyRules(data.config) + extraJudgeRules(data.config as Record<string, unknown>));
         if (v.veto) {
           if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
             conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,

@@ -2641,6 +2641,11 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="card-head"><h3>The coach&#8217;s drafts &amp; the weekly digest</h3><span class="micro">nothing applies until you enable it</span></div>
         <div id="jc-drafts"></div>
         <div class="cal-frow" style="margin-top:14px;">
+          <input id="jc-rules" placeholder="Amend the judge in your own words — e.g. saying a number is on file is fine; only reading digits aloud is not."
+            style="flex:1 1 340px;min-width:220px;">
+          <button id="jc-rules-save" class="btn ghost" type="button" title="One or two sentences appended to the judge's house rules on every review — your pen on its standards, versioned like every setting. Clear the box and save to withdraw them.">Amend the judge</button>
+        </div>
+        <div class="cal-frow" style="margin-top:14px;">
           <button id="jc-digest" class="btn ghost" type="button" title="The owner gets this digest by email once a week, automatically. This previews it without sending.">Preview the weekly digest</button>
           <button id="jc-digest-send" class="btn ghost" type="button" title="Emails the digest to the owner right now, and lets the coach draft any due procedures (they arrive disabled).">Email it now</button>
         </div>
@@ -10256,6 +10261,26 @@ async function loadJudge() {
           dEl.appendChild(row2);
         });
       } catch (e2) { dEl.appendChild(el('div', 'cal-empty', 'Could not read the drafts.')); }
+    }
+    const jrIn = $('jc-rules'); const jrBtn = $('jc-rules-save');
+    if (jrIn && jrBtn) {
+      let jVal = {};
+      try {
+        const jc2 = await sb.from('concierge_config').select('*').eq('key', 'judge');
+        jVal = ((jc2.data && jc2.data[0]) || {}).value || {};
+      } catch (e2) { /* absent config reads as no amendments */ }
+      if (document.activeElement !== jrIn) jrIn.value = typeof jVal.rules === 'string' ? jVal.rules : '';
+      jrBtn.onclick = async () => {
+        try {
+          const v3 = Object.assign({}, jVal, { rules: (jrIn.value || '').trim() });
+          const u2 = await sb.from('concierge_config').upsert(
+            [{ key: 'judge', value: v3, updated_at: nowIso() }], { onConflict: 'key' });
+          if (u2.error) throw new Error(u2.error.message);
+          if (note) note.textContent = v3.rules
+            ? 'The judge now carries your amendment on every review.'
+            : 'Amendments withdrawn — the judge is back to the house rules alone.';
+        } catch (e2) { if (note) { note.textContent = 'Could not save — ' + (e2 && e2.message ? e2.message : e2); note.className = 'micro warn'; } }
+      };
     }
     const dg = $('jc-digest'); const dgs = $('jc-digest-send'); const dgo = $('jc-digest-out');
     const runDigest = async (sendIt) => {

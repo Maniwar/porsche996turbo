@@ -36,6 +36,10 @@ export interface SalesLedger {
    * engine counts trailing beat_hold rows). 3+ means the well is dry — the
    * graceful close's trigger. Absent (bubble path) reads as 0. */
   heldStreak?: number;
+  /** Beats (spoken OR held) since the visitor's last message. Spoken lines
+   * they ignored are as dry a signal as silent holds: 4+ also triggers the
+   * graceful close. Absent reads as 0. */
+  unansweredBeats?: number;
 }
 
 export interface BeatDecision {
@@ -264,7 +268,7 @@ export function chooseBeatAction(
       }' section. Name ONE and offer to show or arrange it. ONLY offer what the house has actually made shareable here: NEVER promise a document, image, record, or file (a CARFAX, service invoices, a PDF) is "ready to share" unless it is genuinely available to send in this chat — offering something that isn't set up is a false promise. NEVER recite specs, history, or the shopper's own data back at them, and never tally what is on file; offer to reveal it instead. Warm, brief, one light invitation, no pressure.`
       : `every sales door is spent or resting — GIVE FIRST instead of going quiet: one small, unasked piece of true house expertise keyed to the '${
         l.section || "page"
-      }' section (a care fact, the provenance, the box, the mending promise), warm and brief, no ask, no selling`;
+      }' section (a care fact, the provenance, the box, the mending promise), warm and brief, no ask, no selling. ONLY a fact the house's own knowledge sections actually state — NEVER write care, washing, temperature, or durability instructions from general wool knowledge; if the house's knowledge is silent here, speak to provenance or the box instead, or hold`;
     return pick(warmKey, warmDetail);
   }
 
@@ -273,9 +277,10 @@ export function chooseBeatAction(
   // that leaves the door open, once per day, then true silence. (The engine
   // may pair this moment with the closing survey — the NPS gate treats a dry
   // conversation as concluded, with all its other guards intact.)
+  const dryWell = (l.heldStreak ?? 0) >= 3 || (l.unansweredBeats ?? 0) >= 4;
   if (!enabled("GRACEFUL_CLOSE")) fail("GRACEFUL_CLOSE", "disabled by admin");
-  else if ((l.heldStreak ?? 0) < 3) {
-    fail("GRACEFUL_CLOSE", `only ${l.heldStreak ?? 0} consecutive held beat(s) — the well is not dry yet`);
+  else if (!dryWell) {
+    fail("GRACEFUL_CLOSE", `${l.heldStreak ?? 0} consecutive hold(s), ${l.unansweredBeats ?? 0} beat(s) since their last word — the well is not dry yet`);
   } else if (spent("GRACEFUL_CLOSE")) {
     fail("GRACEFUL_CLOSE", "already said goodbye in the last 24h — now silence really is the answer");
   } else {

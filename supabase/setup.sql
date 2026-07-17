@@ -2484,9 +2484,13 @@ begin
   classed as (
     select *, case
         when reason like 'pre-filter:%' then 'prefilter'
-        when reason ~* 'plumbing|token|meta|instruction|narrat|sign.?in|process' then 'plumbing'
-        when reason ~* 'invent|fabricat|unsupported|guarantee|refund|discount|not (in|from) house' then 'invented'
-        when reason ~* 'recit|inventor|stored data|tally|dossier' then 'inventorying'
+        -- inventorying first: 'INVENTORIES the shopper' also contains 'invent',
+        -- and read-records-aloud reasons belong here, not in 'other'
+        when reason ~* 'inventor|recit|read(s|ing)? .{0,12}aloud|stored (data|contact|phone)|records aloud|tally|dossier|scorekeep' then 'inventorying'
+        when reason ~* 'invent|fabricat|unsupported|not authorized|guarantee|refund|discount|not (in|from) house' then 'invented'
+        -- no bare 'instruction'/'process': 'care instructions' is an invented
+        -- claim, not a template leak
+        when reason ~* 'plumbing|template|token|meta|narrat|sign.?in|process talk' then 'plumbing'
         when reason ~* 'house rules' then 'house_rules'
         when reason ~* 'question|unsolicited' then 'etiquette'
         else 'other' end as klass

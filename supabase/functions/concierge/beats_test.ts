@@ -131,6 +131,17 @@ Deno.test("GRACEFUL_CLOSE waits for a real dry spell and never repeats same-day"
   assertEq(again.action, "HOLD", "goodbye already said — now silence is honest");
 });
 
+Deno.test("GRACEFUL_CLOSE also fires when spoken beats go unanswered", () => {
+  const d = chooseBeatAction(
+    ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 0, unansweredBeats: 4 }),
+    undefined, { nowMs: NOW });
+  assertEq(d.action, "GRACEFUL_CLOSE", "4 ignored reach-outs are as dry as 3 silent holds");
+  const not3 = chooseBeatAction(
+    ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 0, unansweredBeats: 3 }),
+    undefined, { nowMs: NOW });
+  assertEq(not3.action, "HOLD", "three unanswered beats is still patience");
+});
+
 Deno.test("GRACEFUL_CLOSE is admin-disableable like every rule", () => {
   const d = chooseBeatAction(
     ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 4 }),
