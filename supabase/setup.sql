@@ -43,13 +43,24 @@ create table if not exists public.concierge_conversations (
 create index if not exists concierge_conversations_session_key_idx on public.concierge_conversations (session_key);
 create index if not exists concierge_conversations_created_at_idx on public.concierge_conversations (created_at desc);
 -- lifecycle + goals
+-- status vocabulary: 'active' | 'snoozed' (quiet mode) | 'closed' (panel
+-- dismissed / explicit close — resumable) | 'concluded' (the bot said its
+-- warm goodbye, usually with the closing survey — TERMINAL: the next real
+-- visitor message opens a NEW conversation, a fresh case for the same
+-- patron). last_activity_at = the visitor's latest word (bot-initiated
+-- nudges do not count as activity); the studio lists cases by it.
 alter table public.concierge_conversations
   add column if not exists status text not null default 'active',
   add column if not exists ended_at timestamptz,
+  add column if not exists last_activity_at timestamptz,
   add column if not exists goal_status jsonb,
   add column if not exists goal_status_at timestamptz,
   add column if not exists sales_stage text,    -- funnel stage from the async grader (browsing…won/lost)
   add column if not exists ip text;             -- latest client IP (abuse/legal forensics; admin-only, PII-gated in export)
+update public.concierge_conversations set last_activity_at = created_at
+ where last_activity_at is null;
+create index if not exists concierge_conversations_activity_idx
+  on public.concierge_conversations (last_activity_at desc);
 create index if not exists concierge_conversations_ended_idx
   on public.concierge_conversations (user_id, ended_at desc) where ended_at is not null;
 

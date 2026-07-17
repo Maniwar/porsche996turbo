@@ -1,0 +1,99 @@
+name: Case probe (conversation lifecycle, live)
+# Definitive proof of the case boundary against the LIVE concierge:
+#   1. A CONCLUDED conversation is planted (the bot said its goodbye) plus a
+#      pinned answer so every probe turn costs zero model calls.
+#   2. A rating tap (context.nps) hits the same session — it must attach to
+#      the concluded case, NOT open a new one (a score rates the case that
+#      ended).
+#   3. A real visitor message hits the session — THE boundary: a new
+#      conversation must open (fresh case), the concluded one untouched.
+#   4. A second real message continues the new case (no runaway case-per-
+#      message behavior).
+#   5. Every row the probe created is removed.
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      FN: https://amexzypgvntohhntahuj.supabase.co/functions/v1/concierge
+      # publishable key — public by design, ships in the page source
+      K: sb_publishable_zt3jU2wLqqoWBaUgajs1tw_a-Sxi1sk
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: "Plant a CONCLUDED case + the zero-cost pinned answer"
+        run: |
+          SES="qa-case-probe-${GITHUB_RUN_ID}"
+          NK="qa case probe ${GITHUB_RUN_ID}"
+          Q="QA case probe ${GITHUB_RUN_ID}?"
+          echo "SES=$SES" >> "$GITHUB_ENV"
+          echo "NK=$NK"   >> "$GITHUB_ENV"
+          echo "Q=$Q"     >> "$GITHUB_ENV"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          insert into public.concierge_conversations (session_key, status, ended_at, section)
+          values ('${SES}', 'concluded', now(), 'hero');
+          insert into public.concierge_cache
+            (question, answer_md, embedding, model, pinned, stale, hand_edited, norm_key, enabled)
+          values ('${Q}', 'Case probe answer.',
+                  ('[' || repeat('0,', 383) || '0]')::extensions.vector,
+                  'baked', true, false, false, '${NK}', true);
+          SQL
+      - name: "A rating tap must attach to the concluded case — never open a new one"
+        run: |
+          code=$(curl -s -o /tmp/t1 -w '%{http_code}' --max-time 60 \
+            -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+            -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$Q\"}],\"context\":{\"section\":\"hero\",\"nps\":{\"score\":9}},\"session_key\":\"$SES\"}" \
+            "$FN")
+          echo "rating-tap HTTP $code"; test "$code" = "200"
+          N=$(psql "$SUPABASE_DB_URL" -At -c "
+            select count(*) from public.concierge_conversations where session_key = '$SES';")
+          echo "conversations after rating tap: $N (must still be 1)"
+          test "$N" = "1"
+          S=$(psql "$SUPABASE_DB_URL" -At -c "
+            select status from public.concierge_conversations where session_key = '$SES';")
+          test "$S" = "concluded" && echo "✓ the concluded case stayed concluded"
+      - name: "A real visitor message must open a FRESH case"
+        run: |
+          code=$(curl -s -o /tmp/t2 -w '%{http_code}' --max-time 60 \
+            -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+            -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$Q\"}],\"context\":{\"section\":\"hero\"},\"session_key\":\"$SES\"}" \
+            "$FN")
+          echo "real-message HTTP $code"; test "$code" = "200"
+          grep -q '^data: {"c":1}' /tmp/t2 && echo "✓ served from the pinned row (zero model cost)"
+          psql "$SUPABASE_DB_URL" -c "
+            select status, ended_at is not null as ended,
+                   created_at at time zone 'utc' as created_utc,
+                   last_activity_at at time zone 'utc' as last_activity_utc
+              from public.concierge_conversations where session_key = '$SES'
+             order by created_at;" -P title='the session, case by case'
+          N=$(psql "$SUPABASE_DB_URL" -At -c "
+            select count(*) from public.concierge_conversations where session_key = '$SES';")
+          echo "conversations after a real message: $N (must be 2 — the boundary)"
+          test "$N" = "2"
+          NEWSTATE=$(psql "$SUPABASE_DB_URL" -At -c "
+            select status || ':' || (ended_at is null)::text
+              from public.concierge_conversations where session_key = '$SES'
+             order by created_at desc limit 1;")
+          echo "newest case: $NEWSTATE"
+          test "$NEWSTATE" = "active:true" && echo "✓ a fresh, open case for the same visitor"
+      - name: "A second message continues the SAME fresh case"
+        run: |
+          curl -s -o /dev/null --max-time 60 \
+            -H "apikey: $K" -H "Authorization: Bearer $K" -H "Content-Type: application/json" \
+            -d "{\"messages\":[{\"role\":\"user\",\"content\":\"$Q\"}],\"context\":{\"section\":\"hero\"},\"session_key\":\"$SES\"}" \
+            "$FN"
+          N=$(psql "$SUPABASE_DB_URL" -At -c "
+            select count(*) from public.concierge_conversations where session_key = '$SES';")
+          echo "conversations after a second message: $N (must still be 2)"
+          test "$N" = "2" && echo "✓ the fresh case continues — no case-per-message runaway"
+      - name: "Zero residue — every planted and created row removed"
+        if: always()
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          delete from public.concierge_cache where pinned and norm_key = '${NK}';
+          with cids as (select id from public.concierge_conversations where session_key = '${SES}')
+          , d1 as (delete from public.concierge_actions   where conversation_id in (select id from cids) returning 1)
+          , d2 as (delete from public.concierge_messages  where conversation_id in (select id from cids) returning 1)
+          , d3 as (delete from public.nps_responses       where conversation_id in (select id from cids) returning 1)
+          , d4 as (delete from public.concierge_llm_usage where conversation_id in (select id from cids) returning 1)
+          delete from public.concierge_conversations where session_key = '${SES}';
+          SQL

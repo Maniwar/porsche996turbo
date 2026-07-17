@@ -2156,8 +2156,11 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <!-- Metrics live in ONE place — the Conversion tab — so numbers never
            disagree between views. This tab is the working floor: find, read,
            grade, and act on transcripts. -->
-      <p class="note" style="margin-bottom:18px;">Revenue, conversion, and funnel metrics live on the
-        <a href="#" id="convo-to-conversion">Conversion</a> tab.</p>
+      <p class="note" style="margin-bottom:18px;">Conversations are listed by their <strong>latest
+        activity</strong>, newest first; the date filter finds every case that was <em>active</em> in that
+        window. A case the concierge has closed (warm goodbye, survey offered) shows <strong>case
+        closed</strong> — the same visitor's next message opens a fresh one. Revenue, conversion, and
+        funnel metrics live on the <a href="#" id="convo-to-conversion">Conversion</a> tab.</p>
 
       <div class="conv-toolbar">
         <!-- FILTER zone — what to show. Text/date need Apply; the selects filter live. -->
@@ -9035,9 +9038,11 @@ async function loadConversations(more) {
 
   const from = pageState.convo * PAGE;
   let q = sb.from('concierge_conversations').select('*')
-    .order('created_at', { ascending: false })
+    .order('last_activity_at', { ascending: false, nullsFirst: false })
     .range(from, from + PAGE - 1);
-  if (df) q = q.gte('created_at', df);
+  // "active in this window" = the case's activity span overlaps [from, to]:
+  // it last moved on/after the from-date AND began on/before the to-date.
+  if (df) q = q.gte('last_activity_at', df);
   if (dt) q = q.lte('created_at', dt);
   if (!showQa && !isUuid) q = q.not('session_key', 'ilike', 'qa-*');
   if (houseOnly) q = q.in('id', houseIds.length ? houseIds : ['00000000-0000-0000-0000-000000000000']);
@@ -13744,8 +13749,20 @@ function renderConvoList(counts) {
     // hollow dot + "ungraded" when the evaluator hasn't run. No bordered chips.
     const line1 = el('div', 'line1');
     const l1left = el('span', 'l1left');
-    l1left.appendChild(el('span', 'micro', fmtWhen(c.created_at)));
+    const lastAct = el('span', 'micro', fmtWhen(c.last_activity_at || c.created_at));
+    lastAct.title = 'Last activity. Opened ' + fmtWhen(c.created_at) + '.';
+    l1left.appendChild(lastAct);
     l1left.appendChild(el('span', 'micro', c.section || '—'));
+    if (c.status === 'concluded') {
+      const cc = el('span', 'micro', '✓ case closed');
+      cc.style.cssText = 'color:var(--st-green,#7fae7f);';
+      cc.title = 'The concierge closed this case with its warm goodbye (and the survey when allowed). The visitor\u2019s next message opens a fresh case.';
+      l1left.appendChild(cc);
+    } else if (c.status === 'snoozed') {
+      const cq = el('span', 'micro', 'quiet');
+      cq.title = 'The visitor asked not to be messaged until they write back.';
+      l1left.appendChild(cq);
+    }
     const bkg = (state.apptByConvo || {})[c.id];
     if (bkg) {
       const ab = el('span', 'micro', '📅');

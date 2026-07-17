@@ -118,6 +118,20 @@ Deno.test("KEEP_WARM is once per section per day, then HOLD", () => {
   assertEq(d.action, "HOLD", "warm line already given for this section today");
 });
 
+Deno.test("silence latch: after the goodbye speaks, every proactive door holds", () => {
+  // the same bone-dry ledger that would otherwise close again — but the
+  // goodbye already spoke since their last word, so EVERYTHING holds
+  const l = ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 3, silenceLatched: true });
+  const d = chooseBeatAction(l, undefined, { nowMs: NOW });
+  assertEq(d.action, "HOLD", "latched: nothing may speak until the visitor returns");
+  assert(d.detail.includes("goodbye stands"), "the hold names the latch");
+  // unlatched control: the identical ledger still reaches the graceful close
+  const open = chooseBeatAction(
+    ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 3, silenceLatched: false }),
+    undefined, { nowMs: NOW });
+  assertEq(open.action, "GRACEFUL_CLOSE", "unlatched control still closes");
+});
+
 Deno.test("GRACEFUL_CLOSE: a dry conversation earns one warm goodbye above HOLD", () => {
   const l = ledger({ spentActions: ["KEEP_WARM:wool"], heldStreak: 3 });
   const d = chooseBeatAction(l, undefined, { nowMs: NOW });

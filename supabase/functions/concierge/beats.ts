@@ -40,6 +40,11 @@ export interface SalesLedger {
    * they ignored are as dry a signal as silent holds: 4+ also triggers the
    * graceful close. Absent reads as 0. */
   unansweredBeats?: number;
+  /** True when the graceful close (or the survey that rode it) has SPOKEN
+   * since the visitor's last word. The latch: every proactive rule holds —
+   * the goodbye stands until they return and a fresh case reopens the
+   * floor. Absent reads as false. */
+  silenceLatched?: boolean;
 }
 
 export interface BeatDecision {
@@ -171,6 +176,13 @@ export function chooseBeatAction(
   const trace: string[] = [];
   const enabled = (k: string) => !(overrides && overrides[k] && overrides[k].enabled === false);
   const spent = (k: string) => l.spentActions.includes(k);
+  // The goodbye stands. Once the close (or its survey) has spoken and the
+  // visitor has not answered, nothing else may speak — not KEEP_WARM's fresh
+  // daily budget, not a proposal, nothing. True silence until they return.
+  if (l.silenceLatched) {
+    trace.push("SILENCE_LATCH: the goodbye already spoke since their last word — every door held");
+    return { action: "HOLD", detail: "the goodbye stands — silence until the visitor returns", trace };
+  }
   const pick = (action: string, detail: string): BeatDecision => {
     trace.push(`${action}: SELECTED`);
     return { action, detail, trace };

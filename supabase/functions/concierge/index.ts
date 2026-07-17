@@ -3379,13 +3379,23 @@ async function logUserTurn(body: ValidatedBody, customer: Customer | null, skipU
   try {
     // Reuse the latest conversation for this session_key, else insert one.
     let cid: string | null = null;
+    // A score tap / survey reason must rate the case that just ended — it
+    // attaches to the latest conversation even when that case is concluded.
+    const bctx = body.context as Record<string, unknown> | null;
+    const ratingTurnHere = !!bctx && (bctx.nps != null || bctx.nps_reason === 1 || bctx.nps_reason === true);
     if (body.sessionKey) {
-      const q = `concierge_conversations?select=id,user_id,user_email,ended_at&session_key=eq.${
+      const q = `concierge_conversations?select=id,user_id,user_email,ended_at,status&session_key=eq.${
         encodeURIComponent(body.sessionKey)}&order=created_at.desc&limit=1`;
       const rows = await pgSelect<
-        { id: string; user_id: string | null; user_email: string | null; ended_at: string | null }
+        { id: string; user_id: string | null; user_email: string | null; ended_at: string | null; status: string | null }
       >(q);
       if (rows && rows.length > 0) {
+        // 'concluded' is TERMINAL — the bot said its goodbye (usually with the
+        // survey). A fresh visitor message opens a NEW case for the same
+        // patron; only nudges/openers and the rating taps stay with the old one.
+        if (rows[0].status === "concluded" && !skipUser && !ratingTurnHere) {
+          // fall through with cid=null — a new conversation row is created below
+        } else {
         cid = rows[0].id;
         const patch: Record<string, unknown> = {};
         // Backfill identity if they signed in after the conversation began —
@@ -3396,11 +3406,14 @@ async function logUserTurn(body: ValidatedBody, customer: Customer | null, skipU
         }
         // They wrote again in a conversation we'd marked ended (a plain
         // panel-close) — it's resuming, so clear the ended flag. (An explicit
-        // close/quiet rotates the session key, so this never revives those.)
-        if (rows[0].ended_at) { patch.status = "active"; patch.ended_at = null; }
+        // close/quiet rotates the session key, so this never revives those;
+        // a CONCLUDED case never reaches this branch at all.)
+        if (rows[0].ended_at && rows[0].status !== "concluded") { patch.status = "active"; patch.ended_at = null; }
         if (realIp) patch.ip = realIp; // keep the latest IP seen for this session
+        if (!skipUser) patch.last_activity_at = new Date().toISOString(); // real visitor word = activity
         if (Object.keys(patch).length > 0) {
           await pgPatch(`concierge_conversations?id=eq.${cid}`, patch);
+        }
         }
       }
     }
@@ -6093,8 +6106,8 @@ async function handleChatPost(req: Request): Promise<Response> {
         try {
           if (convId) {
             const [brows, lastU] = await Promise.all([
-              pgSelect<{ action: string; created_at: string }>(
-                `concierge_actions?select=action,created_at&conversation_id=eq.${encodeURIComponent(convId)}` +
+              pgSelect<{ action: string; result: string | null; created_at: string }>(
+                `concierge_actions?select=action,result,created_at&conversation_id=eq.${encodeURIComponent(convId)}` +
                   `&action=like.beat_*&order=created_at.desc&limit=8`),
               pgSelect<{ created_at: string }>(
                 `concierge_messages?select=created_at&conversation_id=eq.${encodeURIComponent(convId)}` +
@@ -6111,6 +6124,13 @@ async function handleChatPost(req: Request): Promise<Response> {
             const lastUserMs = lastU && lastU[0] ? (Date.parse(lastU[0].created_at) || 0) : 0;
             ledger.unansweredBeats = (brows || [])
               .filter((b) => (Date.parse(b.created_at) || 0) > lastUserMs).length;
+            // The latch: a goodbye (or the survey that rode it) SPOKE since
+            // their last word — the beat engine holds every door until they
+            // return (beats.ts silence latch; a fresh case reopens the floor).
+            ledger.silenceLatched = (brows || []).some((b) =>
+              b.action === "beat_action" &&
+              (b.result === "GRACEFUL_CLOSE" || b.result === "REQUEST_NPS") &&
+              (Date.parse(b.created_at) || 0) > lastUserMs);
           }
         } catch { /* the streak is best-effort — absent reads as 0 */ }
         beatDecision = chooseBeatAction(
@@ -6126,7 +6146,13 @@ async function handleChatPost(req: Request): Promise<Response> {
         try {
           const npsCfg = npsConfigFrom(dataForBeat.config);
           const goalMet = !!gs && Object.values(gs).some((g) => g && g.status === "met");
-          if (npsCfg.enabled && convId && beatDecision.action !== "FIX_BLOCKED_ORDER" && !unansweredAsk) {
+          // A pending question of ours forbids new asks — EXCEPT at the
+          // graceful close: we are ending the visit anyway, the open ask is
+          // moot, and this exact starvation (a never-answered "what's your
+          // name?") once suppressed the survey for days. (Merchant transcript,
+          // Jul 16-17.)
+          if (npsCfg.enabled && convId && beatDecision.action !== "FIX_BLOCKED_ORDER" &&
+            (!unansweredAsk || beatDecision.action === "GRACEFUL_CLOSE")) {
             const [convRows, custRows] = await Promise.all([
               pgSelect<{ id: number }>(
                 `nps_responses?select=id&conversation_id=eq.${encodeURIComponent(convId)}&limit=1`,
@@ -6557,6 +6583,13 @@ async function handleChatPost(req: Request): Promise<Response> {
               result: "REQUEST_NPS",
             });
           }
+          // They said goodbye and the survey rides the reply — the case is
+          // concluded; a fresh word later opens a fresh case.
+          if (cidW) {
+            pgPatch(`concierge_conversations?id=eq.${cidW}`,
+              { status: "concluded", ended_at: new Date().toISOString() })
+              .catch(() => { /* lifecycle is best-effort */ });
+          }
         } else if (!(validated.sessionKey || "").startsWith("qa-")) {
           // A held wrap-up ask must be as diagnosable as a held beat: the
           // NPS tab's "Held by the gate" line and the Actions tab both read
@@ -6950,6 +6983,15 @@ async function handleChatPost(req: Request): Promise<Response> {
                 payload: { ...beatAudit, outcome: "spoke", coaching: coaching ?? undefined, redraft: redrafted || undefined },
                 result: String(beatAudit.action ?? ""),
               }).catch(() => { /* audit failures never break the chat */ });
+              // The goodbye (or the survey that rode it) actually SPOKE — the
+              // case is concluded: terminal. Their next real message opens a
+              // fresh conversation; score taps still attach to this one.
+              const spokeAct = String(beatAudit.action ?? "");
+              if (cid && (spokeAct === "GRACEFUL_CLOSE" || spokeAct === "REQUEST_NPS")) {
+                pgPatch(`concierge_conversations?id=eq.${cid}`,
+                  { status: "concluded", ended_at: new Date().toISOString() })
+                  .catch(() => { /* lifecycle is best-effort */ });
+              }
             }
           } catch { /* skip meta */ }
         }
