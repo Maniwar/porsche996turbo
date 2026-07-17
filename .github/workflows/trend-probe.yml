@@ -1,0 +1,70 @@
+name: Judge trend probe (impact series + resolved_at trigger, live)
+# Proves, against the LIVE database and without a model call or touching a
+# visitor, the two new pieces behind the "Is it getting better?" chart:
+#   1. judge_findings(N) now returns a gap-filled daily 'series' — one row per
+#      day with the beat counts the chart plots.
+#   2. The resolved_at trigger stamps a gap the moment it flips resolved, so the
+#      series can count "gaps cleared per day."
+# It plants a beat spoke + a beat veto on a qa- conversation dated today, and a
+# gap it then resolves; asserts today's series row reflects both and that
+# resolved_at got stamped; then deletes every row it created.
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: "Plant a beat spoke + veto today, and a gap that gets resolved"
+        run: |
+          TAG="qa-trend-${GITHUB_RUN_ID}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<SQL
+          insert into public.concierge_conversations (session_key, section)
+          values ('${TAG}', 'hero');
+          insert into public.concierge_actions (conversation_id, action, payload, result)
+          select id, 'beat_action', jsonb_build_object('kind','nudge'), 'ADVANCE_GOAL'
+            from public.concierge_conversations where session_key = '${TAG}';
+          insert into public.concierge_actions (conversation_id, action, payload, result)
+          select id, 'beat_veto', jsonb_build_object('kind','nudge','reason','invents a discount'),
+                 'held: invents a discount'
+            from public.concierge_conversations where session_key = '${TAG}';
+          -- a gap on this qa- conversation, then resolve it: the trigger stamps resolved_at
+          insert into public.concierge_flags (conversation_id, question, answer, reason)
+          select id, '(${TAG}) probe gap', 'x', 'knowledge_gap'
+            from public.concierge_conversations where session_key = '${TAG}';
+          update public.concierge_flags set resolved = true
+           where question = '(${TAG}) probe gap';
+          SQL
+      - name: "resolved_at got stamped by the trigger (no call-site set it)"
+        run: |
+          STAMPED=$(psql "$SUPABASE_DB_URL" -At -c "
+            select count(*) from public.concierge_flags
+             where question = '(${TAG}) probe gap' and resolved and resolved_at is not null;")
+          echo "stamped rows: $STAMPED"
+          test "$STAMPED" -ge 1 && echo "✓ the trigger stamped resolved_at on the false→true flip"
+      - name: "judge_findings returns a series, and today's row reflects the plants"
+        run: |
+          CLAIM="select set_config('request.jwt.claims','{\"role\":\"service_role\"}',false);"
+          LEN=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select jsonb_array_length(public.judge_findings(7)->'series');" | tail -1)
+          echo "series length (7 days): $LEN"
+          test "$LEN" -eq 7 && echo "✓ the series is gap-filled to one row per day"
+          # today's row = the last element; it must carry our spoke, veto, and cleared gap
+          TODAY=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(7)->'series'->6);" | tail -1)
+          echo "today's row: $TODAY"
+          SPOKE=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(7)->'series'->6->>'spoke')::int;" | tail -1)
+          VETOED=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(7)->'series'->6->>'vetoed')::int;" | tail -1)
+          CLEARED=$(psql "$SUPABASE_DB_URL" -At -c "$CLAIM select (public.judge_findings(7)->'series'->6->>'gaps_cleared')::int;" | tail -1)
+          echo "today spoke=$SPOKE vetoed=$VETOED gaps_cleared=$CLEARED"
+          test "$SPOKE"   -ge 1 && echo "✓ today's spoke count includes the plant"
+          test "$VETOED"  -ge 1 && echo "✓ today's vetoed count includes the plant"
+          test "$CLEARED" -ge 1 && echo "✓ today's gaps_cleared reflects the resolved gap"
+      - name: "Zero residue — the probe rows are removed"
+        if: always()
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "
+            delete from public.concierge_flags f using public.concierge_conversations c
+             where f.conversation_id = c.id and c.session_key = '${TAG}';
+            delete from public.concierge_actions a using public.concierge_conversations c
+             where a.conversation_id = c.id and c.session_key = '${TAG}';
+            delete from public.concierge_conversations where session_key = '${TAG}';"

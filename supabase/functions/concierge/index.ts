@@ -3567,14 +3567,34 @@ const BEAT_JUDGE_CRITERION =
 // source that binds the drafting prompt, and the block the kit stamps per product).
 // It reads the house's TRUTH (price posture, scope, what may be claimed/offered),
 // never the selling dial — so a harder or softer sell can never move the gate.
-/** The merchant's own words to the judge (config judge.rules — versioned like
- * every setting; the Judge & coach page writes it). Appended to the house
- * rules on every review, so over- or under-strictness is tunable in plain
- * language without touching code. */
+/** The owner's own words to the reviewer, from the Judge & coach rulebook:
+ * config.judge.notes[family] refines a specific built-in rule ("reading
+ * records aloud — but saying a number is on file is fine"), and
+ * config.judge.rules adds free-form house rules. Both are authoritative and
+ * versioned; the reviewer reads them on every line, so strictness is tunable
+ * in plain language without touching code. */
+const JUDGE_RULE_LABEL: Record<string, string> = {
+  invented: "Inventing an offer, price, or claim",
+  inventorying: "Reciting the shopper back / reading records aloud",
+  plumbing: "Process talk / narrating its own outreach",
+  house_rules: "Your written house rules & voice",
+  etiquette: "Unsolicited questions",
+  other: "Other",
+};
 function extraJudgeRules(cfg: Record<string, unknown> | null | undefined): string {
   const j = (cfg && cfg.judge ? cfg.judge : null) as Record<string, unknown> | null;
+  const parts: string[] = [];
+  const notes = (j && j.notes && typeof j.notes === "object" && !Array.isArray(j.notes))
+    ? j.notes as Record<string, unknown> : null;
+  if (notes) {
+    for (const [fam, txt] of Object.entries(notes)) {
+      const t = typeof txt === "string" ? txt.trim() : "";
+      if (t) parts.push("- " + (JUDGE_RULE_LABEL[fam] || fam) + ": " + t.slice(0, 400));
+    }
+  }
   const r = j && typeof j.rules === "string" ? j.rules.trim() : "";
-  return r ? "\nHOUSE AMENDMENTS TO THIS JUDGE (authoritative):\n" + r.slice(0, 800) : "";
+  if (r) parts.push(r.slice(0, 800));
+  return parts.length ? "\nHOUSE AMENDMENTS TO THIS JUDGE (authoritative):\n" + parts.join("\n") : "";
 }
 function houseHonestyRules(cfg: { voice_base?: unknown } | null | undefined): string {
   const base = (cfg && typeof cfg.voice_base === "string" && cfg.voice_base.trim())

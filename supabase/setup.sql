@@ -216,6 +216,25 @@ create index if not exists concierge_flags_open_idx on public.concierge_flags (r
 -- entry the gap pass created for this gap. Enabling that entry resolves the
 -- gap (eagerly in the studio, and swept by the hourly pass as the net).
 alter table public.concierge_flags add column if not exists kb_slug text;
+-- resolved_at stamps WHEN a gap was cleared, so the judge & coach trend can plot
+-- "gaps cleared per day" — the fixes side of "are my changes working." A trigger
+-- stamps it on any false->true flip, so every resolution path (studio, server
+-- gap-draft sweep, coach) gets an honest timestamp with no call-site churn.
+alter table public.concierge_flags add column if not exists resolved_at timestamptz;
+create or replace function public.concierge_flags_stamp_resolved()
+returns trigger language plpgsql as $$
+begin
+  if new.resolved and not coalesce(old.resolved, false) then
+    if new.resolved_at is null then new.resolved_at := now(); end if;
+  elsif not new.resolved then
+    new.resolved_at := null;  -- reopening a gap clears the stamp
+  end if;
+  return new;
+end $$;
+drop trigger if exists concierge_flags_resolved_at on public.concierge_flags;
+create trigger concierge_flags_resolved_at
+  before update on public.concierge_flags
+  for each row execute function public.concierge_flags_stamp_resolved();
 
 create table if not exists public.concierge_forms (
   id uuid primary key default gen_random_uuid(),
@@ -2566,7 +2585,32 @@ begin
            (array_agg(id order by created_at desc))[1:50] as ids
       from public.concierge_flags
      where not resolved and created_at > now() - interval '30 days'
-     group by 1 having count(*) > 0)
+     group by 1 having count(*) > 0),
+  -- the impact trend: one gap-filled row per day so the merchant can SEE whether
+  -- their rule and knowledge changes are moving the numbers (task: impact charts)
+  day_series as (
+    select (current_date - (v_days - 1) + g)::date as day
+      from generate_series(0, v_days - 1) as g),
+  cleared as (
+    select date_trunc('day', resolved_at)::date as day, count(*)::int as n
+      from public.concierge_flags
+     where resolved and resolved_at is not null
+       and resolved_at > now() - make_interval(days => v_days)
+     group by 1),
+  series as (
+    select ds.day,
+      count(*) filter (where b.action = 'beat_action') as spoke,
+      count(*) filter (where b.action = 'beat_hold') as held,
+      count(*) filter (where b.action = 'beat_veto') as vetoed,
+      count(*) filter (where b.action = 'beat_veto' and b.reason like 'pre-filter:%') as prefilter,
+      count(*) filter (where b.action = 'beat_action' and b.redraft) as redraft_ok,
+      count(*) filter (where b.action = 'beat_veto' and b.redraft) as redraft_blocked,
+      count(*) filter (where b.action = 'beat_action' and b.floored) as floored,
+      coalesce(max(cl.n), 0) as gaps_cleared
+      from day_series ds
+      left join beats b on date_trunc('day', b.created_at)::date = ds.day
+      left join cleared cl on cl.day = ds.day
+     group by ds.day order by ds.day)
   select jsonb_build_object('ok', true, 'days', v_days,
     'totals', (select jsonb_build_object(
       'spoke', count(*) filter (where action = 'beat_action'),
@@ -2582,7 +2626,12 @@ begin
         'key', klass, 'n', n, 'latest', latest, 'samples', samples) order by n desc), '[]'::jsonb) from classes),
     'gaps', (select coalesce(jsonb_agg(jsonb_build_object(
         'q', q, 'n', n, 'latest', latest, 'system', is_system, 'feedback', is_feedback,
-        'ids', to_jsonb(ids)) order by is_feedback desc, n desc), '[]'::jsonb) from gaps))
+        'ids', to_jsonb(ids)) order by is_feedback desc, n desc), '[]'::jsonb) from gaps),
+    'series', (select coalesce(jsonb_agg(jsonb_build_object(
+        'day', to_char(day, 'YYYY-MM-DD'),
+        'spoke', spoke, 'held', held, 'vetoed', vetoed, 'prefilter', prefilter,
+        'redraft_ok', redraft_ok, 'redraft_blocked', redraft_blocked,
+        'floored', floored, 'gaps_cleared', gaps_cleared) order by day), '[]'::jsonb) from series))
     into v;
   return v;
 end $$;

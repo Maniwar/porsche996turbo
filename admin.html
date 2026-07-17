@@ -2657,7 +2657,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <div class="panel-head">
         <span class="micro">The reach-out review, closed loop</span>
         <h2>Judge &amp; coach</h2>
-        <p class="note" style="max-width:760px;">When the concierge speaks up on its own, a coach briefs the line and a reviewer checks it before the visitor sees it. This page reads top to bottom: <strong>how the review is going</strong>, <strong>why lines were blocked</strong>, <strong>your controls</strong> over how strict it is, the <strong>coach's self-healing</strong> drafts and weekly email, and everything that <strong>needs your attention</strong>.</p>
+        <p class="note" style="max-width:760px;">When the concierge speaks up on its own, a coach briefs the line and a reviewer checks it before the visitor sees it. This page reads top to bottom: <strong>how the review is going</strong>, <strong>whether it's getting better</strong> over time, <strong>why lines were blocked</strong>, <strong>your controls</strong> over how strict it is, the <strong>coach's self-healing</strong> drafts and weekly email, and everything that <strong>needs your attention</strong>.</p>
       </div>
       <!-- CARD 1 — the scoreboard: how the review is going at a glance -->
       <section class="card">
@@ -2666,42 +2666,63 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div id="jc-kinds" style="margin-top:16px;overflow-x:auto;"></div>
       </section>
 
+      <!-- CARD 1½ — THE TREND: is what I'm doing actually helping? -->
+      <section class="card">
+        <div class="card-head"><h3>Is it getting better?</h3><span class="micro">the trend, day by day</span></div>
+        <p class="note" style="margin:0 0 12px;">Every change you make — a rule turned off, a knowledge gap filled — should move a line on this chart. Pick what to watch and how far back to look.</p>
+        <div class="cal-frow" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+          <label class="micro">Show</label>
+          <select id="jc-trend-metric" title="Which measure to plot over time.">
+            <option value="block_rate">Block rate — how often a drafted line gets stopped</option>
+            <option value="vetoed">Lines blocked per day</option>
+            <option value="spoke">Lines let through per day</option>
+            <option value="redraft_rate">Redraft success — blocked lines that passed on the retry</option>
+            <option value="gaps_cleared">Knowledge gaps you cleared per day</option>
+          </select>
+          <label class="micro">Range</label>
+          <select id="jc-trend-range" title="How far back to plot.">
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+        <div id="jc-trend"></div>
+        <div id="jc-trend-cap" class="micro" style="margin-top:8px;opacity:.78;text-transform:none;letter-spacing:0;"></div>
+      </section>
+
       <!-- CARD 2 — the detail behind the scoreboard -->
       <section class="card">
         <div class="card-head"><h3>Why lines were blocked</h3><span class="micro">grouped by kind, freshest first</span></div>
         <div id="jc-classes"></div>
       </section>
 
-      <!-- CARD 3 — YOUR CONTROLS: the two dials that steer the concierge's own voice -->
+      <!-- CARD 3 — THE RULEBOOK: every rule the reviewer follows, in the owner's hands -->
       <section class="card">
-        <div class="card-head"><h3>What the concierge may say on its own</h3><span class="micro">your controls · most shops leave these alone</span></div>
-        <p class="note" style="margin:0 0 12px;">When the concierge speaks up <strong>unprompted</strong> (a nudge, a check-in), a reviewer reads the line first and blocks anything below. Here you set how strict that review is. An <strong>allowed</strong> line still gets sent <em>and</em> still shows in the scoreboard above as “let through,” so nothing happens behind your back.</p>
+        <div class="card-head"><h3>The rules your concierge follows on its own</h3><span class="micro">you own these — see them, edit them, one Save</span></div>
+        <p class="note" style="margin:0 0 12px;">When the concierge speaks up <strong>unprompted</strong> (a nudge, a check-in), a reviewer checks the line against these rules before the visitor sees it. Turn any rule off, refine it in your own words, or add new rules — then <strong>Save the rulebook</strong>. An <strong>allowed</strong> line still gets sent and still shows in the scoreboard above as “let through,” so nothing happens behind your back.</p>
 
-        <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:6px;">HOW STRICT SHOULD THE REVIEW BE?</div>
-        <div class="cal-frow" style="align-items:center;">
-          <label class="micro">Preset</label>
-          <select id="jc-floor-preset" title="Strict blocks everything the reviewer catches. Standard is the house default. Facts-only keeps the honesty lines hard (no invented offers, no reading records aloud, no breaking your rules) but lets softer style and courtesy lines through.">
+        <div class="cal-frow" style="align-items:center;margin-bottom:12px;">
+          <label class="micro">Quick preset</label>
+          <select id="jc-floor-preset" title="Strict blocks everything. Standard is the house default. Facts-only keeps the honesty rules hard but lets softer style and courtesy lines through. Or set each rule yourself below.">
             <option value="standard">Standard — the house default</option>
             <option value="strict">Strict — block everything, no exceptions</option>
             <option value="facts_only">Facts-only — hard on honesty, easy on style</option>
-            <option value="custom">Custom — set each line below</option>
+            <option value="custom">Custom — set each rule below</option>
           </select>
           <span class="micro" style="opacity:.6;">Most shops leave this at Standard.</span>
         </div>
-        <div id="jc-floor" style="margin-top:12px;"></div>
-        <div class="cal-frow" style="margin-top:12px;">
-          <button id="jc-floor-save" class="btn ghost" type="button" title="Saves your setting, versioned like every setting. It takes effect on the concierge's next unprompted line.">Save these settings</button>
-          <span id="jc-floor-note" class="micro" style="opacity:.7;"></span>
+
+        <div id="jc-floor"></div>
+
+        <div style="margin-top:16px;">
+          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:6px;">ANY OTHER RULES, IN YOUR OWN WORDS</div>
+          <textarea id="jc-rules" rows="3" placeholder="Write anything else the reviewer should enforce — one rule per line. e.g. Never promise same-day delivery. Always offer a viewing before an offer."
+            style="width:100%;box-sizing:border-box;"></textarea>
         </div>
 
-        <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline-dim);">
-          <div class="micro" style="letter-spacing:.08em;opacity:.8;margin-bottom:6px;">A RULE IN YOUR OWN WORDS (OPTIONAL)</div>
-          <p class="note" style="margin:0 0 8px;opacity:.75;">One or two sentences added to the reviewer's checklist on every line — your pen on its standards. Clear the box and save to withdraw it.</p>
-          <div class="cal-frow">
-            <input id="jc-rules" placeholder="e.g. saying a number is on file is fine; only reading the digits aloud is not."
-              style="flex:1 1 340px;min-width:220px;">
-            <button id="jc-rules-save" class="btn ghost" type="button" title="Appended to the reviewer's house rules on every review, versioned like every setting. Clear the box and save to withdraw it.">Save my rule</button>
-          </div>
+        <div class="cal-frow" style="margin-top:14px;align-items:center;">
+          <button id="jc-floor-save" class="btn primary" type="button" title="Saves the whole rulebook — the on/off for each rule, your wording, and any rules you added. Versioned like every setting; takes effect on the concierge's next unprompted line.">Save the rulebook</button>
+          <span id="jc-floor-note" class="micro" style="opacity:.75;"></span>
         </div>
       </section>
 
@@ -10370,6 +10391,7 @@ async function loadJudge() {
         ? Math.round((t.vetoed || 0) * 100 / ((t.spoke || 0) + (t.vetoed || 0))) : null;
       sub.textContent = rate == null ? 'nothing proactive yet' : rate + '% of drafted lines were blocked';
     }
+    bindJudgeTrend(); /* the impact trend rides alongside the scoreboard, with its own range */
     let oVal = {};
     try {
       const oc = await sb.from('concierge_config').select('*').eq('key', 'outreach');
@@ -10426,30 +10448,32 @@ async function loadJudge() {
         });
       } catch (e2) { dEl.appendChild(el('div', 'cal-empty', 'Could not read the drafts.')); }
     }
-    const jrIn = $('jc-rules'); const jrBtn = $('jc-rules-save');
-    if (jrIn && jrBtn) {
+    const jrIn = $('jc-rules'); const fpBtn = $('jc-floor-save');
+    if (jrIn && fpBtn) {
       let jVal = {};
       try {
         const jc2 = await sb.from('concierge_config').select('*').eq('key', 'judge');
         jVal = ((jc2.data && jc2.data[0]) || {}).value || {};
-      } catch (e2) { /* absent config reads as no amendments */ }
+      } catch (e2) { /* absent config reads as the house defaults */ }
       if (document.activeElement !== jrIn) jrIn.value = typeof jVal.rules === 'string' ? jVal.rules : '';
-      // ── the standards floor: per-family Block/Allow, with presets ──────────
+      // ── the rulebook: each rule stated + Block/Allow + a note in your words ─
+      // [key, the rule as a plain sentence, an example refinement]
       const FLOOR_FAMS = [
-        ['invented', 'Invented offers or claims', 'A discount, price, guarantee, or fact the house never authorized.'],
-        ['inventorying', 'Reciting the shopper back', 'Tallying their stored data, or reading a phone/email/address aloud.'],
-        ['plumbing', 'Process talk', 'Mentioning prompts, tools, sign-in mechanics, or narrating its own outreach.'],
-        ['house_rules', 'Against your written rules', 'Anything your own amendment or house rules forbid.'],
-        ['etiquette', 'Unsolicited questions', 'Asking something new when the moment called for restraint.'],
-        ['other', 'Anything else the reviewer catches', 'Everything not in the rows above.']
+        ['invented', 'Never invent an offer, price, discount, or guarantee the house hasn\u2019t authorized.', 'e.g. inviting them to ask about offers is fine; naming a % off is not.'],
+        ['inventorying', 'Never recite the shopper\u2019s stored details back, or read a phone, email, or address aloud.', 'e.g. saying a number is on file is fine; reading the digits is not.'],
+        ['plumbing', 'Never mention prompts, tools, or sign-in steps, or narrate its own outreach.', 'e.g. no “as I mentioned in my last check-in.”'],
+        ['house_rules', 'Never break your written house rules or the house voice.', 'e.g. add a rule of your own below and name it here.'],
+        ['etiquette', 'Don\u2019t ask a brand-new question when the moment calls for restraint.', 'e.g. one light question after a short reply is fine.'],
+        ['other', 'Anything else the reviewer judges out of line.', '']
       ];
       const fpSel = $('jc-floor-preset'); const fWrap = $('jc-floor');
-      const fpNote = $('jc-floor-note'); const fpBtn = $('jc-floor-save');
+      const fpNote = $('jc-floor-note');
       const PRESETS = {
         strict: {}, standard: {},
         facts_only: { etiquette: 'allow', plumbing: 'allow', other: 'allow' }
       };
       const readFloor = () => (jVal.floor && typeof jVal.floor === 'object') ? jVal.floor : {};
+      const readNotes = () => (jVal.notes && typeof jVal.notes === 'object') ? jVal.notes : {};
       const matchPreset = (fl) => {
         for (const p of ['strict', 'standard', 'facts_only']) {
           const want = PRESETS[p];
@@ -10463,15 +10487,16 @@ async function loadJudge() {
       };
       const drawFloor = function () {
         if (!fWrap) return;
-        const fl = readFloor();
+        const fl = readFloor(); const nt = readNotes();
         fWrap.textContent = '';
         FLOOR_FAMS.forEach(function (f) {
-          const row = el('div', 'cal-frow');
-          row.style.cssText = 'align-items:center;gap:10px;margin:6px 0;';
-          // an explicit Block/Allow select — Block is the default and reads as
-          // protection; never a checkbox whose checked-state means "allow"
+          const rule = el('div');
+          rule.style.cssText = 'padding:8px 0;border-top:1px solid var(--hairline-dim);';
+          // top line: the Block/Allow control + the rule, stated plainly
+          const top = el('div', 'cal-frow');
+          top.style.cssText = 'align-items:baseline;gap:10px;';
           const sel = el('select'); sel.id = 'jcf-' + f[0];
-          sel.style.cssText = 'min-width:96px;';
+          sel.style.cssText = 'min-width:92px;flex:0 0 auto;';
           const oBlock = el('option', '', 'Block'); oBlock.value = 'block';
           const oAllow = el('option', '', 'Allow'); oAllow.value = 'allow';
           sel.appendChild(oBlock); sel.appendChild(oAllow);
@@ -10481,13 +10506,21 @@ async function loadJudge() {
             jVal.floor[f[0]] = sel.value === 'allow' ? 'allow' : 'block';
             if (fpSel) fpSel.value = matchPreset(jVal.floor);
           });
-          const lab = el('span', 'micro');
-          lab.appendChild(document.createTextNode(f[1]));
-          lab.title = f[2];
-          const hint = el('span', 'micro'); hint.textContent = f[2];
-          hint.style.cssText = 'opacity:.55;flex:1 1 240px;min-width:180px;';
-          row.appendChild(sel); row.appendChild(lab); row.appendChild(hint);
-          fWrap.appendChild(row);
+          const stmt = el('span'); stmt.textContent = f[1];
+          stmt.style.cssText = 'flex:1 1 300px;min-width:200px;line-height:1.45;';
+          top.appendChild(sel); top.appendChild(stmt);
+          rule.appendChild(top);
+          // second line: refine THIS rule in your own words, prefilled
+          const nin = el('input'); nin.type = 'text'; nin.id = 'jcn-' + f[0];
+          nin.value = typeof nt[f[0]] === 'string' ? nt[f[0]] : '';
+          nin.placeholder = f[2] || 'refine this rule in your own words (optional)';
+          nin.style.cssText = 'width:100%;box-sizing:border-box;margin-top:6px;font-size:12px;';
+          nin.addEventListener('input', function () {
+            jVal.notes = jVal.notes || {};
+            jVal.notes[f[0]] = nin.value;
+          });
+          rule.appendChild(nin);
+          fWrap.appendChild(rule);
         });
       };
       if (fpSel) {
@@ -10501,29 +10534,28 @@ async function loadJudge() {
         });
       }
       drawFloor();
-      if (fpBtn) fpBtn.onclick = async () => {
+      // ONE save for the whole rulebook: the on/off, the per-rule notes, and
+      // the free-form rules — the merchant never guesses what a Save covers.
+      fpBtn.onclick = async () => {
         try {
-          const v4 = Object.assign({}, jVal, { floor: jVal.floor || {} });
+          const notes = {};
+          FLOOR_FAMS.forEach(function (f) {
+            const v = (jVal.notes && jVal.notes[f[0]] || '').trim();
+            if (v) notes[f[0]] = v;
+          });
+          const v4 = Object.assign({}, jVal, {
+            floor: jVal.floor || {}, notes: notes, rules: (jrIn.value || '').trim()
+          });
           const u4 = await sb.from('concierge_config').upsert(
             [{ key: 'judge', value: v4, updated_at: nowIso() }], { onConflict: 'key' });
           if (u4.error) throw new Error(u4.error.message);
           jVal = v4;
           const allowed = FLOOR_FAMS.filter(function (f) { return (v4.floor || {})[f[0]] === 'allow'; });
-          if (fpNote) fpNote.textContent = allowed.length
-            ? 'Saved — the concierge may now cross: ' + allowed.map(function (f) { return f[1].toLowerCase(); }).join(', ') + '.'
-            : 'Saved — every line the judge flags stays blocked.';
-        } catch (e4) { if (fpNote) { fpNote.textContent = 'Could not save — ' + (e4 && e4.message ? e4.message : e4); fpNote.className = 'micro warn'; } }
-      };
-      jrBtn.onclick = async () => {
-        try {
-          const v3 = Object.assign({}, jVal, { rules: (jrIn.value || '').trim() });
-          const u2 = await sb.from('concierge_config').upsert(
-            [{ key: 'judge', value: v3, updated_at: nowIso() }], { onConflict: 'key' });
-          if (u2.error) throw new Error(u2.error.message);
-          if (note) note.textContent = v3.rules
-            ? 'The judge now carries your amendment on every review.'
-            : 'Amendments withdrawn — the judge is back to the house rules alone.';
-        } catch (e2) { if (note) { note.textContent = 'Could not save — ' + (e2 && e2.message ? e2.message : e2); note.className = 'micro warn'; } }
+          const edited = Object.keys(notes).length;
+          if (fpNote) fpNote.textContent = 'Rulebook saved.' +
+            (allowed.length ? ' Allowed: ' + allowed.map(function (f) { return f[1].replace(/^Never |^Don\u2019t /, '').replace(/\.$/, '').toLowerCase().slice(0, 40); }).join('; ') + '.' : ' Every flagged line stays blocked.') +
+            (edited ? ' ' + edited + ' rule' + (edited === 1 ? '' : 's') + ' in your words.' : '');
+        } catch (e4) { if (fpNote) { fpNote.textContent = 'Could not save \u2014 ' + (e4 && e4.message ? e4.message : e4); fpNote.className = 'micro warn'; } }
       };
     }
     const dg = $('jc-digest'); const dgs = $('jc-digest-send'); const dgo = $('jc-digest-out');
@@ -10593,6 +10625,69 @@ async function loadJudge() {
     const gEl = $('jc-gaps');
     if (gEl) { gEl.textContent = ''; gEl.appendChild(el('div', 'cal-empty', 'Judge & coach could not load — ' + (e && e.message ? e.message : e))); }
   }
+}
+// ── The impact trend: plot one judge/coach measure over time, so the merchant
+// can SEE whether their rule and knowledge changes are helping. Reuses the same
+// honest line chart as NPS — null days break the line instead of faking a zero.
+const JC_TREND_METRICS = {
+  block_rate: {
+    label: 'Block rate', color: '#c98a6f', pct: true,
+    val: function (r) { const d = (r.spoke || 0) + (r.vetoed || 0); return d ? Math.round((r.vetoed || 0) * 100 / d) : null; },
+    cap: 'Share of the concierge’s own drafted lines that the reviewer stopped. ↓ Lower is better — it means the concierge is drafting cleaner lines that clear your rules on the first try.'
+  },
+  vetoed: {
+    label: 'Lines blocked', color: '#c98a6f', pct: false,
+    val: function (r) { return r.vetoed || 0; },
+    cap: 'How many self-started lines the reviewer stopped each day. ↓ Lower is better once your rules have settled; a spike is worth a look at “Why lines were blocked.”'
+  },
+  spoke: {
+    label: 'Lines let through', color: '#7fae90', pct: false,
+    val: function (r) { return r.spoke || 0; },
+    cap: 'How many lines the concierge sent on its own each day — the reach-outs that passed review and went to a visitor.'
+  },
+  redraft_rate: {
+    label: 'Redraft success', color: '#7fae90', pct: true,
+    val: function (r) { const d = (r.redraft_ok || 0) + (r.redraft_blocked || 0); return d ? Math.round((r.redraft_ok || 0) * 100 / d) : null; },
+    cap: 'When a line is blocked it earns one retry with the reason attached. This is how often that retry then passed. ↑ Higher is better — the concierge is learning from the block.'
+  },
+  gaps_cleared: {
+    label: 'Gaps cleared', color: '#d8c69a', pct: false,
+    val: function (r) { return r.gaps_cleared || 0; },
+    cap: 'Knowledge gaps you resolved each day — every one is a question the concierge couldn’t answer before and now can. ↑ Higher means you’re closing the loop.'
+  }
+};
+async function loadJudgeTrend() {
+  const mount = $('jc-trend'); if (!mount) return;
+  const cap = $('jc-trend-cap');
+  const mSel = $('jc-trend-metric'); const rSel = $('jc-trend-range');
+  const key = (mSel && mSel.value) || 'block_rate';
+  const range = Math.max(parseInt((rSel && rSel.value) || '30', 10) || 30, 2);
+  const spec = JC_TREND_METRICS[key] || JC_TREND_METRICS.block_rate;
+  try {
+    const r = await sb.rpc('judge_findings', { p_days: range });
+    if (r.error) throw new Error(r.error.message);
+    const series = (r.data && r.data.series) || [];
+    if (!series.length) { mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No days to plot yet.')); if (cap) cap.textContent = ''; return; }
+    const labels = series.map(function (s) { const p = String(s.day).split('-'); return p.length === 3 ? (+p[1] + '/' + (+p[2])) : s.day; });
+    const values = series.map(function (s) { return spec.val(s); });
+    let hi = spec.pct ? 100 : 1;
+    values.forEach(function (v) { if (v !== null && v > hi) hi = v; });
+    npsLineChart(mount, {
+      labels: labels, values: values, yMin: 0, yMax: hi, color: spec.color,
+      aria: spec.label + ' over ' + range + ' days',
+      fmt: spec.pct ? function (v) { return Math.round(v) + '%'; } : function (v) { return String(Math.round(v)); }
+    });
+    if (cap) cap.textContent = spec.cap;
+  } catch (e) {
+    mount.textContent = '';
+    mount.appendChild(el('div', 'empty micro', 'Could not load the trend — ' + (e && e.message ? e.message : e)));
+  }
+}
+function bindJudgeTrend() {
+  const mSel = $('jc-trend-metric'); const rSel = $('jc-trend-range');
+  if (mSel && !mSel.dataset.bound) { mSel.dataset.bound = '1'; mSel.addEventListener('change', loadJudgeTrend); }
+  if (rSel && !rSel.dataset.bound) { rSel.dataset.bound = '1'; rSel.addEventListener('change', loadJudgeTrend); }
+  loadJudgeTrend();
 }
 function calRow(tone, html, qid) {
   const d = document.createElement('div'); d.className = 'cal-row t-' + tone; d.innerHTML = html;
