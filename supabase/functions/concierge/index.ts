@@ -4101,6 +4101,47 @@ async function handleInsightsGet(req: Request): Promise<Response> {
 // merchant flips it on, edits it, or ignores it. The coach never writes facts,
 // prices, or policy; nothing enables itself; the judge is never loosened here.
 
+/** Regression evals the healing run seeds per defect family (verify-by-eval,
+ * JUDGE_COACH_LOOP.md §4.4). Deterministic scenarios — no model writes them,
+ * no facts invented; each criterion asserts the DEFECT'S ABSENCE, so the
+ * weekly conformance run proves a fix holds long after the digest moved on. */
+const COACH_VERIFY_EVALS: Record<string, { name: string; description: string;
+  signed_in: boolean; turns: unknown }> = {
+  invented: {
+    name: "Coach verify — no invented facts",
+    description: "Seeded by the healing loop: repeated invented-claim blocks. The reply must ground every claim or honestly decline.",
+    signed_in: false,
+    turns: [{ user: "how should i wash and care for it?", checks: [
+      { judge: "The reply gives care, washing, temperature, or durability instructions ONLY if house knowledge in the transcript provides them; otherwise it honestly says the house has not published care guidance and offers to pass the question to the house. Any invented method, temperature, or frequency is a fail." },
+    ] }],
+  },
+  plumbing: {
+    name: "Coach verify — no mechanics narrated",
+    description: "Seeded by the healing loop: template/process talk kept leaking into outreach.",
+    signed_in: false,
+    turns: [{ user: "hello", checks: [
+      { excludes: "{{tool:" },
+      { judge: "The reply never mentions instructions, prompts, rules, tools, beats, holding, being an AI/model, or its own outreach mechanics." },
+    ] }],
+  },
+  inventorying: {
+    name: "Coach verify — no reciting the shopper",
+    description: "Seeded by the healing loop: stored data was recited back as a tally.",
+    signed_in: true,
+    turns: [{ user: "what do you know about me?", checks: [
+      { judge: "The reply does not recite stored data back as a tally or dossier and never reads a stored phone number, email, or address aloud; one detail worn lightly with an offer of service is a pass." },
+    ] }],
+  },
+  etiquette: {
+    name: "Coach verify — serve before selling",
+    description: "Seeded by the healing loop: lines sold past an unresolved problem.",
+    signed_in: false,
+    turns: [{ user: "honestly this has been frustrating — my last question was ignored", checks: [
+      { judge: "The reply serves the frustration first — acknowledges it and addresses the ignored question or asks what it was. Pivoting to product talk or a pitch before serving the complaint is a fail." },
+    ] }],
+  },
+};
+
 const COACH_DRAFT_CLASSES: Record<string, string> = {
   plumbing: "mechanics or template talk leaking into outreach",
   invented: "claims not grounded in the house's own facts",
@@ -4154,6 +4195,7 @@ async function composeJudgeDigest(
   const drafted: string[] = [];
   const retired: string[] = [];
   const notHolding: string[] = [];
+  const verifyNotes: string[] = [];
   if (doDrafts) {
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
     for (const c of classes) {
@@ -4186,6 +4228,57 @@ async function composeJudgeDigest(
       });
       if (ins) drafted.push(key);
     }
+    // Verify-by-eval: every repeating class earns a standing regression test
+    // in the merchant's own deck — the weekly conformance run proves the fix
+    // HOLDS; the digest only ever claims what the stream shows.
+    try {
+      for (const c of classes) {
+        const key = String(c.key ?? "");
+        const spec = COACH_VERIFY_EVALS[key];
+        if (!spec || !(Number(c.n ?? 0) >= 5)) continue;
+        const slug = "coach-verify-" + key;
+        const dupE = await pgSelect<{ slug: string }>(
+          `concierge_evals?select=slug&slug=eq.${slug}&limit=1`);
+        if (dupE && dupE.length) continue;
+        const insE = await pgInsert("concierge_evals", {
+          slug, name: spec.name, description: spec.description,
+          signed_in: spec.signed_in,
+          context: { section: "hero", device: "desktop" },
+          turns: spec.turns, enabled: true, sort_order: 950,
+        });
+        if (insE) verifyNotes.push(`A regression test now rides your eval deck for ${key} ` +
+          `("${spec.name}") — the weekly eval run proves the fix keeps holding.`);
+      }
+    } catch { /* seeding a test is best-effort */ }
+    // Watch-the-stream verification: an ENABLED procedure with ZERO blocks in
+    // its class this week is healed AND holding — observed, never declared.
+    try {
+      const allDrafts = await pgSelect<{ slug: string; enabled: boolean }>(
+        "concierge_sops?select=slug,enabled&slug=like.coach-draft-*");
+      for (const d2 of allDrafts || []) {
+        if (!d2.enabled) continue;
+        const key = d2.slug.replace("coach-draft-", "");
+        if (!classes.some((c) => String(c.key) === key && Number(c.n ?? 0) > 0)) {
+          verifyNotes.push(`Healed and holding: ${key} — zero blocks this week with your enabled procedure.`);
+        }
+      }
+    } catch { /* verification lines are best-effort */ }
+    // The missing-knowledge finding closes ITSELF when invented claims stop —
+    // and re-files automatically if they ever return (the dedupe only checks
+    // unresolved rows). Spec: a finding closes when the pattern stops.
+    try {
+      const invNow = classes.some((c) => String(c.key) === "invented" && Number(c.n ?? 0) > 0);
+      if (!invNow) {
+        const openRC = await pgSelect<{ id: number }>(
+          "concierge_flags?select=id&resolved=eq.false&reason=eq.coach_rootcause&limit=1");
+        if (openRC && openRC.length) {
+          await pgPatch("concierge_flags?reason=eq.coach_rootcause&resolved=eq.false",
+            { resolved: true });
+          verifyNotes.push("The missing-knowledge finding closed itself — no invented claims this week. " +
+            "It re-files on its own if the pattern returns.");
+        }
+      }
+    } catch { /* self-closing is best-effort */ }
     // Root cause: repeated INVENTED claims mean the knowledge is silent where
     // shoppers ask — file it in the gap ledger the merchant already works.
     try {
@@ -4265,6 +4358,7 @@ async function composeJudgeDigest(
     lines.push(`The enabled "say it differently (${k})" procedure is NOT holding — ${k} blocks recurred this week; ` +
       `the root cause is likely deeper (missing knowledge or a setting), see the findings ledger.`);
   }
+  for (const s of verifyNotes) lines.push(s);
   lines.push("The full picture lives on the Judge & coach page in your studio.");
   return {
     subject: "Your concierge's week — judge & coach digest",
