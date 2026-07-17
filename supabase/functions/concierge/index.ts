@@ -6733,7 +6733,7 @@ async function handleChatPost(req: Request): Promise<Response> {
           // should have avoided — countable, so prompt work has a scoreboard.
           if (!(validated.sessionKey || "").startsWith("qa-")) {
             conversationPromise.then((cidF) => cidF && pgInsert("concierge_actions", {
-              conversation_id: cidF, user_id: customer?.id ?? null, email: customer?.email ?? null,
+              conversation_id: cidF, user_id: null, email: null,
               action: "beat_action", serial: null,
               payload: { action: "REQUEST_NPS_APPENDED", via: "wrapup-fallback" },
               result: "REQUEST_NPS_APPENDED",
