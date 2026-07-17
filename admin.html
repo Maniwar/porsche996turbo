@@ -2563,11 +2563,21 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <div class="stat"><span class="micro">Passives</span><div class="val" id="nps-pass">—</div></div>
           <div class="stat"><span class="micro">Detractors</span><div class="val" id="nps-det" style="color:var(--bad,#c98a6f);">—</div></div>
         </div>
+        <div class="micro" style="opacity:.6;margin-bottom:10px;">Tip: click a segment or a category to read the actual responses — and open the conversation behind any one.</div>
         <div id="nps-themes" class="micro" style="margin-bottom:10px;"></div>
         <div id="nps-holds" class="micro" style="margin-bottom:10px;"></div>
         <div id="nps-extra" class="micro" style="margin-bottom:10px;"></div>
         <div id="nps-recent"></div>
       </section>
+
+      <!-- NPS drill-in: read the responses behind a number, open the conversation -->
+      <div id="nps-drill-bd" class="drawer-bd"></div>
+      <aside id="nps-drill" class="drawer" aria-hidden="true">
+        <button id="nps-drill-x" class="drawer-x" type="button" aria-label="Close">×</button>
+        <h3 id="nps-drill-title">Responses</h3>
+        <div id="nps-drill-sub" class="dsub"></div>
+        <div id="nps-drill-body" style="margin-top:10px;"></div>
+      </aside>
 
       <section class="card">
         <div class="card-head">
@@ -9588,6 +9598,115 @@ function npsSegBadge(seg, score) {
   b.style.cssText = 'color:' + col + ';font-size:11px;letter-spacing:.04em;';
   return b;
 }
+// ── NPS drill-in: read the responses behind a number, and open the actual
+// conversation behind any one in a side panel. Direct reads of nps_responses /
+// concierge_messages (both admin-RLS-gated); no new endpoint.
+function npsDrillClose() {
+  const bd = $('nps-drill-bd'), dr = $('nps-drill');
+  if (bd) bd.classList.remove('on'); if (dr) { dr.classList.remove('on'); dr.setAttribute('aria-hidden', 'true'); }
+}
+function npsDrillOpen(title, sub) {
+  const bd = $('nps-drill-bd'), dr = $('nps-drill');
+  if (!bd || !dr) return null;
+  if (!dr.dataset.wired) {
+    dr.dataset.wired = '1';
+    const x = $('nps-drill-x'); if (x) x.onclick = npsDrillClose;
+    bd.onclick = npsDrillClose;
+  }
+  bd.classList.add('on'); dr.classList.add('on'); dr.setAttribute('aria-hidden', 'false');
+  const t = $('nps-drill-title'); if (t) t.textContent = title || 'Responses';
+  const s = $('nps-drill-sub'); if (s) s.textContent = sub || '';
+  const body = $('nps-drill-body'); if (body) { body.textContent = ''; body.appendChild(el('div', 'empty micro', 'Loading…')); }
+  return body;
+}
+async function npsDrill(filter, label) {
+  state.npsLastDrill = { f: filter, l: label };
+  const days = (state.npsRange === undefined || state.npsRange === null) ? 30 : (state.npsRange || 3650);
+  const body = npsDrillOpen(label, 'the last ' + (days >= 3650 ? 'all time' : days + ' days'));
+  if (!body) return;
+  try {
+    let q = sb.from('nps_responses')
+      .select('id,conversation_id,score,segment,reason_text,categories,created_at,revised_at')
+      .order('created_at', { ascending: false }).limit(300);
+    if (days < 3650) q = q.gte('created_at', new Date(Date.now() - days * 86400000).toISOString());
+    const r = await q;
+    if (r.error) throw new Error(r.error.message);
+    let rows = r.data || [];
+    if (filter.segment) rows = rows.filter(function (x) { return x.segment === filter.segment; });
+    if (filter.category) rows = rows.filter(function (x) { return (x.categories || []).some(function (c) { return c && c.slug === filter.category; }); });
+    body.textContent = '';
+    body.appendChild(el('div', 'micro', rows.length + ' response' + (rows.length === 1 ? '' : 's') + ' — click one to read its conversation'));
+    if (!rows.length) { body.appendChild(el('div', 'empty micro', 'No responses match in this range.')); return; }
+    rows.forEach(function (x) {
+      const row = el('div');
+      row.style.cssText = 'padding:11px 0;border-top:1px solid var(--hairline-dim);';
+      const top = el('div'); top.style.cssText = 'display:flex;gap:10px;align-items:center;';
+      top.appendChild(npsSegBadge(x.segment, x.score));
+      const dt = el('span', 'micro', new Date(x.created_at).toLocaleDateString() + (x.revised_at ? ' · revised' : ''));
+      dt.style.opacity = '.6'; top.appendChild(dt);
+      const link = el('span', 'micro'); link.style.cssText = 'margin-left:auto;';
+      top.appendChild(link);
+      row.appendChild(top);
+      if (x.reason_text) {
+        const rt = el('div'); rt.style.cssText = 'margin-top:5px;font-size:12.5px;line-height:1.45;opacity:.88;text-transform:none;letter-spacing:0;';
+        rt.textContent = '“' + x.reason_text + '”'; row.appendChild(rt);
+      } else {
+        const rt = el('div', 'micro'); rt.style.cssText = 'margin-top:5px;opacity:.5;'; rt.textContent = 'no reason given'; row.appendChild(rt);
+      }
+      if ((x.categories || []).length) {
+        const ct = el('div', 'micro'); ct.style.cssText = 'margin-top:4px;opacity:.6;';
+        ct.textContent = x.categories.map(function (c) { return c.slug; }).join(' · '); row.appendChild(ct);
+      }
+      if (x.conversation_id) {
+        link.textContent = 'read the conversation →'; link.style.color = 'var(--brass-soft)';
+        row.style.cursor = 'pointer';
+        row.onclick = function () { npsShowConvo(x.conversation_id, x); };
+      } else {
+        link.textContent = 'anonymous — no thread'; link.style.color = 'var(--wool-faint)';
+      }
+      body.appendChild(row);
+    });
+  } catch (e) { body.textContent = ''; body.appendChild(el('div', 'empty micro', 'Could not load — ' + (e && e.message ? e.message : e))); }
+}
+async function npsShowConvo(convId, resp) {
+  const body = $('nps-drill-body'); const title = $('nps-drill-title'); const sub = $('nps-drill-sub');
+  if (!body) return;
+  if (title) title.textContent = 'The conversation';
+  if (sub) sub.textContent = resp ? (resp.segment + ' · rated ' + resp.score + '/10') : '';
+  body.textContent = '';
+  const back = el('button', 'btn ghost mini', '← Back to responses');
+  back.onclick = function () { if (state.npsLastDrill) npsDrill(state.npsLastDrill.f, state.npsLastDrill.l); };
+  body.appendChild(back);
+  if (resp && resp.reason_text) {
+    const rt = el('div'); rt.style.cssText = 'margin:10px 0;font-size:13px;line-height:1.5;opacity:.9;text-transform:none;letter-spacing:0;';
+    rt.textContent = 'Their reason: “' + resp.reason_text + '”'; body.appendChild(rt);
+  }
+  const load = el('div', 'empty micro', 'Loading the conversation…'); body.appendChild(load);
+  try {
+    const r = await sb.from('concierge_messages').select('role,content,created_at')
+      .eq('conversation_id', convId).order('created_at', { ascending: true });
+    if (r.error) throw new Error(r.error.message);
+    load.remove();
+    const msgs = r.data || [];
+    if (!msgs.length) { body.appendChild(el('div', 'empty micro', 'This conversation has no stored messages (it may have been pruned).')); return; }
+    const wrap = el('div'); wrap.style.cssText = 'margin-top:12px;display:flex;flex-direction:column;gap:12px;';
+    msgs.forEach(function (mm) {
+      const shopper = mm.role === 'user';
+      const b = el('div');
+      b.style.cssText = 'max-width:88%;padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.5;white-space:pre-wrap;' +
+        (shopper ? 'align-self:flex-end;background:rgba(196,155,91,.14);' : 'align-self:flex-start;background:rgba(241,236,226,.06);');
+      const who = el('div', 'micro'); who.textContent = shopper ? 'Shopper' : 'Concierge';
+      who.style.cssText = 'opacity:.55;margin-bottom:3px;';
+      b.appendChild(who); b.appendChild(document.createTextNode(mm.content || ''));
+      wrap.appendChild(b);
+    });
+    body.appendChild(wrap);
+    const openFull = el('button', 'btn ghost mini', 'Open in Conversations →');
+    openFull.style.cssText = 'margin-top:14px;';
+    openFull.onclick = function () { npsDrillClose(); activateTab('conversations'); openConvo({ id: convId }); };
+    body.appendChild(openFull);
+  } catch (e) { load.remove(); body.appendChild(el('div', 'empty micro', 'Could not load the conversation — ' + (e && e.message ? e.message : e))); }
+}
 async function renderNpsCard() {
   const card = $('nps-card');
   if (!card) return;
@@ -9613,6 +9732,12 @@ async function renderNpsCard() {
     $('nps-det').textContent = String(m.detractors || 0);
     if ($('nps-offers')) $('nps-offers').textContent = String(m.offers || 0);
     if ($('nps-rr')) $('nps-rr').textContent = (m.response_rate === null || m.response_rate === undefined) ? '—' : (m.response_rate + '%');
+    // drill: click a segment tile to read its actual responses (and the conversation behind each)
+    [['nps-prom', 'promoter', 'Promoters'], ['nps-pass', 'passive', 'Passives'], ['nps-det', 'detractor', 'Detractors']].forEach(function (t) {
+      const val = $(t[0]); const tile = val && val.closest('.stat'); if (!tile) return;
+      tile.style.cursor = 'pointer'; tile.title = 'Click to read these responses and open the conversation behind each';
+      tile.onclick = function () { npsDrill({ segment: t[1] }, t[2]); };
+    });
     const th = $('nps-themes'); th.textContent = '';
     const det = (m.detractor_themes || []).slice(0, 5);
     if (det.length) {
@@ -9656,6 +9781,10 @@ async function renderNpsCard() {
         barWrap.appendChild(bar);
         row.appendChild(barWrap);
         row.appendChild(el('span', 'micro', n + (dn ? ' (' + dn + ' from detractors)' : '')));
+        if (n > 0) {
+          row.style.cursor = 'pointer'; row.title = 'Click to read the responses in this category';
+          row.onclick = function () { npsDrill({ category: c.slug }, (c.label || c.slug) + ' — responses'); };
+        }
         catsEl.appendChild(row);
       });
       if (!vocab.length) catsEl.appendChild(el('div', 'micro', 'No categories in the vocabulary — seed nps_categories.'));
