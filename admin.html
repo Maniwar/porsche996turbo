@@ -1160,7 +1160,7 @@
   <form id="auth-form">
     <label class="micro" for="auth-email" style="text-align:left;">Your address</label>
     <input type="email" id="auth-email" class="mono-field" placeholder="you@" autocomplete="email" required>
-    <button type="submit" id="auth-send" class="btn primary">Send key</button>
+    <button type="submit" id="auth-send" class="btn primary">Email me a sign-in link</button>
   </form>
   <p class="sub micro" id="auth-note" style="min-height:16px; margin-top:18px;"></p>
 </div>
@@ -1176,9 +1176,9 @@
 <!-- ===================== NOT AN ADMIN ===================== -->
 <div id="view-denied" class="view gate">
   <span class="micro">2003 Porsche 911 Turbo — Car</span>
-  <div class="mark">This desk is not yours.</div>
+  <div class="mark">We don't recognize this email.</div>
   <div class="rule"></div>
-  <p class="sub">The address you signed in with is not on the concierge admin register.</p>
+  <p class="sub">That email isn't set up as an owner for this concierge.</p>
   <button id="denied-signout" class="btn" style="margin-top:26px;">Sign out</button>
 </div>
 
@@ -1238,11 +1238,11 @@
       <section class="card">
         <div class="card-head">
           <h3>Engine</h3>
-          <span class="micro">the machine room — fine to leave alone</span>
+          <span class="micro">the on/off is live right here; the keys &amp; model are the machine room — leave those to your developer</span>
         </div>
         <div class="grid-3">
           <div class="field">
-            <span class="micro">Concierge</span>
+            <span class="micro">Concierge — on or off for shoppers<span class="info-badge" title="Turns the whole concierge on or off for everyone on your site. This one saves the moment you flip it — no separate Save needed. You can also flip it from the Live/Paused pill at the top of any page.">i</span></span>
             <label class="switch" style="margin-top:6px;">
               <input type="checkbox" id="cfg-enabled">
               <span class="track"></span>
@@ -1419,7 +1419,7 @@
           <h3>Concierge tokens</h3>
           <span class="micro">special {{…}} markers that render as UI</span>
         </div>
-        <p class="note">You can drop <code>{{reply:…}}</code> pills straight into the greeting. The rest, the concierge emits itself as its procedures call for — shape <em>when</em> via the SOPs (Procedures) and the tuning notes above.</p>
+        <p class="note">You can drop <code>{{reply:…}}</code> pills straight into the greeting. The rest, the concierge emits itself as its procedures call for — shape <em>when</em> via the Procedures and the tuning notes above.</p>
         <table class="tok-ref">
           <tr><td><code>{{img:hero}}</code><br>+ your own</td>
             <td>A photograph, on its own line. These three are built in; add your own in the <strong>Bot images</strong> card below and the concierge can share them too.</td></tr>
@@ -1991,15 +1991,15 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <section class="card">
         <div class="card-head">
           <h3>Register actions by the concierge</h3>
-          <span class="micro">concierge_actions</span>
+          <span class="micro">activity log</span>
         </div>
         <div class="filters">
           <input type="date" id="act-from" title="From date">
           <input type="date" id="act-to" title="To date">
-          <input type="text" id="act-q" placeholder="email, action, Nº, IP, or keyword…" style="max-width:240px;">
+          <input type="text" id="act-q" placeholder="email, action, Nº, or keyword…" style="max-width:240px;">
           <select id="act-type" title="Filter by action type">
             <option value="">All actions</option>
-            <option value="__beats">Reach-outs (all beats)</option>
+            <option value="__beats">Proactive reach-outs (all)</option>
             <option value="beat_action">· spoke</option>
             <option value="beat_hold">· held</option>
             <option value="beat_veto">· vetoed</option>
@@ -2022,7 +2022,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <div class="panel-head">
         <span class="micro">Answers served instantly</span>
         <h2>Saved answers</h2>
-        <p class="note">Answers served instantly when a visitor asks something similar to a past question. Edit anything wrong, or disable it — the concierge will think fresh on the next miss. New entries appear automatically.</p>
+        <p class="note">Answers served instantly when a visitor asks something similar to a past question. Edit anything wrong, or disable it — the next time someone asks, the concierge will think it through fresh. New entries appear automatically.</p>
       </div>
 
       <div class="metrics two">
@@ -2031,7 +2031,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       </div>
 
       <div class="row-tools">
-        <button id="cache-bake" class="btn primary">Bake starter answers</button>
+        <button id="cache-bake" class="btn primary">Add starter answers</button>
         <button id="cache-refresh" class="btn">Refresh</button>
       </div>
 
@@ -2056,7 +2056,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <input type="text" id="cust-serial" inputmode="numeric" placeholder="Find Nº…" title="Jump to an order number" style="max-width:110px;">
         <input type="date" id="cust-from" title="Ordered from">
         <input type="date" id="cust-to" title="Ordered to">
-        <input type="text" id="cust-search" placeholder="Search name, email, or IP…" style="max-width:220px;">
+        <input type="text" id="cust-search" placeholder="Search name or email…" style="max-width:220px;">
         <span class="info-badge" title="The loom's journey: placed → weaving → finishing → shipped → delivered. Two strikes, deliberately different: CANCELLED = struck while still 'placed' — the Nº is released back to the edition's pool. RETURNED = the cloth was already weaving or out the door — refunded, and the Nº stays on the record because it's woven into the cloth. The buyer is emailed either way; neither counts as revenue or standing.">i</span> <select id="cust-status" title="Order status">
           <option value="">Any status</option>
           <option value="placed">placed</option>
@@ -2115,7 +2115,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <h3>Inquiries</h3>
           <span class="micro">inquiries · offers, viewings, questions & callbacks</span>
         </div>
-        <p class="note">Serious offers, viewing requests, questions, and callbacks a shopper handed the concierge — captured by the make-an-offer / book-a-viewing form or the <code>submit_inquiry</code> tool, and emailed to the house. Move each one <strong>new → contacted → closed</strong> as you work it; export the list to follow up.</p>
+        <p class="note">Serious offers, viewing requests, questions, and callbacks a shopper handed the concierge — captured by the make-an-offer / book-a-viewing form, and emailed to the house. Move each one <strong>new → contacted → closed</strong> as you work it; export the list to follow up.</p>
         <div class="row-tools filters">
           <input type="date" id="inq-from" title="From date">
           <input type="date" id="inq-to" title="To date">
@@ -2162,7 +2162,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <!-- FILTER zone — what to show. Text/date need Apply; the selects filter live. -->
         <div class="ct-row">
           <span class="ct-tag">Filter</span>
-          <input type="text" id="convo-q" class="ct-search" placeholder="Search email · a word · conversation id · IP">
+          <input type="text" id="convo-q" class="ct-search" placeholder="Search email or a word">
           <input type="date" id="convo-from" title="From date" class="ct-date">
           <input type="date" id="convo-to" title="To date" class="ct-date">
           <select id="convo-goal" title="Goal outcome">
@@ -2247,7 +2247,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         definition.</p>
 
       <div class="ct-row" style="margin-bottom:10px;">
-        <span class="ct-tag" title="There is no single shared date — the range filters each fact by ITS OWN clock: orders by order date (placed_at), conversations by start date (created_at), funnel beacons by event time, spoke-stage by message time. So 'Commissions' = orders PLACED in the range, 'Conversations' = chats STARTED in the range, and the conversion rate deliberately crosses the two (see its ⓘ).">Range</span>
+        <span class="ct-tag" title="There is no single shared date — the range filters each fact by its own clock: orders by the date they were placed, conversations by the date they started. So 'Commissions' = orders PLACED in the range, 'Conversations' = chats STARTED in the range, and the conversion rate deliberately crosses the two (see its ⓘ).">Range</span>
         <div id="cv-range" class="ord-chips" style="margin-bottom:0;"></div>
         <button id="cv-export" class="btn ghost" type="button" style="margin-left:auto;" title="Every order in the range with its attribution tier and click context — same columns as the register export">Export CSV</button>
         <button id="cv-refresh" class="btn ghost" type="button">Refresh</button>
@@ -2270,17 +2270,17 @@ need to ask my partner | Of course — the hold keeps their number while they ta
 
       <!-- Commerce KPIs — range-scoped, each with a definition and a delta vs the prior equal window -->
       <div class="metrics" id="cv-tiles">
-        <div class="stat"><span class="micro">Revenue<span class="info-badge" title="Kept commissions placed in the range (cancelled and returned excluded) × the register price (Edition &amp; access → Register price). Date basis: order date (placed_at).">i</span></span><div class="val" id="cv-revenue">—</div><div class="cv-delta" id="cv-revenue-d"></div></div>
-        <div class="stat"><span class="micro">Commissions<span class="info-badge" title="Orders placed in the range that were not cancelled or returned. Date basis: order date (placed_at). Click to open them in the register.">i</span></span><div class="val" id="cv-orders">—</div><div class="cv-delta" id="cv-orders-d"></div></div>
+        <div class="stat"><span class="micro">Revenue<span class="info-badge" title="Kept orders placed in the range (cancelled and returned excluded) × the register price (set under Edition &amp; access → Register price). Counted by the date each order was placed.">i</span></span><div class="val" id="cv-revenue">—</div><div class="cv-delta" id="cv-revenue-d"></div></div>
+        <div class="stat"><span class="micro">Commissions<span class="info-badge" title="Orders placed in the range that were not cancelled or returned. Counted by the date each order was placed. Click to open them in the register.">i</span></span><div class="val" id="cv-orders">—</div><div class="cv-delta" id="cv-orders-d"></div></div>
         <div class="stat"><span class="micro">Avg order value<span class="info-badge" title="Revenue ÷ kept commissions. In this demo every commission is one car at the register price, so AOV equals the price until multi-item or variable pricing exists.">i</span></span><div class="val" id="cv-aov">—</div><div class="cv-delta" id="cv-aov-d"></div></div>
         <div class="stat"><span class="micro">Conversion rate<span class="info-badge" title="Attributed kept commissions (✳ + chat-assisted, by order date) ÷ conversations started in the range (by conversation start date). Cross-basis: a chat late in the window can convert after it — treat the tail as approximate. Click to open the commissioned chats.">i</span></span><div class="val" id="cv-rate">—</div><div class="cv-delta" id="cv-rate-d"></div></div>
       </div>
 
       <!-- Concierge KPIs — attribution + engagement -->
       <div class="metrics" id="cv-tiles2">
-        <div class="stat"><span class="micro">✳ Concierge-initiated<span class="info-badge" title="Kept commissions where checkout was opened from the concierge's own commission button (orders.chat_via = concierge). The causal tier — the number to optimize. Click to open them.">i</span></span><div class="val" id="cv-initiated">—</div><div class="cv-delta" id="cv-initiated-d"></div></div>
-        <div class="stat"><span class="micro">Chat-assisted<span class="info-badge" title="Kept commissions with a conversation in the buying session but checkout from a page button (chat_session set at checkout, no button click). Co-occurrence, not proven cause. Click to open them.">i</span></span><div class="val" id="cv-assisted">—</div><div class="cv-delta" id="cv-assisted-d"></div></div>
-        <div class="stat"><span class="micro">Identity-assisted<span class="info-badge" title="Kept commissions by a SIGNED-IN buyer whose account had a conversation in the 30 days before placement, with no same-session chat (orders.chat_via = identity). Catches cross-device and chat-today-buy-tomorrow journeys the session tier misses. Weakest assisted tier. Click to open them.">i</span></span><div class="val" id="cv-identity">—</div><div class="cv-delta" id="cv-identity-d"></div></div>
+        <div class="stat"><span class="micro">✳ Concierge-initiated<span class="info-badge" title="Kept orders where checkout was opened from the concierge's own commission button. The causal tier — the number to optimize. Click to open them.">i</span></span><div class="val" id="cv-initiated">—</div><div class="cv-delta" id="cv-initiated-d"></div></div>
+        <div class="stat"><span class="micro">Chat-assisted<span class="info-badge" title="Kept orders with a conversation in the buying session, but checkout was opened from a page button rather than the concierge. Co-occurrence, not proven cause. Click to open them.">i</span></span><div class="val" id="cv-assisted">—</div><div class="cv-delta" id="cv-assisted-d"></div></div>
+        <div class="stat"><span class="micro">Identity-assisted<span class="info-badge" title="Kept orders by a signed-in buyer whose account had a conversation in the 30 days before they bought, with no same-session chat. Catches cross-device and chat-today-buy-tomorrow journeys the session tier misses. Weakest assisted tier. Click to open them.">i</span></span><div class="val" id="cv-identity">—</div><div class="cv-delta" id="cv-identity-d"></div></div>
         <div class="stat"><span class="micro">Attributed revenue<span class="info-badge" title="(✳ + chat-assisted + identity-assisted) × register price, in the range. Quote the ✳ share when claiming causation — the assisted tiers are co-occurrence.">i</span></span><div class="val" id="cv-attr-rev">—</div><div class="cv-delta" id="cv-attr-rev-d"></div></div>
         <div class="stat"><span class="micro">Conversations<span class="info-badge" title="Conversations started in the range (by created_at), signed-in and anonymous alike.">i</span></span><div class="val" id="cv-convos">—</div><div class="cv-delta" id="cv-convos-d"></div></div>
         <div class="stat"><span class="micro">👍 rate (all-time)<span class="info-badge" title="Thumbs-up ÷ all rated replies, ALL-TIME (feedback rows carry no timestamp, so this cannot be range-scoped). A reply-quality signal, not a conversion metric.">i</span></span><div class="val" id="cv-thumbs">—</div><div class="cv-delta"></div></div>
@@ -2378,9 +2378,9 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           concierge). Date basis: inquiry date (created_at). Deltas compare the prior window of equal length.</p>
       </section>
 
-      <p class="micro" style="opacity:.7;">Date bases: order metrics bucket by <b>order date</b> (placed_at);
-        conversation metrics by <b>conversation start</b> (created_at); funnel stages by <b>event time</b>,
-        unique visitors per bucket. Deltas compare the prior window of equal length. Attribution is captured
+      <p class="micro" style="opacity:.7;">Dates used: order figures count by the <b>date the order was placed</b>;
+        conversation figures by the <b>date the chat started</b>; funnel stages by the <b>time each step happened</b>,
+        counting unique visitors. Deltas compare the prior window of equal length. Attribution is captured
         when chat and checkout share a browser tab session — cross-day and cross-device journeys record as
         unassisted, so attributed figures are a floor, not a ceiling. Funnel events begin at their ship date —
         earlier history shows zeros. Cancelled orders are excluded from revenue but keep their attribution.</p>
@@ -2521,7 +2521,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
       <section class="card" style="margin-top:14px;">
         <div class="card-head">
           <h3>Every purpose</h3>
-          <span class="micro">the full ledger vocabulary, costliest first</span>
+          <span class="micro">every job the concierge spent on, costliest first</span>
         </div>
         <div id="sp-purposes"></div>
         <div id="sp-prices" style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;"></div>
@@ -3159,7 +3159,7 @@ function wireStatic() {
         email: email,
         options: { emailRedirectTo: location.href }
       });
-      if (res.error) { fail('Send key', res.error); return; }
+      if (res.error) { fail('Email sign-in link', res.error); return; }
       $('auth-note').textContent = 'Check your inbox.';
     });
   });
@@ -3305,7 +3305,13 @@ function wireStatic() {
     withBusy($('admin-add-btn'), addAdmin);
   });
   $('cfg-enabled').addEventListener('change', function () {
-    $('cfg-enabled-label').textContent = $('cfg-enabled').checked ? 'Live' : 'Paused';
+    // Save the moment it flips (with a confirm) so the label can never say
+    // "Live" while the saved state is Paused; revert the switch if cancelled.
+    const want = $('cfg-enabled').checked;
+    setConciergeEnabled(want, { confirm: true }).then(function (ok) {
+      if (!ok) $('cfg-enabled').checked = !want;
+      $('cfg-enabled-label').textContent = $('cfg-enabled').checked ? 'Live' : 'Paused';
+    });
   });
 
   $('kb-add').addEventListener('click', function () { addSection(KB_SPEC); });
@@ -3355,7 +3361,7 @@ function wireStatic() {
           (n['needs-knowledge'] ? ' · needs knowledge ' + n['needs-knowledge'] : '') +
           (n.live ? ' · stays live ' + n.live : ''));
         await loadCache();
-      } catch (e) { fail('Bake starter answers', e); }
+      } catch (e) { fail('Add starter answers', e); }
     });
   });
 
@@ -3571,6 +3577,38 @@ function setPill(enabled) {
   const pill = $('pill');
   pill.classList.toggle('live', !!enabled);
   $('pill-text').textContent = enabled ? 'Live' : 'Paused';
+  // The pill is the always-visible master switch — click it on any page to
+  // pause or resume the concierge for all shoppers (with a confirm).
+  pill.style.cursor = 'pointer';
+  pill.setAttribute('role', 'button');
+  pill.setAttribute('tabindex', '0');
+  pill.title = enabled
+    ? 'The concierge is answering shoppers — click to pause it'
+    : 'The concierge is paused — click to turn it on for shoppers';
+  pill.onclick = function () { setConciergeEnabled(!pill.classList.contains('live'), { confirm: true }); };
+  pill.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pill.onclick(); } };
+}
+/* The one place the master on/off is written — used by the header pill AND the
+   Engine toggle, so the two can never disagree and the switch can never claim
+   "Live" before it has actually saved (#152 safety). Saves immediately. */
+async function setConciergeEnabled(enabled, opts) {
+  opts = opts || {};
+  if (opts.confirm) {
+    const msg = enabled
+      ? 'Turn the concierge ON now? It will start greeting and answering every shopper on your site.'
+      : 'Pause the concierge now? It will stop answering shoppers until you turn it back on.';
+    if (!window.confirm(msg)) return false;
+  }
+  try {
+    const res = await sb.from('concierge_config').upsert(
+      [{ key: 'enabled', value: !!enabled, updated_at: nowIso() }], { onConflict: 'key' });
+    if (res.error) { fail('Save on/off', res.error); return false; }
+    setPill(enabled);
+    if ($('cfg-enabled')) $('cfg-enabled').checked = !!enabled;
+    if ($('cfg-enabled-label')) $('cfg-enabled-label').textContent = enabled ? 'Live' : 'Paused';
+    toast(enabled ? 'Concierge is LIVE — answering shoppers now' : 'Concierge PAUSED — not answering shoppers');
+    return true;
+  } catch (e) { fail('Save on/off', e); return false; }
 }
 
 /* ============================================================
@@ -4747,24 +4785,24 @@ function siteItems(prefix, n, hasBody) {
 }
 const SITE_SLOTS = [
   { group: 'SEO & social sharing', items: [
-    { key: 'seo.title', label: 'Browser / SEO title', type: 'text', kind: 'meta' },
-    { key: 'seo.description', label: 'Meta description', type: 'area', kind: 'meta' },
-    { key: 'seo.og_title', label: 'Social title (Open Graph)', type: 'text', kind: 'meta' },
-    { key: 'seo.og_description', label: 'Social description (Open Graph)', type: 'area', kind: 'meta' },
-    { key: 'seo.og_image', label: 'Social image URL (Open Graph)', type: 'text', kind: 'meta' }
+    { key: 'seo.title', label: 'Browser tab & search title', type: 'text', kind: 'meta' },
+    { key: 'seo.description', label: 'Search-result description', type: 'area', kind: 'meta' },
+    { key: 'seo.og_title', label: 'Title when shared on social', type: 'text', kind: 'meta' },
+    { key: 'seo.og_description', label: 'Description when shared on social', type: 'area', kind: 'meta' },
+    { key: 'seo.og_image', label: 'Image when shared on social (URL)', type: 'text', kind: 'meta' }
   ] },
   { group: 'Hero', items: [
-    { key: 'hero.eyebrow', label: 'Eyebrow', type: 'text' },
+    { key: 'hero.eyebrow', label: 'Small heading above', type: 'text' },
     { key: 'hero.subcopy', label: 'Sub-copy (the definition)', type: 'area' },
     { key: 'hero.cue', label: 'Scroll cue', type: 'text' },
     { key: 'hero.image', label: 'Hero image', type: 'image' }
   ] },
   { group: 'Why it exists', items: [
-    { key: 'why.eyebrow', label: 'Eyebrow', type: 'text' },
+    { key: 'why.eyebrow', label: 'Small heading above', type: 'text' },
     { key: 'why.body', label: 'Body', type: 'area' }
   ] },
   { group: 'What-makes-it-special — feature items', items: [
-    { key: 'what-makes-it-special.eyebrow', label: 'Eyebrow', type: 'text' },
+    { key: 'what-makes-it-special.eyebrow', label: 'Small heading above', type: 'text' },
     { key: 'what-makes-it-special.headline', label: 'Headline', type: 'area' }
   ].concat(siteItems('what-makes-it-special', 5, true)).concat([
     { key: 'what-makes-it-special.item1.image', label: '1 · Image', type: 'image' },
@@ -4774,9 +4812,9 @@ const SITE_SLOTS = [
     { key: 'what-makes-it-special.item5.image', label: '5 · Image', type: 'image' }
   ]) },
   { group: 'Read the label', items: [
-    { key: 'label.eyebrow', label: 'Eyebrow', type: 'text' },
+    { key: 'label.eyebrow', label: 'Small heading above', type: 'text' },
     { key: 'label.headline', label: 'Headline', type: 'area' },
-    { key: 'label.lede', label: 'Lede', type: 'area' },
+    { key: 'label.lede', label: 'Intro line', type: 'area' },
     { key: 'spec.fiber', label: 'Spec · Fiber', type: 'text' },
     { key: 'spec.weight', label: 'Spec · Weight', type: 'text' },
     { key: 'spec.size', label: 'Spec · Size', type: 'text' },
@@ -4788,7 +4826,7 @@ const SITE_SLOTS = [
     { key: 'spec.care', label: 'Spec · Care', type: 'text' }
   ] },
   { group: 'Ritual', items: [
-    { key: 'ritual.eyebrow', label: 'Eyebrow', type: 'text' },
+    { key: 'ritual.eyebrow', label: 'Small heading above', type: 'text' },
     { key: 'ritual.headline', label: 'Headline', type: 'area' },
     { key: 'ritual.line1', label: 'Line 1', type: 'text' },
     { key: 'ritual.line2', label: 'Line 2', type: 'text' },
@@ -4797,7 +4835,7 @@ const SITE_SLOTS = [
     { key: 'ritual.image', label: 'Ritual image', type: 'image' }
   ] },
   { group: 'Arrival', items: [
-    { key: 'arrival.eyebrow', label: 'Eyebrow', type: 'text' },
+    { key: 'arrival.eyebrow', label: 'Small heading above', type: 'text' },
     { key: 'arrival.headline', label: 'Headline', type: 'area' }
   ].concat(siteItems('arrival', 4, true)).concat([
     { key: 'arrival.close', label: 'Closing line', type: 'text' },
@@ -4876,7 +4914,7 @@ function renderSite() {
       const isCustom = !!(over && typeof over.value === 'string' && over.value);
 
       const lab = el('span', 'micro');
-      lab.appendChild(document.createTextNode(it.label + '  ·  ' + it.key + '  '));
+      lab.appendChild(document.createTextNode(it.label + '  '));
       lab.appendChild(el('span', 'site-badge ' + (isCustom ? 'custom' : 'def'), isCustom ? 'custom' : 'default'));
       const reset = el('button', 'btn ghost site-reset', '↺ default');
       reset.type = 'button';
@@ -5012,7 +5050,7 @@ function renderTools() {
   list.textContent = '';
   const catalog = state.toolCatalog || [];
   if (!catalog.length) {
-    list.appendChild(el('p', 'note', 'No tools reported. If the concierge function is deploying, refresh in a moment.'));
+    list.appendChild(el('p', 'note', 'No actions reported yet. If you just set the concierge up, give it a minute and refresh.'));
     return;
   }
   catalog.forEach(function (t) {
@@ -5418,6 +5456,7 @@ async function saveStarters() {
 const KB_SPEC = {
   table: 'concierge_kb', stateKey: 'kb', listId: 'kb-list',
   panelId: 'panel-knowledge', noun: 'section',
+  bodyLabel: 'What the concierge should know',
   placeholder: 'What the concierge may say about this…',
   empty: 'No sections yet — add the first one.',
   deleteWarn: 'The concierge will forget it.'
@@ -5426,6 +5465,7 @@ const KB_SPEC = {
 const SOP_SPEC = {
   table: 'concierge_sops', stateKey: 'sops', listId: 'sop-list',
   panelId: 'panel-procedures', noun: 'procedure', hasAudience: true,
+  bodyLabel: 'The steps to follow',
   placeholder: 'Step by step, the way you would brief a careful new hire…',
   empty: 'No procedures yet — add the first one.',
   deleteWarn: 'The concierge will stop following it.'
@@ -5543,7 +5583,8 @@ function kbEditor(row, spec) {
 
   // -- content
   const fBody = el('div', 'field');
-  fBody.appendChild(el('span', 'micro', 'Content (markdown)'));
+  fBody.appendChild(el('span', 'micro', spec.bodyLabel || 'What to write'));
+  fBody.appendChild(el('span', 'micro', ' · plain text; blank lines make paragraphs'));
   const body = el('textarea');
   body.rows = 4;
   body.placeholder = spec.placeholder;
@@ -5885,7 +5926,7 @@ function renderGoalDefs() {
   const list = $('goals-def-list');
   list.textContent = '';
   if (!state.goalDefs.length) {
-    list.appendChild(el('div', 'empty micro', 'No goals yet — run the goals migration, or add the first.'));
+    list.appendChild(el('div', 'empty micro', 'No goals yet — add the first one below.'));
     return;
   }
   state.goalDefs.forEach(function (row) { list.appendChild(goalEditor(row)); });
@@ -6153,7 +6194,7 @@ function renderEvals() {
   const list = $('evals-list');
   list.textContent = '';
   if (!state.evals.length) {
-    list.appendChild(el('div', 'empty micro', 'No scenarios yet — run setup.sql to seed the deck, or add the first.'));
+    list.appendChild(el('div', 'empty micro', 'No spot checks yet — add the first one below.'));
     return;
   }
   state.evals.forEach(function (row) { list.appendChild(evalEditor(row)); });
@@ -6714,6 +6755,24 @@ async function openOrderBySerial(serial) {
   openOrderDrawer(r.data[0]);
 }
 
+/* Turn a raw action payload object into a short readable line instead of dumping
+   JSON at the owner. "order_serial" → "order", underscores → spaces. */
+function humanizePayload(p) {
+  if (p == null) return '';
+  if (typeof p === 'string') return p;
+  if (typeof p !== 'object') return String(p);
+  try {
+    const parts = [];
+    Object.keys(p).forEach(function (k) {
+      let v = p[k];
+      if (v == null || v === '') return;
+      if (typeof v === 'object') v = JSON.stringify(v);
+      const label = k.replace(/_/g, ' ').replace(/\bserial\b/, 'Nº');
+      parts.push(label + ': ' + v);
+    });
+    return parts.join(' · ');
+  } catch (e) { return ''; }
+}
 function renderActions() {
   const list = $('actions-list');
   list.textContent = '';
@@ -6754,7 +6813,7 @@ function renderActions() {
       row.appendChild(ipEl);
     }
 
-    const detail = a.result || (a.payload ? JSON.stringify(a.payload) : '');
+    const detail = a.result || (a.payload ? humanizePayload(a.payload) : '');
     if (detail) row.appendChild(el('span', 'payload', detail));
 
     // Jump to the relevant section: the chat where the concierge took this action,
@@ -7705,6 +7764,16 @@ function openOrderDrawer(o) {
     trk.type = 'text'; trk.className = 'fftrk'; trk.placeholder = 'tracking #'; trk.value = o.tracking || '';
     const btn = el('button', 'btn ghost', 'Update'); btn.type = 'button';
     btn.addEventListener('click', function () {
+      // Striking a single order (cancel/return) emails the buyer and — for a
+      // return — issues a refund, and can't be undone. Confirm it, matching the
+      // bulk path (#152 safety). Advancing to weaving/shipped needs no confirm.
+      if (sel.value === 'cancelled' || sel.value === 'returned') {
+        const num = Number(o.serial).toLocaleString('en-US');
+        const msg = sel.value === 'returned'
+          ? 'Refund and return Nº ' + num + '? The buyer will be emailed and the payment refunded. This can’t be undone.'
+          : 'Cancel Nº ' + num + '? The buyer will be emailed and the order struck. This can’t be undone.';
+        if (!window.confirm(msg)) return;
+      }
       withBusy(btn, async function () {
         const r = await fulfillOrder(o.serial, sel.value, trk.value.trim());
         if (!r.ok) { fail('Update order', { message: r.message || 'failed' }); return; }
@@ -9752,7 +9821,7 @@ async function renderNpsCard() {
       hd.textContent = '';
       const holds = m.gate_holds || [];
       if (holds.length) {
-        hd.appendChild(el('b', null, 'Held by the gate (not asked): '));
+        hd.appendChild(el('b', null, 'Chose not to ask: '));
         hd.appendChild(document.createTextNode(holds.map(function (h) { return h.reason + ' ×' + h.n; }).join(' · ')));
       }
     }
@@ -9787,7 +9856,7 @@ async function renderNpsCard() {
         }
         catsEl.appendChild(row);
       });
-      if (!vocab.length) catsEl.appendChild(el('div', 'micro', 'No categories in the vocabulary — seed nps_categories.'));
+      if (!vocab.length) catsEl.appendChild(el('div', 'micro', 'No topics set up yet — add them under the vocabulary below.'));
     }
     await loadNpsMaps();
     // ---- Over time: NPS, offers vs responses, response rate, and quantity by
@@ -9934,19 +10003,11 @@ async function renderNpsCard() {
       // Human re-categorization — logged as category_source='human' (NPS.md §4).
       if (row.id !== undefined || row.conversation_id) {
         const fix = el('button', 'btn ghost', '✎'); fix.type = 'button';
-        fix.title = 'Re-categorize (comma-separated slugs from the vocabulary)';
+        fix.title = 'Change which topics this feedback is about';
         fix.style.cssText = 'padding:0 8px;font-size:11px;';
-        fix.addEventListener('click', async function () {
-          const cur = (row.categories || []).map(function (c) { return c && c.slug; }).filter(Boolean).join(', ');
-          const inp = prompt('Categories for this response (comma-separated slugs):', cur);
-          if (inp === null) return;
-          const slugs = inp.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean).slice(0, 3);
-          const q = sb.from('nps_responses')
-            .update({ categories: slugs.map(function (g) { return { slug: g }; }), category_source: 'human' });
-          const r2 = await (row.id !== undefined ? q.eq('id', row.id) : q.eq('conversation_id', row.conversation_id));
-          if (r2.error) { toast('Re-categorize failed: ' + r2.error.message, true); return; }
-          toast('Re-categorized');
-          state.npsByEmail = null; renderNpsCard();
+        fix.addEventListener('click', function () {
+          const cur = (row.categories || []).map(function (c) { return c && c.slug; }).filter(Boolean);
+          openNpsRecategorize(row, cur);
         });
         line.appendChild(fix);
       }
@@ -9954,6 +10015,44 @@ async function renderNpsCard() {
       rec.appendChild(line);
     });
   } catch (e) { npsFail((e && e.message) || String(e)); }
+}
+
+/* Re-categorize a single rating with a checklist of the topic names the owner
+   manages — no typing, no internal slugs. Saves as human-sourced. */
+async function openNpsRecategorize(row, current) {
+  const cats = await loadNpsCats();
+  const m = openStudioModal('Which topics is this feedback about?');
+  const why = (row.reason_text || '(no reason given)').slice(0, 200);
+  m.box.appendChild(el('p', 'note', '“' + why + '”'));
+  if (!cats.length) {
+    m.box.appendChild(el('div', 'micro', 'No topics set up yet — add them under the vocabulary first.'));
+    return;
+  }
+  m.box.appendChild(el('div', 'micro', 'Tick up to three.'));
+  const wrap = el('div'); wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin:10px 0;';
+  const boxes = [];
+  cats.forEach(function (c) {
+    const lab = el('label', 'micro'); lab.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = c.slug;
+    cb.checked = current.indexOf(c.slug) !== -1;
+    lab.appendChild(cb);
+    lab.appendChild(el('span', null, c.label || c.slug));
+    if (c.detractor_focus) lab.appendChild(el('span', 'micro', ' · fix-first'));
+    wrap.appendChild(lab); boxes.push(cb);
+  });
+  m.box.appendChild(wrap);
+  const save = el('button', 'btn primary', 'Save topics'); save.type = 'button';
+  save.addEventListener('click', async function () {
+    const slugs = boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; }).slice(0, 3);
+    const q = sb.from('nps_responses')
+      .update({ categories: slugs.map(function (g) { return { slug: g }; }), category_source: 'human' });
+    const r2 = await (row.id !== undefined ? q.eq('id', row.id) : q.eq('conversation_id', row.conversation_id));
+    if (r2.error) { toast('Save failed: ' + r2.error.message, true); return; }
+    toast('Topics updated');
+    m.bd.remove();
+    state.npsByEmail = null; renderNpsCard();
+  });
+  m.box.appendChild(save);
 }
 
 /* ---- The NPS tab (NPS.md): offers → holds → responses → rate, by category. ----
@@ -10193,6 +10292,29 @@ function spServiceOf(purpose) {
   }
   return purpose === 'eval-judge' ? 'Testing & deploys' : 'Studio & housekeeping';
 }
+/* Raw job codes → plain names an owner recognizes. Unmapped codes fall through
+   to themselves so nothing silently disappears. */
+const SP_PURPOSE_LABELS = {
+  'chat': 'Answering shoppers',
+  'chat-tools': 'Answering shoppers (with actions)',
+  'beat': 'Proactive check-ins',
+  'reengage': 'Win-back messages',
+  'coach': 'Reviewing its own replies',
+  'judge': 'Reviewing its own replies',
+  'nps-categorize': 'Sorting satisfaction feedback',
+  'nps-report': 'Satisfaction summaries',
+  'starters': 'Writing starter answers',
+  'lint': 'Proofreading copy',
+  'prompt-review': 'Checking house rules',
+  'directives': 'Applying house rules',
+  'clientbook': 'Customer notes',
+  'notes': 'Customer notes',
+  'goals': 'Working your goals',
+  'eval-judge': 'Testing before deploy'
+};
+function spPurposeLabel(purpose) {
+  return SP_PURPOSE_LABELS[purpose] || purpose || '';
+}
 /* horizontal bar rows: label ─ bar ─ value */
 function spBars(mount, rows, total) {
   mount.textContent = '';
@@ -10377,7 +10499,7 @@ function renderSpend(m, prevDays) {
       const qaShare = x.cost > 0 ? Math.round(100 * llmCostOf(r.model, r.qa_input_tokens, r.qa_output_tokens, r.qa_cache_read_tokens, r.qa_cache_write_tokens, P) / x.cost) : 0;
       const tr = document.createElement('tr');
       tr.style.cssText = 'border-top:1px solid rgba(128,128,128,.18);';
-      const cells = [r.purpose, spServiceOf(r.purpose), llmTier(r.model), spTokFmt(r.calls), spTokFmt(r.input_tokens),
+      const cells = [spPurposeLabel(r.purpose), spServiceOf(r.purpose), llmTier(r.model), spTokFmt(r.calls), spTokFmt(r.input_tokens),
         spTokFmt(r.output_tokens), spTokFmt(r.cache_read_tokens) + '/' + spTokFmt(r.cache_write_tokens),
         costFmt(x.cost), qaShare + '%'];
       cells.forEach(function (c, i) {
@@ -10469,7 +10591,7 @@ const CAL_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const CAL_TONES = { amber:'#d3b88e', green:'#a3be8c', red:'#d08770', blue:'#8fa6bd', dim:'#8a8a8a' };
 function calFail(e) {
   const n = $('cal-note');
-  n.textContent = 'Calendar problem — ' + (e && e.message ? e.message : String(e));
+  n.textContent = 'Something went wrong with the calendar — ' + (e && e.message ? e.message : 'please try again in a moment.');
   n.classList.add('err');
   console.warn('[concierge-admin] calendar:', e);
 }
@@ -10513,12 +10635,12 @@ function calPill(text, tone) {
 /* the queue/ledger row: tone drives the left rail + wash + tag color */
 /* ── Judge & coach — the loop's face (JUDGE_COACH_LOOP.md §6) ─────────────── */
 const JC_CLASS_LABELS = {
-  prefilter: 'caught in code — plumbing tokens',
-  plumbing: 'plumbing leak — narrated mechanics',
-  invented: 'invented claim',
-  inventorying: 'inventorying the shopper',
-  house_rules: 'against the house rules',
-  etiquette: 'etiquette',
+  prefilter: 'caught automatically — process words',
+  plumbing: 'talked about its own mechanics',
+  invented: 'made up an offer or claim',
+  inventorying: 'read the shopper’s details back',
+  house_rules: 'broke a rule you wrote',
+  etiquette: 'asked something unprompted',
   other: 'other',
 };
 async function loadJudge() {
@@ -10805,9 +10927,9 @@ const JC_TREND_METRICS = {
   }
 };
 const JC_FAM_SHORT = {
-  invented: 'invented offers or claims', inventorying: 'reciting the shopper back',
+  invented: 'made-up offers or claims', inventorying: 'reading the shopper’s details back',
   plumbing: 'process talk', house_rules: 'breaking your written rules',
-  etiquette: 'unsolicited questions', other: 'other issues', prefilter: 'plumbing tokens'
+  etiquette: 'unprompted questions', other: 'other issues', prefilter: 'process words'
 };
 // The deterministic "what moved & likely why" read: name the biggest rise and
 // drop in the chosen measure, attribute each to that day's dominant defect
