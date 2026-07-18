@@ -112,6 +112,38 @@ export function hasPendingAsk(trailingRunLines: string[]): boolean {
   return trailingRunLines.some((l) => typeof l === "string" && l.includes("?"));
 }
 
+/** Whether the visitor's last line is a WRAP-UP — either an explicit "I'm done"
+ * (a clear signal even inside a longer sentence) or a BARE farewell/thanks that
+ * stands alone. The closing survey rides a genuine goodbye, so a closing that
+ * ALSO carries a fresh question ("thanks, but do you ship to Canada?") is NOT a
+ * wrap-up: the trailing question re-opens the visit. A lone acknowledgement
+ * ("ok", "great") is not a goodbye either — at least one real CLOSER (a thanks,
+ * a farewell, an "all set") must be present. Pure and unit-tested so "why did
+ * the survey (not) ask?" is a lookup, never a guess. */
+export function isWrapUp(text: string): boolean {
+  if (typeof text !== "string") return false;
+  const t = text.trim();
+  if (!t) return false;
+  // Explicit conclusion — fires even inside a longer message.
+  if (/\b(?:that'?s (?:all|it)(?: for now)?|all done|i'?m (?:all )?done(?: for now)?|nothing else|no more questions)\b/i.test(t)) {
+    return true;
+  }
+  // A bare farewell/thanks only: the WHOLE (short) message is closing words and
+  // it asks nothing new. A "?" or any non-closing content disqualifies it.
+  if (t.length > 60 || t.includes("?")) return false;
+  const ACK = "ok(?:ay)?|alright|all ?right|great|perfect|awesome|cool|wonderful|lovely|brilliant|nice|fab|fantastic|excellent|good";
+  const CLOSER =
+    "(?:thanks|thank you|thank u|thankyou|thx|ty)(?: so much| very much| a lot| again| heaps)?" +
+    "|much appreciated|appreciate(?: it| that)?|appreciated" +
+    "|bye+|goodbye|good bye|bye bye|see (?:you|ya)(?: later| around)?|catch you later|later|take care|cheers" +
+    "|have a (?:good|great|nice)(?: one| day| night| evening| weekend)?" +
+    "|(?:i'?m|im|we'?re|were)(?: all)? (?:good|set|done)|all set|all good|that'?ll be all|good for now" +
+    "|no (?:thanks|thank you)|nope|nah";
+  const sep = "[\\s,.!…—–-]";
+  const re = new RegExp(`^(?:(?:${ACK})${sep}+)*(?:${CLOSER})(?:${sep}+(?:${ACK}|${CLOSER}))*${sep}*$`, "i");
+  return re.test(t);
+}
+
 /** Extract the concrete SUBJECTS from recent assistant lines — serial numbers,
  * colorways, and the recurring proposal themes — so the spent-subject contract
  * keys on structure instead of a lossy 140-char prefix. */

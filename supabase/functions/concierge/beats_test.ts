@@ -17,6 +17,7 @@ import {
   DEFAULT_PROPOSAL_REST_HOURS,
   extractSubjects,
   hasPendingAsk,
+  isWrapUp,
   type LearningDigest,
   PLACEHOLDER_ADDR,
   renderLearningDigest,
@@ -554,4 +555,50 @@ Deno.test("claimsOutboundContact: a claim wins even when an invitation shares th
   // an invitation phrase must not launder an actual past-tense claim beside it
   if (!claimsOutboundContact("I called you Thursday — but feel free to call us back too."))
     throw new Error("invitation laundered a real claim");
+});
+
+// ── isWrapUp — the closing-survey trigger ────────────────────────────────────
+
+Deno.test("isWrapUp: explicit conclusions fire, even mid-sentence", () => {
+  for (const s of [
+    "that's all", "thats all for now", "that's it", "all done",
+    "I'm done", "im all done for now", "nothing else", "no more questions",
+    "Great — I think that's all for today, thank you",
+  ]) {
+    assert(isWrapUp(s), "should wrap: " + s);
+  }
+});
+
+Deno.test("isWrapUp: bare farewells and thanks that stand alone fire", () => {
+  for (const s of [
+    "thanks", "thanks!", "thank you", "thanks so much", "thank you so much",
+    "bye", "goodbye", "byee", "see you", "see ya later", "take care", "cheers",
+    "ok thanks bye", "great, thank you!", "perfect thanks", "all set",
+    "I'm good", "we're all set", "no thanks", "nope", "good for now",
+    "have a great day",
+  ]) {
+    assert(isWrapUp(s), "should wrap: " + s);
+  }
+});
+
+Deno.test("isWrapUp: a fresh question re-opens the visit — never a wrap-up", () => {
+  for (const s of [
+    "thanks, but do you ship to Canada?",
+    "great — one more thing, what's the return window?",
+    "thank you! how long does delivery take?",
+    "ok that's helpful, is the Loden in stock?",
+  ]) {
+    assert(!isWrapUp(s), "should NOT wrap (open question): " + s);
+  }
+});
+
+Deno.test("isWrapUp: lone acknowledgements and ongoing content do not wrap", () => {
+  for (const s of [
+    "ok", "okay", "great", "perfect", "cool", "right", "sounds good",
+    "thanks for that, I'll take the dark green one",
+    "cheers mate, now tell me about the trial",
+    "", "   ",
+  ]) {
+    assert(!isWrapUp(s), "should NOT wrap: " + JSON.stringify(s));
+  }
 });

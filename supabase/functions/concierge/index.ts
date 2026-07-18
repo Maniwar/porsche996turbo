@@ -41,6 +41,7 @@ import {
   claimsOutboundContact,
   extractSubjects,
   hasPendingAsk,
+  isWrapUp,
   type LearningDigest,
   type NpsHistoryItem,
   npsAnalystCorpus,
@@ -3939,12 +3940,19 @@ async function beatLearningBlock(
 // reason attaches to the open row. Categorisation is async and fail-open.
 function npsConfigFrom(config: Record<string, unknown> | null | undefined): {
   enabled: boolean; minMs: number; cooldownMs: number; reviseMs: number; question: string;
+  concludeHeldStreak: number; concludeUnansweredBeats: number;
 } {
   const oc = config?.outreach as Record<string, unknown> | undefined;
   const n = (oc?.nps && typeof oc.nps === "object") ? oc.nps as Record<string, unknown> : {};
   const minMin = typeof n.minMinutes === "number" && n.minMinutes >= 0 ? n.minMinutes : 3;
   const coolDays = typeof n.cooldownDays === "number" && n.cooldownDays >= 0 ? n.cooldownDays : 30;
   const reviseDays = typeof n.reviseDays === "number" && n.reviseDays >= 0 ? n.reviseDays : 3;
+  // How dry a conversation must run before the proactive path treats it as
+  // "concluded" (the graceful-close / survey trigger). Config-driven so tuning
+  // how eagerly the house concludes is a config write, not a deploy; defaults
+  // match the original hard-coded thresholds.
+  const heldFloor = typeof n.concludeHeldStreak === "number" && n.concludeHeldStreak >= 1 ? n.concludeHeldStreak : 3;
+  const unansweredFloor = typeof n.concludeUnansweredBeats === "number" && n.concludeUnansweredBeats >= 1 ? n.concludeUnansweredBeats : 4;
   return {
     enabled: n.enabled !== false, // absent = ON, the house pattern
     minMs: Math.round(minMin * 60000),
@@ -3953,6 +3961,8 @@ function npsConfigFrom(config: Record<string, unknown> | null | undefined): {
     question: (typeof n.question === "string" && n.question.trim())
       ? n.question.trim().slice(0, 300)
       : "Before you go — how likely are you to recommend us to a friend, 0 to 10?",
+    concludeHeldStreak: Math.round(heldFloor),
+    concludeUnansweredBeats: Math.round(unansweredFloor),
   };
 }
 
@@ -6258,8 +6268,9 @@ async function handleChatPost(req: Request): Promise<Response> {
             ]);
             const gate = npsTriggerGate({
               enabled: npsCfg.enabled,
-              concluded: ledger.postSaleWindow || goalMet || (ledger.heldStreak ?? 0) >= 3 ||
-                (ledger.unansweredBeats ?? 0) >= 4,
+              concluded: ledger.postSaleWindow || goalMet ||
+                (ledger.heldStreak ?? 0) >= npsCfg.concludeHeldStreak ||
+                (ledger.unansweredBeats ?? 0) >= npsCfg.concludeUnansweredBeats,
               alreadySurveyedSession: !!(convRows && convRows.length),
               sessionDurationMs: convCreatedMs ? Date.now() - convCreatedMs : 0,
               minDurationMs: npsCfg.minMs,
@@ -6599,9 +6610,7 @@ async function handleChatPost(req: Request): Promise<Response> {
     const ratingTurn = !!wctx.nps || wctx.nps_reason === 1 || wctx.nps_reason === true;
     const lastUserW = [...validated.messages].reverse().find((m) => m.role === "user");
     const lastTextW = lastUserW && typeof lastUserW.content === "string" ? lastUserW.content : "";
-    const saidDone = /\b(that'?s (all|it)( for now)?|all done|i'?m (all )?done( for now)?|nothing else|no more questions)\b/i
-      .test(lastTextW);
-    const wantsWrap = wctx.wrapup === 1 || wctx.wrapup === true || saidDone;
+    const wantsWrap = wctx.wrapup === 1 || wctx.wrapup === true || isWrapUp(lastTextW);
     const npsCfgW = npsConfigFrom(data.config);
     if (npsCfgW.enabled && wantsWrap && !ratingTurn) {
       const cidW = await conversationPromise;
