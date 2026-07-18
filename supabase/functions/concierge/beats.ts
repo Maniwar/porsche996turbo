@@ -415,6 +415,32 @@ export function classifyJudgeReason(reason: string): JudgeFamily {
   return "other";
 }
 
+/** Does a proactive line CLAIM the house made an outbound contact — that it
+ * already called, phoned, texted, or reached out to the shopper? This is the
+ * exact fabrication that leaked live ("I called you Thursday"): an invented
+ * outbound-contact claim. Such a claim is TRUE only when a completed ('done')
+ * callback is on file; a deterministic pre-filter blocks it otherwise, so a
+ * fail-open judge call can never let it through.
+ *
+ * Two things are deliberately NOT claims: an invitation for the SHOPPER to
+ * reach the house ("give us a call", "you can reach us"), and a FUTURE promise
+ * of the callback the shopper asked for ("someone will call you") — only the
+ * past-tense assertion that a call already happened is caught. */
+export function claimsOutboundContact(line: string): boolean {
+  const s = " " + String(line ?? "").toLowerCase().replace(/\s+/g, " ") + " ";
+  // Invitations for the shopper to contact the house — legitimate, never a claim.
+  const invited = /\b(you can|you could|feel free to|give (us|the house|me) a (call|ring)|call us|reach out to us|get in touch with us|contact us|call the (house|shop|studio|mill))\b/;
+  // House subject + a PAST/perfect outbound verb.
+  const outbound = /\b(i|we|the house|the mill|the shop|the studio|our team|someone here)\b[^.?!]{0,24}\b(called|phoned|rang|texted|messaged|reached out|got in touch|left (you )?(a )?(voice-?mail|message)|tr(ied|ying) (to (call|reach)|calling|reaching) you|followed up (with|by (phone|call)))/;
+  // "...called/phoned/... you" — past tense, any subject.
+  const calledYou = /\b(called|phoned|rang|texted|messaged|contacted)\s+you\b/;
+  const whenICalled = /\b(as|when|since|after)\s+(i|we)\s+(called|phoned|rang|texted|reached out|left|contacted)\b/;
+  const claims = outbound.test(s) || calledYou.test(s) || whenICalled.test(s);
+  // An invitation with no actual past-tense claim is fine.
+  if (invited.test(s) && !claims) return false;
+  return claims;
+}
+
 /** The floor a merchant may relax. 'prefilter' is mechanical and NEVER
  * relaxable (a malformed token can't be "allowed"); broken output has no
  * family a merchant would loosen either. */

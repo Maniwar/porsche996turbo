@@ -38,6 +38,7 @@ import {
   composeGapSkeleton,
   judgeFloorAllows,
   normalizeQuestionKey,
+  claimsOutboundContact,
   extractSubjects,
   hasPendingAsk,
   type LearningDigest,
@@ -1352,7 +1353,7 @@ async function bookingContextBlock(config: unknown,
           };
           const parts = cbs.map((c) =>
             c.status === "open"
-              ? `callback #${c.id} IS on file (logged ${fmtT(c.created_at)}${c.window_pref ? `, they asked for "${String(c.window_pref).slice(0, 80)}"` : ""}) — the house has not called yet; it stays THEIRS to change (change_callback) or cancel (cancel_appointment)`
+              ? `callback #${c.id} IS on file (logged ${fmtT(c.created_at)}${c.window_pref ? `, they asked for "${String(c.window_pref).slice(0, 80)}"` : ""}) — ⚠ NO CALL HAS BEEN MADE YET: never say or imply the house called, phoned, texted, or reached them; only that the request is logged and someone WILL call. It stays THEIRS to change (change_callback) or cancel (cancel_appointment)`
               : c.status === "done"
               ? `the house ALREADY MADE the requested call (${fmtT(c.updated_at)}) — reference it, never offer to log it again`
               : `an earlier callback request was cancelled`);
@@ -3548,13 +3549,17 @@ const BEAT_JUDGE_CRITERION =
   "(7) reading records aloud — it recites the ACTUAL digits or text of a phone number, email " +
   "address, or street address from the house's records (the shopper's own or anyone else's); " +
   "published channels the house rules name are fine, stored contact details never are. Merely " +
-  "saying a detail is on file — 'we have your number', 'the house already called you' — is " +
-  "service, NOT this defect; " +
+  "saying a detail is on file — 'we have your number' — is service, NOT this defect (but claiming " +
+  "the house USED it to contact them is defect 10 below); " +
   "(8) selling past a problem — the shopper's latest message (given below when available) raises an " +
   "unresolved complaint, error, or trust issue, and the line pitches, nudges, or changes the subject " +
   "instead of serving it. " +
   "(9) inventing availability — naming a time, an opening hour, a bookable slot, or a STAFF MEMBER the register did " +
   "not provide this turn. " +
+  "(10) inventing an outbound contact — claiming the house called, phoned, texted, messaged, or reached out to the " +
+  "shopper. This is INVENTED unless the CALLBACKS line THIS turn shows a completed call ('already made the requested " +
+  "call'); a logged-but-pending callback means NO call has happened yet — veto any past-tense claim it did. Promising " +
+  "the future call the shopper requested ('someone will call you') is fine; asserting a past one is not. " +
   "AGAINST THE HOUSE RULES: also veto if the line asserts a price, figure, count, product, guarantee, " +
   "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
   "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. If " +
@@ -3651,6 +3656,14 @@ async function judgeBeatLine(
   if (/\b(once|when|after)\s+you('| a)?re?\s+sign(ed)?\s+in\b/i.test(line) ||
       /\bonce you sign in\b/i.test(line)) {
     return { veto: true, reason: "pre-filter: narrates sign-in mechanics instead of genuine service" };
+  }
+  // The live "I called you Thursday" leak (#161): a proactive line may NOT
+  // claim the house made an outbound contact unless the CALLBACKS facts show a
+  // COMPLETED call this turn. Deterministic and never floor-relaxable — the
+  // model judge fails open on any timeout/error, this cannot. A logged-but-
+  // pending callback is NOT a completed call, so it does not license the claim.
+  if (claimsOutboundContact(line) && !/ALREADY MADE the requested call/i.test(factsOnFile)) {
+    return { veto: true, reason: "pre-filter: invented outbound-contact claim — no completed call is on file" };
   }
   try {
     const res = await llmFetch("judge", {
@@ -6831,28 +6844,39 @@ async function handleChatPost(req: Request): Promise<Response> {
         try {
           const kindStr = isNudge ? "nudge" : "opener";
           const cidV = await conversationPromise;
+          type VetoPayload = { line?: string; reason?: string; first_line?: string; first_reason?: string };
           const [mine, house] = await Promise.all([
             cidV
-              ? pgSelect<{ payload: { line?: string; reason?: string } }>(
+              ? pgSelect<{ payload: VetoPayload }>(
                 `concierge_actions?select=payload&action=eq.beat_veto&conversation_id=eq.${cidV}&order=created_at.desc&limit=3`)
               : Promise.resolve(null),
-            pgSelect<{ payload: { line?: string; reason?: string } }>(
+            pgSelect<{ payload: VetoPayload }>(
               `concierge_actions?select=payload&action=eq.beat_veto&payload->>kind=eq.${kindStr}&order=created_at.desc&limit=3`),
           ]);
           const seenV = new Set<string>();
-          const rowsV = [...(mine || []), ...(house || [])].filter((r) => {
-            const l = (r.payload && r.payload.line) || "";
-            const why = (r.payload && r.payload.reason) || "";
-            // the retired rule that vetoed renderable widget tokens must not
-            // keep teaching the drafter to fear its own buttons
-            if (/^pre-filter: template\/action token/.test(why)) return false;
-            if (!l || seenV.has(l)) return false;
-            seenV.add(l); return true;
-          }).slice(0, 4);
-          if (rowsV.length) {
+          const rowsV: { l: string; why: string }[] = [];
+          for (const r of [...(mine || []), ...(house || [])]) {
+            const p = r.payload || {};
+            // Surface BOTH the vetoed line and — critically — the ORIGINAL
+            // invented claim (first_line), which a redraft otherwise buries;
+            // that's how the same "I called you Thursday" got re-drafted 11×.
+            const cands = [
+              { l: (p.line || "").toString(), why: (p.reason || "").toString() },
+              { l: (p.first_line || "").toString(), why: (p.first_reason || p.reason || "").toString() },
+            ];
+            for (const c of cands) {
+              // the retired rule that vetoed renderable widget tokens must not
+              // keep teaching the drafter to fear its own buttons
+              if (/^pre-filter: template\/action token/.test(c.why)) continue;
+              if (!c.l || seenV.has(c.l)) continue;
+              seenV.add(c.l); rowsV.push(c);
+            }
+          }
+          const shownV = rowsV.slice(0, 5);
+          if (shownV.length) {
             system.push({ type: "text", text:
               "RECENT BLOCKED DRAFTS (a review judge killed these before sending — never repeat their shape or defect):\n" +
-              rowsV.map((r) => `- "${((r.payload && r.payload.line) || "").slice(0, 160)}" — blocked: ${((r.payload && r.payload.reason) || "").slice(0, 140)}`).join("\n") +
+              shownV.map((r) => `- "${r.l.slice(0, 160)}" — blocked: ${r.why.slice(0, 140)}`).join("\n") +
               "\nDraft a line free of every defect above, or hold." });
           }
         } catch { /* teaching is advisory */ }
@@ -7157,9 +7181,17 @@ async function handleChatPost(req: Request): Promise<Response> {
                   toolInput.visitor_tz = vtzRaw;
                 }
               }
-              const out = await runRegisterTool(
-                block.name, toolInput, customer, cid,
-              );
+              // A tool that THROWS (unexpected null, JSON error) must not escape
+              // to the outer catch — that ends the turn silently, the stall the
+              // visitor saw (#162). Turn any throw into a recoverable result so
+              // the model can step down the ladder and keep serving.
+              let out: string;
+              try {
+                out = await runRegisterTool(block.name, toolInput, customer, cid);
+              } catch (_e) {
+                out = "ERROR: that lookup didn't go through just now. Continue without it — " +
+                  "offer a callback or take an inquiry, apologise once lightly, and do not retry the same tool.";
+              }
               results.push({ type: "tool_result", tool_use_id: block.id, content: out });
             }
             convo.push({ role: "user", content: results });
@@ -7579,6 +7611,17 @@ async function handleFormPost(req: Request): Promise<Response> {
       turns: typeof body.turns === "number" ? body.turns : undefined,
       origin: "form",
     };
+    // A signed-in patron's identity is already on the register — never make a
+    // form reject (or the concierge re-ask for) a name/email they've already
+    // given us (#162). Look up the register name once to backfill blanks.
+    let regName = "";
+    if (customer) {
+      try {
+        const cn = await pgSelect<{ name: string | null }>(
+          `customers?select=name&id=eq.${encodeURIComponent(customer.id)}&limit=1`);
+        regName = (cn && cn[0] && cn[0].name) ? String(cn[0].name) : "";
+      } catch { /* optional — a missing name just isn't backfilled */ }
+    }
     for (const f of fields) {
       const name = typeof f.name === "string" ? f.name : "";
       if (!name) continue;
@@ -7586,7 +7629,12 @@ async function handleFormPost(req: Request): Promise<Response> {
       // not typed by the shopper.
       if (typeof f.value === "string") { input[name] = f.value; continue; }
       const raw = values[name];
-      const v = typeof raw === "string" ? raw.trim().slice(0, 2000) : "";
+      let v = typeof raw === "string" ? raw.trim().slice(0, 2000) : "";
+      // backfill blank identity fields from the verified signed-in customer
+      if (!v && customer) {
+        if (/^e-?mail$/i.test(name) && customer.email) v = customer.email;
+        else if (/name/i.test(name) && regName) v = regName;
+      }
       if (f.required === true && !v) {
         return jsonError(req, 400, `${name} is required.`);
       }

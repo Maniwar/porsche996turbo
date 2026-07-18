@@ -7,6 +7,7 @@
 
 import {
   classifyJudgeReason,
+  claimsOutboundContact,
   composeGapSkeleton,
   judgeFloorAllows,
   judgeFloorPreset,
@@ -511,4 +512,46 @@ Deno.test("renderCustomerNps: detractor brief carries themes + never-quote guard
   assert(/rebuild trust/i.test(det), "forward-looking play for a detractor");
   const promo = renderCustomerNps([{ score: 10, submittedAtMs: NOW }]);
   assert(/PROMOTER/.test(promo) && /referral/i.test(promo), "a promoter brief invites a referral");
+});
+
+Deno.test("claimsOutboundContact: catches the invented 'we called you' fabrication", () => {
+  // the exact live leak + close variants — all past-tense outbound claims
+  const positives = [
+    "I called you Thursday but didn't reach you.",
+    "We called you earlier this week to follow up.",
+    "The house already called you about your order.",
+    "As I mentioned when I called, your blanket is ready.",
+    "We phoned you yesterday — did you get our message?",
+    "I left you a voicemail about the reserve.",
+    "We reached out to you last week.",
+    "Someone here texted you the details.",
+    "We've been trying to reach you by phone.",
+    "I rang you but there was no answer.",
+  ];
+  for (const p of positives) {
+    if (!claimsOutboundContact(p)) throw new Error("missed outbound claim: " + p);
+  }
+});
+
+Deno.test("claimsOutboundContact: does NOT flag invitations or future callback promises", () => {
+  const negatives = [
+    "Feel free to give us a call anytime.",
+    "You can call us at the shop if you'd like.",
+    "Reach out to us whenever suits you.",
+    "Someone will call you at the window you chose.",   // the legitimate callback promise
+    "Would you like us to call you back?",              // an offer, not a claim
+    "I'll be here if you want to talk it through.",
+    "Your blanket is ready whenever you'd like to arrange pickup.",
+    "Get in touch with us and we'll set it aside.",
+    "Call the studio and we'll walk you through it.",
+  ];
+  for (const n of negatives) {
+    if (claimsOutboundContact(n)) throw new Error("false positive on: " + n);
+  }
+});
+
+Deno.test("claimsOutboundContact: a claim wins even when an invitation shares the line", () => {
+  // an invitation phrase must not launder an actual past-tense claim beside it
+  if (!claimsOutboundContact("I called you Thursday — but feel free to call us back too."))
+    throw new Error("invitation laundered a real claim");
 });
