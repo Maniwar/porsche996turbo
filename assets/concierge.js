@@ -949,6 +949,14 @@
         if (f.autocomplete) { input.autocomplete = f.autocomplete; }
       }
       input.className = 'cx-form-input';
+      /* A signed-in patron never re-types the email the register already holds
+         (#162): prefill it, so the form asks only for what's genuinely missing.
+         The server also backfills identity on submit — this just spares the eyes. */
+      if (authEmail && input.tagName === 'INPUT' &&
+          (f.type === 'email' || f.autocomplete === 'email' ||
+           /(^|[_-])e-?mail$/i.test(String(f.name || '')))) {
+        input.value = authEmail;
+      }
       wrap.appendChild(input);
       controls[f.name] = input;
       card.appendChild(wrap);
