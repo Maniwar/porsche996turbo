@@ -3609,6 +3609,48 @@ function houseHonestyRules(cfg: { voice_base?: unknown } | null | undefined): st
   const slice = i >= 0 ? base.slice(i) : base;
   return slice.replace(/\{\{[A-Z_]+\}\}/g, "").trimEnd().slice(0, 1600);
 }
+/** House-note grounding for the judge: the SAME facts and events the drafter
+ * can weave in, so a warm callback to something the house already knows about
+ * the shopper ("are you still furnishing the van?") reads as service, not as
+ * "inventorying". Private reflections, directives, and summaries are excluded —
+ * the judge grades what may be SAID, and reflections are never said aloud. */
+async function judgeGroundingFacts(customer: Customer | null | undefined): Promise<string> {
+  if (!customer) return "";
+  try {
+    const safeEmail = customer.email?.replace(/["\\,()]/g, "");
+    const nf = safeEmail
+      ? `or=${encodeURIComponent(`(user_id.eq.${customer.id},email.eq."${safeEmail}")`)}`
+      : `user_id=eq.${encodeURIComponent(customer.id)}`;
+    const notes = await pgSelect<{ note: string; kind: string | null }>(
+      `customer_notes?select=note,kind&${nf}&order=created_at.desc&limit=14`,
+    );
+    if (!notes || !notes.length) return "";
+    const keep = notes.filter((n) =>
+      n.kind === "event" ||
+      (n.kind !== "reflection" && n.kind !== "directive" && n.kind !== "summary")).slice(0, 6);
+    if (!keep.length) return "";
+    return "HOUSE NOTES ON THIS SHOPPER (things the house already knows — a warm callback to any of " +
+      "these, worn lightly, is grounded service, NOT inventorying): " +
+      maskContacts(keep.map((n) => n.note).join(" | ")).slice(0, 600);
+  } catch {
+    return "";
+  }
+}
+
+/** A compact recent-transcript window for the judge, so a topic the SHOPPER
+ * themselves raised is visible as grounding — following up on it is service,
+ * not the concierge volunteering stored data. Newest last. */
+function recentTurnsForJudge(messages: { role: string; content: unknown }[] | null | undefined): string {
+  if (!messages || !messages.length) return "";
+  const turns = messages.slice(-6)
+    .filter((m) => typeof m.content === "string" && String(m.content).trim())
+    .map((m) => (m.role === "user" ? "shopper" : "concierge") + ": " +
+      maskContacts(String(m.content)).replace(/\s+/g, " ").slice(0, 220));
+  if (!turns.length) return "";
+  return "RECENT CONVERSATION (newest last — a topic the shopper themselves raised is grounded; a " +
+    "follow-up on it is service, not inventorying):\n" + turns.join("\n");
+}
+
 async function judgeBeatLine(
   apiKey: string,
   line: string,
@@ -3703,10 +3745,14 @@ async function judgeBeatLine(
           content: "CRITERION:\n" + BEAT_JUDGE_CRITERION +
             (houseRules ? "\n\nHOUSE RULES (authoritative for this house):\n" + houseRules : "") +
             (factsOnFile
-              ? "\n\nFACTS ON FILE (ground truth from the register THIS TURN — a line consistent " +
-                "with these is GROUNDED, not invented; acknowledging that something is on file is " +
-                "service; only quoting stored digits or addresses aloud remains defect 7):\n" +
-                factsOnFile.slice(0, 1200)
+              ? "\n\nGROUNDING (what the concierge legitimately knows THIS TURN — register facts, house " +
+                "notes on the shopper, and the recent conversation). A line consistent with any of this " +
+                "is GROUNDED, not invented; a warm callback to ONE detail here — a project, a preference, " +
+                "something the shopper themselves raised — is service, NOT defect 6 inventorying. Defect 6 " +
+                "is a TALLY of several stored details listed together, or a detail the shopper never " +
+                "surfaced that serves only to show off memory. Acknowledging something is on file is " +
+                "service; only quoting stored digits or addresses aloud remains defect 7:\n" +
+                factsOnFile.slice(0, 2400)
               : "") +
             (recentUser
               ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
@@ -6974,10 +7020,15 @@ async function handleChatPost(req: Request): Promise<Response> {
               // lines speak but are still audited (control without blindness).
               const jconf = (jcfg?.judge ?? null) as Record<string, unknown> | null;
               const floor = (jconf && typeof jconf.floor === "object" ? jconf.floor : null) as Record<string, unknown> | null;
-              // The judge grades against the SAME register truth the drafter
-              // was handed — a real callback or visit is never an "invention".
-              const beatFacts = [bookingCtx, editionCtx]
-                .filter((s) => s && String(s).trim()).join("\n").slice(0, 1200);
+              // The judge grades against the SAME grounding the drafter was
+              // handed — register truth, the house notes on this shopper, and
+              // the recent conversation — so a warm callback ("are you still
+              // furnishing the van?") is never misread as inventing or
+              // inventorying. The drafter saw all of it; blinding the judge to
+              // it turned grounded memory into a false "defect 6" veto.
+              const houseNotesJ = await judgeGroundingFacts(recall.customer);
+              const beatFacts = [bookingCtx, editionCtx, houseNotesJ, recentTurnsForJudge(validated.messages)]
+                .filter((s) => s && String(s).trim()).join("\n\n").slice(0, 2400);
               const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts, floor);
               if (v.floored && beatAudit) {
                 // the judge WOULD have blocked this, but the merchant's floor
@@ -7998,8 +8049,14 @@ async function handleReengage(req: Request): Promise<Response> {
     try {
       const oj = data.config?.outreach as Record<string, unknown> | undefined;
       if (oj?.beatJudge !== false) {
+        // Same grounding fix as the panel beats: hand the judge the house notes
+        // on this shopper so a warm cross-session callback isn't misread as
+        // inventorying. (The closed-panel bubble has no live transcript here, so
+        // house notes are the grounding that travels.)
+        const bubbleGrounding = await judgeGroundingFacts(customer);
         const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble",
-          houseHonestyRules(data.config) + extraJudgeRules(data.config as Record<string, unknown>));
+          houseHonestyRules(data.config) + extraJudgeRules(data.config as Record<string, unknown>),
+          "", bubbleGrounding);
         if (v.veto) {
           if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
             conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,
