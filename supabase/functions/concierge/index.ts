@@ -7026,7 +7026,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               // furnishing the van?") is never misread as inventing or
               // inventorying. The drafter saw all of it; blinding the judge to
               // it turned grounded memory into a false "defect 6" veto.
-              const houseNotesJ = await judgeGroundingFacts(recall.customer);
+              const houseNotesJ = await judgeGroundingFacts(customer);
               const beatFacts = [bookingCtx, editionCtx, houseNotesJ, recentTurnsForJudge(validated.messages)]
                 .filter((s) => s && String(s).trim()).join("\n\n").slice(0, 2400);
               const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts, floor);
