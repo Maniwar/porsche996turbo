@@ -323,6 +323,59 @@ function graderModel(data: ConciergeData): string {
   return typeof gm === "string" && gm.trim() ? gm.trim() : resolveModel(data);
 }
 
+// ── Config health — never let a config value break a function silently ──────────
+// A config value can turn a whole function OFF while reading like an innocent knob:
+// goal_sample_rate is a 0–1 RATE, but at 0 it stops ALL goal grading — and that
+// exact value once disabled grading for days with no signal at all. This inspects
+// the loaded config for values that DISABLE a function and returns a plain-language
+// warning for each. It is a REPORT, not a veto: the house may legitimately turn a
+// feature off, so we never override the value — we only guarantee the choice is
+// surfaced (logged for observability, shown to the operator) instead of silent.
+//
+//   silent:true  — the value's name/type hides that it disables a function
+//                  (a "rate" that at 0 is really a kill switch). Logged LOUD on
+//                  every config load, because this is the class that bites unseen.
+//   silent:false — an explicit default-ON quality/safety function the operator
+//                  turned off. Not a mistake per se, but worth stating plainly.
+//
+// Deliberately NOT flagged: outreach.beat_audit_log=false — that is the documented
+// scale-first default for stamped sites (see beatAuditOn), so warning on it would
+// be pure noise and would train operators to ignore this signal.
+type ConfigHealthWarning = { key: string; value: unknown; silent: boolean; effect: string };
+
+function configHealthWarnings(
+  config: Record<string, unknown> | null | undefined,
+): ConfigHealthWarning[] {
+  const out: ConfigHealthWarning[] = [];
+  const oc = config?.outreach as Record<string, unknown> | undefined;
+  // 1) goal_sample_rate — a 0–1 sampling rate; at 0 (or below) it grades NOTHING.
+  //    The name says "rate", the value says "off": the silent class, by definition.
+  const gsr = config?.goal_sample_rate;
+  if (typeof gsr === "number" && gsr <= 0) {
+    out.push({
+      key: "goal_sample_rate", value: gsr, silent: true,
+      effect: "Goal grading is OFF — no conversation is scored against your goals. " +
+        "This reads like a sampling rate, but 0 disables grading entirely; set it to 1 to grade every eligible turn.",
+    });
+  }
+  // 2) outreach.beatJudge — the reach-out judge that vetoes bad proactive lines.
+  if (oc?.beatJudge === false) {
+    out.push({
+      key: "outreach.beatJudge", value: false, silent: false,
+      effect: "The reach-out judge is OFF — proactive lines ship with no quality gate.",
+    });
+  }
+  // 3) outreach.nps.enabled — the post-visit satisfaction survey.
+  const n = (oc?.nps && typeof oc.nps === "object") ? oc.nps as Record<string, unknown> : undefined;
+  if (n?.enabled === false) {
+    out.push({
+      key: "outreach.nps.enabled", value: false, silent: false,
+      effect: "The post-visit survey (NPS) is OFF — no satisfaction scores are collected.",
+    });
+  }
+  return out;
+}
+
 async function loadConciergeData(): Promise<ConciergeData> {
   if (dataCache && Date.now() - dataCache.at < CACHE_TTL_MS) return dataCache;
   const [cfgRows, kbRows, sopRowsRaw, formRows, goalRows, toolRows] = await Promise.all([
@@ -371,6 +424,15 @@ async function loadConciergeData(): Promise<ConciergeData> {
     tools: toolRows ?? [],
     at: Date.now(),
   };
+  // Surface any config value that silently disables a function (goal_sample_rate=0
+  // once turned off grading for days unnoticed). Runs on cache MISS only (≤ once per
+  // TTL), so it is a heartbeat, not per-request spam. Health logging must never be
+  // able to break a config load, so it is fully guarded.
+  try {
+    for (const w of configHealthWarnings(dataCache.config)) {
+      if (w.silent) console.warn(`[config-health] ${w.key}=${JSON.stringify(w.value)} — ${w.effect}`);
+    }
+  } catch { /* config-health reporting is best-effort; never break the load */ }
   return dataCache;
 }
 
@@ -1640,8 +1702,15 @@ async function runRegisterTool(
         { type: typeSlug, location: locSlug, from, days }, r.ok ? `${(r.slots || []).length} slots` : String(r.reason));
       if (r.ok && Array.isArray(r.slots)) {
         r.slots = r.slots.slice(0, 8);
+        // Carry the EXACT slugs to book with. The model was reconstructing the
+        // type_slug from the offering's TITLE ("mill-tour" from "A tour of the
+        // mill") and getting unknown_type at book time — then telling the shopper
+        // the calendar was down. Echo the slugs so it copies, never invents.
+        r.book_with = { type_slug: typeSlug, location_slug: locSlug };
         r.note = "Present at most THREE, each by its lead_label VERBATIM; offer 'more times' for the rest. " +
-          "If empty, say so honestly and step down the ladder (callback, then inquiry).";
+          "To BOOK any of these, call book_appointment with EXACTLY type_slug=\"" + typeSlug +
+          "\", location_slug=\"" + locSlug + "\", and the chosen slot's starts_at — copy book_with, never " +
+          "invent a slug. If empty, say so honestly and step down the ladder (callback, then inquiry).";
       }
       return JSON.stringify(r);
     }
@@ -1717,6 +1786,22 @@ async function runRegisterTool(
       if (r.reason === "taken" && Array.isArray(r.alternatives)) {
         // deno-lint-ignore no-explicit-any
         r.alternatives = r.alternatives.map((s: any) => ({ starts_at: s.starts_at, lead_label: s.lead_label }));
+      }
+      // Self-heal an unknown type/location instead of dead-ending: the model
+      // sometimes invents a slug (e.g. "mill-tour" for "tour") and then tells the
+      // shopper the calendar is down. Hand back the REAL slugs so it retries the
+      // same turn — the calendar is live.
+      if (r.reason === "unknown_type" || r.reason === "unknown_location") {
+        const vt = await pgSelect<{ slug: string; title: string }>(
+          "concierge_appointment_types?select=slug,title&enabled=eq.true&order=sort_order");
+        const vl = await pgSelect<{ slug: string }>(
+          "concierge_locations?select=slug&enabled=eq.true&order=sort_order");
+        r.valid_types = (vt || []).map((t) => ({ type_slug: t.slug, title: t.title }));
+        r.valid_locations = (vl || []).map((l) => l.slug);
+        r.note = "The type_slug or location_slug is not one the house offers — you likely invented it. " +
+          "Call book_appointment AGAIN using EXACTLY a type_slug from valid_types (and a location_slug from " +
+          "valid_locations) with the same starts_at. NEVER tell the shopper the calendar/system is down — it " +
+          "is live; this was a bad slug.";
       }
       return JSON.stringify(r);
     }
@@ -4234,11 +4319,15 @@ async function handleInsightsGet(req: Request): Promise<Response> {
   const digest = await pgRpc<LearningDigest>("beat_learning_digest", {
     p_days: days, p_ttl_min: fresh ? 0 : 20, p_min_n: 3,
   });
+  const { config } = await loadConciergeData();
   return jsonResponse(req, 200, {
     digest: digest ?? null,
     // What the coach would actually be handed right now (honesty floor applied).
     coach_block: renderLearningDigest(digest, COACH_LEARN_MIN_SPOKE),
     min_spoke: COACH_LEARN_MIN_SPOKE,
+    // Any config value currently disabling a function — so a silent kill switch
+    // (e.g. goal_sample_rate=0) shows up in the operator's observability view.
+    config_health: configHealthWarnings(config),
   });
 }
 
@@ -6670,7 +6759,10 @@ async function handleChatPost(req: Request): Promise<Response> {
           concluded: true, // they just said so — the definition of a natural close
           alreadySurveyedSession: !!((askedRows && askedRows.length) || (offeredRows && offeredRows.length)),
           sessionDurationMs: Number.isFinite(createdMsW) ? Date.now() - createdMsW : 0,
-          minDurationMs: npsCfgW.minMs,
+          // qa- eval sessions are seconds old by nature; bypass the worth-rating
+          // floor for them so the closing-survey eval works against any production
+          // minMinutes. Real visitors still respect the floor.
+          minDurationMs: (validated.sessionKey || "").startsWith("qa-") ? 0 : npsCfgW.minMs,
           lastSurveyedAtMs: (custRows && custRows[0]) ? (Date.parse(custRows[0].created_at) || null) : null,
           cooldownMs: npsCfgW.cooldownMs,
           nowMs: Date.now(),
