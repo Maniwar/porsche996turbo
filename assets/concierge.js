@@ -1281,20 +1281,41 @@
           }
         }
         if (pills.length) {
-          var row = el('div', 'cx-replies cx-fade-in');
+          /* Stale-pill guard (mirrors the {{nps}} guard just below). Quick-reply
+             pills — especially booking-slot menus — are a reply to THIS moment.
+             The live click handler disables them in memory only (below), so on a
+             re-render from persisted history they came back fully clickable: a
+             shopper could scroll up and re-fire a slot offered turns ago, which
+             the server no longer holds (unknown_type / gone). If this row is being
+             replayed from history (mdRenderTs != null) and the shopper has spoken
+             since it was offered (any later user turn), the moment has passed —
+             render the row in its spent state (greyed, non-clickable), exactly as
+             it looks live right after a tap, so a stale slot can never be re-sent. */
+          var replySpent = false;
+          if (mdRenderTs != null) {
+            for (var rsI = 0; rsI < history.length; rsI++) {
+              var rsM = history[rsI];
+              if (rsM && rsM.role === 'user' && (rsM.ts || 0) >= mdRenderTs) { replySpent = true; break; }
+            }
+          }
+          var row = el('div', 'cx-replies cx-fade-in' + (replySpent ? ' cx-replies-used' : ''));
           row.setAttribute('role', 'group');
           row.setAttribute('aria-label', 'Suggested replies');
           pills.forEach(function (pill) {
             var pb = el('button', 'cx-reply', pill.show);
             pb.type = 'button';
-            pb.addEventListener('click', function () {
-              if (streaming) { return; }
-              row.classList.add('cx-replies-used');
-              var bs = row.querySelectorAll('button');
-              for (var bi = 0; bi < bs.length; bi++) { bs[bi].disabled = true; }
-              entryMode = 'pill';
-              sendMessage(pill.send); /* the full label, even when the button shows an ellipsis */
-            });
+            if (replySpent) {
+              pb.disabled = true; /* spent in a past turn — visible in scrollback, never re-tappable */
+            } else {
+              pb.addEventListener('click', function () {
+                if (streaming) { return; }
+                row.classList.add('cx-replies-used');
+                var bs = row.querySelectorAll('button');
+                for (var bi = 0; bi < bs.length; bi++) { bs[bi].disabled = true; }
+                entryMode = 'pill';
+                sendMessage(pill.send); /* the full label, even when the button shows an ellipsis */
+              });
+            }
             row.appendChild(pb);
           });
           frag.appendChild(row);
