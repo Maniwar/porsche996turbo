@@ -3544,9 +3544,11 @@ const BEAT_JUDGE_CRITERION =
   "if the house rules permit offers or negotiation, INVITING one is legitimate, not invented); " +
   "(4) pressure or desperation — begging, 'last chance', manufactured countdowns; " +
   "(5) broken output — cut off mid-sentence, raw JSON or code, gibberish, visibly duplicated text; " +
-  "(6) inventorying the shopper — reciting their own stored data back at them in aggregate " +
-  "('you're furnishing five rooms across two cities'): one remembered detail worn lightly is service, " +
-  "a tally of their life is surveillance; " +
+  "(6) inventorying the shopper — stringing TWO OR MORE of their stored personal details into a tally " +
+  "('you're furnishing five rooms across two cities, and your wife…'): a tally of their life is " +
+  "surveillance. But ONE remembered detail worn lightly is grounded SERVICE, not this defect — " +
+  "ESPECIALLY a detail the HOUSE NOTES or RECENT CONVERSATION below already contain; PASS a single " +
+  "grounded callback and never label it a 'tally'; " +
   "(7) reading records aloud — it recites the ACTUAL digits or text of a phone number, email " +
   "address, or street address from the house's records (the shopper's own or anyone else's); " +
   "published channels the house rules name are fine, stored contact details never are. Merely " +
@@ -3623,16 +3625,19 @@ async function judgeGroundingFacts(customer: Customer | null | undefined): Promi
       ? `or=${encodeURIComponent(`(user_id.eq.${customer.id},email.eq."${safeEmail}")`)}`
       : `user_id=eq.${encodeURIComponent(customer.id)}`;
     const notes = await pgSelect<{ note: string; kind: string | null }>(
-      `customer_notes?select=note,kind&${nf}&order=created_at.desc&limit=14`,
+      `customer_notes?select=note,kind&${nf}&order=created_at.desc&limit=18`,
     );
     if (!notes || !notes.length) return "";
+    // Keep more, and a longer window: the judge only reads a fact it is HANDED, so
+    // a fact truncated out here reappears as a false "inventorying"/"inventing"
+    // veto (the drafter saw all of it). Newest first; caps bound the prompt.
     const keep = notes.filter((n) =>
       n.kind === "event" ||
-      (n.kind !== "reflection" && n.kind !== "directive" && n.kind !== "summary")).slice(0, 6);
+      (n.kind !== "reflection" && n.kind !== "directive" && n.kind !== "summary")).slice(0, 10);
     if (!keep.length) return "";
     return "HOUSE NOTES ON THIS SHOPPER (things the house already knows — a warm callback to any of " +
       "these, worn lightly, is grounded service, NOT inventorying): " +
-      maskContacts(keep.map((n) => n.note).join(" | ")).slice(0, 600);
+      maskContacts(keep.map((n) => n.note).join(" | ")).slice(0, 1100);
   } catch {
     return "";
   }
@@ -3650,6 +3655,30 @@ function recentTurnsForJudge(messages: { role: string; content: unknown }[] | nu
   if (!turns.length) return "";
   return "RECENT CONVERSATION (newest last — a topic the shopper themselves raised is grounded; a " +
     "follow-up on it is service, not inventorying):\n" + turns.join("\n");
+}
+
+/** WHAT THE HOUSE SELLS, named for the reviewer — the fix for a false-veto
+ * cluster. The drafter is grounded in the full KB (which names the product and
+ * its variants); the judge was handed only the HONESTY & SCOPE tail of the
+ * constitution, which states the variant COUNT but never their NAMES — so a
+ * correct reference to an authorized variant read as an INVENTED one and was
+ * falsely vetoed. This lifts the KB sections that NAME what the house sells
+ * (product / range / variants / …) and hands them to the judge, so authorized ≠
+ * invented. KB rows are joined as "## <title>\n<body>" (loadConciergeData), so we
+ * key on the section header. Data-driven from the house's own KB, so it travels
+ * to any stamped house — a site with no such section (single-variant /
+ * inquiry-mode) yields "" (no-op). See JUDGE.md §4b "What the judge sees".
+ * (The section-header regex keeps a bare-word form so the stamp's global rename
+ * of the variant token never has to touch it.) */
+function authorizedScopeForJudge(kbText: string | null | undefined): string {
+  const kb = (typeof kbText === "string" && kbText.trim()) ? kbText : "";
+  if (!kb) return "";
+  const SCOPE = /^#{2,3}\s*(product|cloth|colou?rway|colou?r|range|edition|variant|model|finish|trim|lineup|catalog)/i;
+  const picked = kb.split(/\n(?=##\s)/).filter((b) => SCOPE.test(b.trim())).join("\n\n");
+  if (!picked.trim()) return "";
+  return "\n\nWHAT THE HOUSE SELLS — AUTHORITATIVE (from the house KB; every product, variant, or " +
+    "item NAMED here is AUTHORIZED — a reference to it is LEGITIMATE, NEVER an invented one):\n" +
+    picked.replace(/\s+$/, "").slice(0, 700);
 }
 
 async function judgeBeatLine(
@@ -7023,7 +7052,19 @@ async function handleChatPost(req: Request): Promise<Response> {
               const lastUserJ = [...validated.messages].reverse().find((m) => m.role === "user");
               const recentU = (lastUserJ && typeof lastUserJ.content === "string") ? maskContacts(lastUserJ.content) : "";
               const jk = isNudge ? "nudge" : "opener";
-              const rules = houseHonestyRules(jcfg) + extraJudgeRules(jcfg as Record<string, unknown>);
+              // WHAT THE JUDGE SEES (the grounding handed to judgeBeatLine — keep
+              // this honest; a gap here becomes a FALSE veto). See JUDGE.md §"What
+              // the judge sees":
+              //   rules     = HONESTY & SCOPE of the constitution + the house's
+              //               AUTHORIZED cloth roster + house amendments. The roster
+              //               is added because the SCOPE slice names the cloth COUNT
+              //               (the variant COUNT) but not their NAMES, so authorized
+              //               variants otherwise read as invented.
+              //   beatFacts = live edition + booking/callback facts + HOUSE NOTES on
+              //               this shopper + the recent transcript.
+              //   + the drafted line and the shopper's last message.
+              const rules = houseHonestyRules(jcfg) + authorizedScopeForJudge(data.kbText) +
+                extraJudgeRules(jcfg as Record<string, unknown>);
               // The merchant's floor (Judge & coach → House rules): which
               // defect families they choose to allow through. Below-floor
               // lines speak but are still audited (control without blindness).
@@ -7036,8 +7077,8 @@ async function handleChatPost(req: Request): Promise<Response> {
               // inventorying. The drafter saw all of it; blinding the judge to
               // it turned grounded memory into a false "defect 6" veto.
               const houseNotesJ = await judgeGroundingFacts(customer);
-              const beatFacts = [bookingCtx, editionCtx, houseNotesJ, recentTurnsForJudge(validated.messages)]
-                .filter((s) => s && String(s).trim()).join("\n\n").slice(0, 2400);
+              const beatFacts = [editionCtx, bookingCtx, houseNotesJ, recentTurnsForJudge(validated.messages)]
+                .filter((s) => s && String(s).trim()).join("\n\n").slice(0, 3000);
               const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts, floor);
               if (v.floored && beatAudit) {
                 // the judge WOULD have blocked this, but the merchant's floor
@@ -8063,8 +8104,12 @@ async function handleReengage(req: Request): Promise<Response> {
         // inventorying. (The closed-panel bubble has no live transcript here, so
         // house notes are the grounding that travels.)
         const bubbleGrounding = await judgeGroundingFacts(customer);
+        // Same authorized-cloth roster as the nudge/opener judge (see WHAT THE
+        // JUDGE SEES above) — the bubble path must not veto an authorized cloth
+        // as invented either.
         const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble",
-          houseHonestyRules(data.config) + extraJudgeRules(data.config as Record<string, unknown>),
+          houseHonestyRules(data.config) + authorizedScopeForJudge(data.kbText) +
+            extraJudgeRules(data.config as Record<string, unknown>),
           "", bubbleGrounding);
         if (v.veto) {
           if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
