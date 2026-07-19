@@ -731,3 +731,35 @@ export function renderCustomerNps(history: NpsHistoryItem[], minResponses = 1): 
   }
   return "\n\n" + lines.join("\n");
 }
+
+// ── book_appointment slug self-heal ─────────────────────────────────────────
+// The reported bug: the model reconstructs a booking type_slug from a human
+// TITLE ("mill-tour" from "A tour of the mill"), book_appointment refuses with
+// unknown_type, and the model then tells the shopper the calendar/system is
+// DOWN — when it is perfectly live. This shapes the recovery the tool hands back
+// on an unknown_type/unknown_location refusal: the REAL slugs plus an explicit
+// retry-with-a-valid-slug instruction and a hard ban on the false "system is
+// down" line. Pure (the caller passes the rows it read from the DB) so the
+// contract is unit-tested in beats_test.ts and can never silently regress.
+// Returns null for any other reason, so the caller leaves the result untouched.
+export type BookSlugRecovery = {
+  valid_types: { type_slug: string; title: string }[];
+  valid_locations: string[];
+  note: string;
+};
+
+export function bookSlugRecovery(
+  reason: unknown,
+  validTypes: { slug: string; title: string }[],
+  validLocations: { slug: string }[],
+): BookSlugRecovery | null {
+  if (reason !== "unknown_type" && reason !== "unknown_location") return null;
+  return {
+    valid_types: (validTypes || []).map((t) => ({ type_slug: t.slug, title: t.title })),
+    valid_locations: (validLocations || []).map((l) => l.slug),
+    note: "The type_slug or location_slug is not one the house offers — you likely invented it. " +
+      "Call book_appointment AGAIN using EXACTLY a type_slug from valid_types (and a location_slug from " +
+      "valid_locations) with the same starts_at. NEVER tell the shopper the calendar/system is down — it " +
+      "is live; this was a bad slug.",
+  };
+}

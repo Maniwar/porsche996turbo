@@ -32,6 +32,7 @@
 import { BRAND_SYSTEM, KB_MARKDOWN } from "./kb.ts";
 import {
   type BeatDecision,
+  bookSlugRecovery,
   chooseBeatAction,
   starterFeedsGap,
   classifyJudgeReason,
@@ -1790,18 +1791,15 @@ async function runRegisterTool(
       // Self-heal an unknown type/location instead of dead-ending: the model
       // sometimes invents a slug (e.g. "mill-tour" for "tour") and then tells the
       // shopper the calendar is down. Hand back the REAL slugs so it retries the
-      // same turn — the calendar is live.
+      // same turn — the calendar is live. Shaping is pure (bookSlugRecovery, unit-
+      // tested in beats_test.ts); this reads the valid rows and merges the result.
       if (r.reason === "unknown_type" || r.reason === "unknown_location") {
         const vt = await pgSelect<{ slug: string; title: string }>(
           "concierge_appointment_types?select=slug,title&enabled=eq.true&order=sort_order");
         const vl = await pgSelect<{ slug: string }>(
           "concierge_locations?select=slug&enabled=eq.true&order=sort_order");
-        r.valid_types = (vt || []).map((t) => ({ type_slug: t.slug, title: t.title }));
-        r.valid_locations = (vl || []).map((l) => l.slug);
-        r.note = "The type_slug or location_slug is not one the house offers — you likely invented it. " +
-          "Call book_appointment AGAIN using EXACTLY a type_slug from valid_types (and a location_slug from " +
-          "valid_locations) with the same starts_at. NEVER tell the shopper the calendar/system is down — it " +
-          "is live; this was a bad slug.";
+        const rec = bookSlugRecovery(r.reason, vt || [], vl || []);
+        if (rec) Object.assign(r, rec);
       }
       return JSON.stringify(r);
     }

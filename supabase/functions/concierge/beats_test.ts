@@ -6,6 +6,7 @@
 //   deno test supabase/functions/concierge/beats_test.ts
 
 import {
+  bookSlugRecovery,
   classifyJudgeReason,
   claimsOutboundContact,
   composeGapSkeleton,
@@ -601,4 +602,38 @@ Deno.test("isWrapUp: lone acknowledgements and ongoing content do not wrap", () 
   ]) {
     assert(!isWrapUp(s), "should NOT wrap: " + JSON.stringify(s));
   }
+});
+
+// The reported appointment bug: model invents "mill-tour" from the title "A tour
+// of the mill", book_appointment refuses unknown_type, model falsely says the
+// system is down. bookSlugRecovery must hand back the REAL slug and forbid that.
+Deno.test("bookSlugRecovery: a real bug — hands back the true slug, bans 'system is down'", () => {
+  const TYPES = [{ slug: "tour", title: "A tour of the mill" }];
+  const LOCS = [{ slug: "dallas" }];
+
+  // Non-refusal reasons are left untouched (the success and taken-slot paths own
+  // their own handling — recovery must never fire on them).
+  assertEq(bookSlugRecovery("ok", TYPES, LOCS), null, "ok is left untouched");
+  assertEq(bookSlugRecovery("taken", TYPES, LOCS), null, "taken is left untouched");
+  assertEq(bookSlugRecovery(undefined, TYPES, LOCS), null, "no reason is left untouched");
+
+  const rec = bookSlugRecovery("unknown_type", TYPES, LOCS);
+  assert(rec !== null, "unknown_type triggers recovery");
+  assertEq(rec!.valid_types.length, 1, "returns the one real type");
+  assertEq(rec!.valid_types[0].type_slug, "tour",
+    "hands back the REAL slug 'tour', not the invented 'mill-tour'");
+  assertEq(rec!.valid_types[0].title, "A tour of the mill", "carries the human title alongside the slug");
+  assertEq(rec!.valid_locations[0], "dallas", "hands back the real location slug");
+  assert(/never tell the shopper the calendar\/system is down/i.test(rec!.note),
+    "the note forbids the false 'system is down' line");
+  assert(/valid_types/.test(rec!.note), "the note tells the model to retry with a valid slug");
+
+  // An unknown_location refusal recovers the same way.
+  assert(bookSlugRecovery("unknown_location", TYPES, LOCS) !== null,
+    "unknown_location triggers recovery too");
+
+  // Degenerate input (no seeded types/locations) must not throw — empty lists.
+  const empty = bookSlugRecovery("unknown_type", [], []);
+  assert(empty !== null && empty.valid_types.length === 0 && empty.valid_locations.length === 0,
+    "empty catalogs yield empty lists, never a crash");
 });
