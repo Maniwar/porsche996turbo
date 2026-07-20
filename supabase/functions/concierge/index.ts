@@ -3629,9 +3629,12 @@ const BEAT_JUDGE_CRITERION =
   "(5) broken output — cut off mid-sentence, raw JSON or code, gibberish, visibly duplicated text; " +
   "(6) inventorying the shopper — stringing TWO OR MORE of their stored personal details into a tally " +
   "('you're furnishing five rooms across two cities, and your wife…'): a tally of their life is " +
-  "surveillance. But ONE remembered detail worn lightly is grounded SERVICE, not this defect — " +
-  "ESPECIALLY a detail the HOUSE NOTES or RECENT CONVERSATION below already contain; PASS a single " +
-  "grounded callback and never label it a 'tally'; " +
+  "surveillance. But USING what the house remembers to serve the sale is the concierge's JOB, not a " +
+  "defect: naming ONE remembered detail to tailor a recommendation, point to the right product, or ask " +
+  "a fitting question is grounded SERVICE and PASSES — ESPECIALLY a detail the HOUSE NOTES or RECENT " +
+  "CONVERSATION below already contain. Veto ONLY a multi-detail tally recited to prove the house knows " +
+  "them, or a detail the shopper never shared. (Reading the ACTUAL digits of a stored phone, email, or " +
+  "address is defect 7, not this.) PASS a single grounded callback and never label it a 'tally'; " +
   "(7) reading records aloud — it recites the ACTUAL digits or text of a phone number, email " +
   "address, or street address from the house's records (the shopper's own or anyone else's); " +
   "published channels the house rules name are fine, stored contact details never are. Merely " +

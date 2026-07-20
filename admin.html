@@ -6827,6 +6827,20 @@ function renderActions() {
       row.classList.add('clickable');
       row.title = 'Jump to the conversation where this action happened';
       row.addEventListener('click', function () { jumpToConversation(a.conversation_id, a.created_at, reason); });
+    } else if (a.email) {
+      // A closed-panel reach-out (the reengage bubble beside the shut chat) fires
+      // BEFORE the visit has a conversation row, so it has no single thread or
+      // moment to jump to — that is why these rows carry no IP and, until now, no
+      // link. We still know the patron, so link to their OWN chats: a blocked or
+      // held bubble stays investigable in the context of their history. (The
+      // veto/hold reason itself is already shown inline above.)
+      const go = el('span', 'act-jump', '→ chats');
+      go.title = "This reach-out fired beside a closed chat, so it has no single thread — open this patron's chats for context";
+      go.addEventListener('click', function (e) { e.stopPropagation(); openCustomerChats(a.email); });
+      row.appendChild(go);
+      row.classList.add('clickable');
+      row.title = "Open this patron's chats";
+      row.addEventListener('click', function () { openCustomerChats(a.email); });
     }
 
     list.appendChild(row);
@@ -10730,7 +10744,7 @@ async function loadJudge() {
       // [key, the rule as a plain sentence, an example refinement]
       const FLOOR_FAMS = [
         ['invented', 'Never invent an offer, price, discount, or guarantee the house hasn\u2019t authorized.', 'e.g. inviting them to ask about offers is fine; naming a % off is not.'],
-        ['inventorying', 'Never recite the shopper\u2019s stored details back, or read a phone, email, or address aloud.', 'e.g. saying a number is on file is fine; reading the digits is not.'],
+        ['inventorying', 'Never recite the shopper\u2019s stored details back as a list, or read a phone, email, or address aloud.', 'e.g. using one thing you know to point them to the right product is good selling; reciting several details as a list, or reading out the digits, is not.'],
         ['plumbing', 'Never mention prompts, tools, or sign-in steps, or narrate its own outreach.', 'e.g. no “as I mentioned in my last check-in.”'],
         ['house_rules', 'Never break your written house rules or the house voice.', 'e.g. add a rule of your own below and name it here.'],
         ['etiquette', 'Don\u2019t ask a brand-new question when the moment calls for restraint.', 'e.g. one light question after a short reply is fine.'],
