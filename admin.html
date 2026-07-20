@@ -2684,6 +2684,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <label class="micro">Show</label>
           <select id="jc-trend-metric" title="Which measure to plot over time.">
             <option value="block_rate">Block rate — how often a drafted line gets stopped</option>
+            <option value="families">By category — one line per reason lines were blocked</option>
             <option value="vetoed">Lines blocked per day</option>
             <option value="spoke">Lines let through per day</option>
             <option value="redraft_rate">Redraft success — blocked lines that passed on the retry</option>
@@ -2699,6 +2700,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div id="jc-trend"></div>
         <div id="jc-trend-cap" class="micro" style="margin-top:8px;opacity:.78;text-transform:none;letter-spacing:0;"></div>
         <div id="jc-trend-why" style="margin-top:12px;"></div>
+        <div id="jc-drill" style="margin-top:12px;"></div>
       </section>
 
       <!-- CARD 2 — the detail behind the scoreboard -->
@@ -10191,6 +10193,182 @@ function npsLineChart(mount, opts) {
   });
   mount.appendChild(sv);
 }
+// One colour per defect family for the "by category" view. Muted, distinct, and
+// readable on the dark studio ground.
+const JC_FAM_COLOR = {
+  invented: '#c98a6f', inventorying: '#d8c69a', plumbing: '#7fae90',
+  house_rules: '#9a8cc0', etiquette: '#6fa8c9', prefilter: '#8a8f98', other: '#b0a89a'
+};
+// Classify a veto reason into its defect family — the SAME buckets the
+// judge_findings RPC uses (kept in lockstep with it), so the drill-in from a
+// chart point selects exactly the lines that point counts.
+function classifyFamilyClient(reason) {
+  const r = String(reason == null ? '' : reason);
+  if (/^pre-filter:/i.test(r)) return 'prefilter';
+  if (/inventor|recit|read(s|ing)? .{0,12}aloud|stored (data|contact|phone)|records aloud|tally|dossier|scorekeep/i.test(r)) return 'inventorying';
+  if (/invent|fabricat|unsupported|not authorized|guarantee|refund|discount|not (in|from) house/i.test(r)) return 'invented';
+  if (/plumbing|template|token|meta|narrat|sign.?in|process talk/i.test(r)) return 'plumbing';
+  if (/house rules/i.test(r)) return 'house_rules';
+  if (/question|unsolicited/i.test(r)) return 'etiquette';
+  return 'other';
+}
+// Multi-line variant of npsLineChart: one line per defect family, a clickable
+// legend, and clickable points. opts:{ labels, series:[{key,label,color,total,
+// values}], marks, onPoint(key,i), onLegend(key) }. Powers the judge trend's
+// "by category" view so a spike can be read AND drilled into.
+function npsMultiLineChart(mount, opts) {
+  mount.textContent = '';
+  const labels = opts.labels || []; const n = labels.length;
+  const series = (opts.series || []).filter(function (s) { return (s.values || []).some(function (v) { return v; }); });
+  if (!n || !series.length) { mount.appendChild(el('div', 'empty micro', 'No blocked lines to plot in this range yet.')); return; }
+  const W = 640, H = 235, L = 40, R = 14, T = 12, B = 26; const iw = W - L - R, ih = H - T - B;
+  let hi = 1; series.forEach(function (s) { (s.values || []).forEach(function (v) { if (v != null && v > hi) hi = v; }); });
+  const X = function (i) { return L + (n === 1 ? iw / 2 : iw * i / (n - 1)); };
+  const Y = function (v) { return T + ih - ih * (v / hi); };
+  const NS = 'http://www.w3.org/2000/svg'; const mk = function (t) { return document.createElementNS(NS, t); };
+  const sv = mk('svg'); sv.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  sv.setAttribute('role', 'img'); sv.setAttribute('aria-label', opts.aria || 'blocked lines by category');
+  for (let g = 0; g <= 4; g++) {
+    const v = hi * g / 4, y = Y(v);
+    const ln = mk('line'); ln.setAttribute('x1', L); ln.setAttribute('x2', W - R); ln.setAttribute('y1', y); ln.setAttribute('y2', y);
+    ln.setAttribute('stroke', 'rgba(241,236,226,.08)'); ln.setAttribute('stroke-width', '1'); sv.appendChild(ln);
+    const tx = mk('text'); tx.setAttribute('x', L - 6); tx.setAttribute('y', y + 3.5); tx.setAttribute('text-anchor', 'end');
+    tx.setAttribute('font-size', '10'); tx.setAttribute('fill', 'rgba(241,236,226,.38)'); tx.textContent = String(Math.round(v)); sv.appendChild(tx);
+  }
+  (opts.marks || []).forEach(function (m) {
+    if (m.i < 0 || m.i >= n) return; const x = X(m.i);
+    const ln = mk('line'); ln.setAttribute('x1', x); ln.setAttribute('x2', x); ln.setAttribute('y1', T); ln.setAttribute('y2', T + ih);
+    ln.setAttribute('stroke', 'rgba(216,198,154,.45)'); ln.setAttribute('stroke-width', '1'); ln.setAttribute('stroke-dasharray', '3 3');
+    const ti = mk('title'); ti.textContent = m.label || 'change'; ln.appendChild(ti); sv.appendChild(ln);
+  });
+  (n <= 4 ? labels.map(function (_, i) { return i; }) : [0, Math.floor((n - 1) / 2), n - 1]).forEach(function (i) {
+    const tx = mk('text'); tx.setAttribute('x', X(i)); tx.setAttribute('y', H - 8);
+    tx.setAttribute('text-anchor', i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle');
+    tx.setAttribute('font-size', '10'); tx.setAttribute('fill', 'rgba(241,236,226,.38)'); tx.textContent = labels[i]; sv.appendChild(tx);
+  });
+  series.forEach(function (s) {
+    let path = '', pen = false;
+    (s.values || []).forEach(function (v, i) { if (v == null) { pen = false; return; } path += (pen ? 'L' : 'M') + X(i) + ',' + Y(v); pen = true; });
+    if (path) {
+      const pl = mk('path'); pl.setAttribute('d', path); pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', s.color);
+      pl.setAttribute('stroke-width', '2'); pl.setAttribute('stroke-linejoin', 'round'); pl.setAttribute('stroke-linecap', 'round'); sv.appendChild(pl);
+    }
+    (s.values || []).forEach(function (v, i) {
+      if (!v) return;
+      const c = mk('circle'); c.setAttribute('cx', X(i)); c.setAttribute('cy', Y(v)); c.setAttribute('r', '3.5');
+      c.setAttribute('fill', s.color); c.setAttribute('cursor', 'pointer');
+      const ti = mk('title'); ti.textContent = labels[i] + ' · ' + s.label + ': ' + v + ' blocked — click to review'; c.appendChild(ti);
+      if (opts.onPoint) c.addEventListener('click', function () { opts.onPoint(s.key, i); });
+      sv.appendChild(c);
+    });
+  });
+  mount.appendChild(sv);
+  const leg = el('div', 'jc-legend'); leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;';
+  series.forEach(function (s) {
+    const item = el('button', 'jc-legend-item'); item.type = 'button';
+    item.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;opacity:.85;';
+    item.title = 'Review the ' + s.label + ' blocks';
+    const sw = document.createElement('span'); sw.style.cssText = 'width:10px;height:10px;border-radius:2px;display:inline-block;background:' + s.color + ';';
+    item.appendChild(sw); item.appendChild(el('span', 'micro', s.label + ' (' + s.total + ')'));
+    if (opts.onLegend) item.addEventListener('click', function () { opts.onLegend(s.key); });
+    leg.appendChild(item);
+  });
+  mount.appendChild(leg);
+}
+// Drill-in: the specific blocked lines behind a chart point (day+family) or a
+// legend family (whole range) — each with a jump to the chat it happened in, so
+// the owner can read them in context. dayIso null = the whole current range.
+async function judgeDrill(famKey, dayIso) {
+  const mount = $('jc-drill'); if (!mount) return;
+  const famLabel = (JC_FAM_SHORT[famKey] || famKey);
+  mount.textContent = '';
+  const head = el('div', 'micro'); head.style.cssText = 'letter-spacing:.08em;opacity:.85;margin-bottom:8px;';
+  head.textContent = 'BLOCKED LINES · ' + famLabel.toUpperCase() + (dayIso ? ' · ' + dayIso : ' · last ' + (state.jcRange || 30) + ' days');
+  mount.appendChild(head);
+  const loading = el('div', 'micro', 'Loading…'); mount.appendChild(loading);
+  const DRILL_CAP = 500;
+  let q = sb.from('concierge_actions').select('created_at,email,payload,result,conversation_id')
+    .eq('action', 'beat_veto').order('created_at', { ascending: false }).limit(DRILL_CAP);
+  if (dayIso) { const nx = new Date(dayIso + 'T00:00:00Z'); nx.setUTCDate(nx.getUTCDate() + 1); q = q.gte('created_at', dayIso + 'T00:00:00Z').lt('created_at', nx.toISOString()); }
+  else { const days = state.jcRange || 30; q = q.gte('created_at', new Date(Date.now() - days * 86400000).toISOString()); }
+  let rows = [];
+  try { const r = await q; if (r.error) throw new Error(r.error.message); rows = r.data || []; }
+  catch (e) { loading.textContent = 'Could not load — ' + (e && e.message ? e.message : e); return; }
+  // Match the RPC's coalesce(payload->>'reason', result, '') exactly — a fallback
+  // only when reason is ABSENT (null), keeping a present-but-empty reason — so the
+  // drill classifies each row identically to the chart that counted it.
+  const reasonOf = function (a) { return (a.payload && a.payload.reason != null) ? String(a.payload.reason) : (a.result || ''); };
+  const fam = rows.filter(function (a) { return classifyFamilyClient(reasonOf(a)) === famKey; });
+  loading.remove();
+  if (!fam.length) { mount.appendChild(el('div', 'empty micro', 'No blocked lines in this slice.')); return; }
+  // The drill re-reads the raw veto rows (capped at DRILL_CAP); the chart's legend/
+  // point count is the authoritative total. When the raw read hit the cap, say so —
+  // the owner is seeing recent examples, not necessarily every line.
+  if (!dayIso && rows.length >= DRILL_CAP) {
+    const cnote = el('div', 'micro'); cnote.style.cssText = 'opacity:.62;margin-bottom:6px;text-transform:none;letter-spacing:0;';
+    cnote.textContent = 'Showing examples from the most recent ' + DRILL_CAP + ' blocked lines in this range — the count on the chart is the full total.';
+    mount.appendChild(cnote);
+  }
+  // Ask the coach to read this family and suggest a rule tweak (suggest-only —
+  // it never changes the rulebook; you copy what you want).
+  const rev = el('button', 'btn ghost mini', 'Ask the coach to review these & suggest a rule tweak'); rev.type = 'button';
+  rev.style.margin = '2px 0 10px';
+  const revOut = el('div'); revOut.style.marginBottom = '10px';
+  rev.addEventListener('click', function () { judgeReviewFamily(famKey, rev, revOut); });
+  mount.appendChild(rev); mount.appendChild(revOut);
+  fam.slice(0, 40).forEach(function (a) {
+    const row = el('div', 'jc-drill-row'); row.style.cssText = 'border-left:2px solid rgba(241,236,226,.14);padding:6px 10px;margin:6px 0;';
+    const line = (a.payload && a.payload.line) || '';
+    if (line) { const l = el('div'); l.style.cssText = 'font-size:13px;line-height:1.45;'; l.textContent = '“' + line + '”'; row.appendChild(l); }
+    const reason = reasonOf(a);
+    if (reason) { const rz = el('div', 'micro'); rz.style.cssText = 'opacity:.7;text-transform:none;letter-spacing:0;margin-top:3px;'; rz.textContent = reason; row.appendChild(rz); }
+    const meta = el('div', 'micro'); meta.style.cssText = 'margin-top:3px;opacity:.62;';
+    meta.appendChild(document.createTextNode(fmtWhen(a.created_at) + (a.email ? ' · ' + a.email : '') + '  '));
+    if (a.conversation_id) {
+      const go = el('span', 'act-jump', '→ chat'); go.style.cursor = 'pointer';
+      go.addEventListener('click', function () { jumpToConversation(a.conversation_id, a.created_at, null); });
+      meta.appendChild(go);
+    } else if (a.email) {
+      const go = el('span', 'act-jump', '→ chats'); go.style.cursor = 'pointer';
+      go.title = 'This reach-out fired beside a closed chat — open the patron’s chats';
+      go.addEventListener('click', function () { openCustomerChats(a.email); });
+      meta.appendChild(go);
+    }
+    row.appendChild(meta); mount.appendChild(row);
+  });
+  if (fam.length > 40) mount.appendChild(el('div', 'micro', '…and ' + (fam.length - 40) + ' more.'));
+  try { mount.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) { /* older browsers */ }
+}
+// The coach reads a drilled-into family and suggests a rule amendment (?judge_review=1).
+// Suggest-only: it shows the read and, if the blocks look over-strict, a plain-language
+// amendment the owner can COPY into the rulebook. Nothing is written automatically.
+async function judgeReviewFamily(famKey, btn, out) {
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Reading the blocked lines…'; out.textContent = '';
+  try {
+    const days = state.jcRange || 30;
+    const j = await adminPost('?judge_review=1', { family: famKey, days: days });
+    if (!j || j.ok === false) throw new Error((j && j.error) || 'no review returned');
+    const card = el('div'); card.style.cssText = 'border:1px solid rgba(216,198,154,.35);border-radius:8px;padding:12px 14px;';
+    const h = el('div', 'micro'); h.style.cssText = 'letter-spacing:.08em;opacity:.85;margin-bottom:6px;';
+    h.textContent = 'THE COACH’S READ' + (j.count ? ' (' + j.count + ' lines)' : ''); card.appendChild(h);
+    const sum = el('div'); sum.style.cssText = 'font-size:13px;line-height:1.5;white-space:pre-wrap;'; sum.textContent = j.summary || '(no summary)'; card.appendChild(sum);
+    if (j.suggested_note) {
+      const sh = el('div', 'micro'); sh.style.cssText = 'letter-spacing:.08em;opacity:.85;margin:12px 0 4px;'; sh.textContent = 'SUGGESTED RULE AMENDMENT — you decide'; card.appendChild(sh);
+      const note = el('div'); note.style.cssText = 'font-size:13px;line-height:1.5;background:rgba(241,236,226,.05);padding:8px 10px;border-radius:6px;'; note.textContent = j.suggested_note; card.appendChild(note);
+      const row = el('div'); row.style.cssText = 'margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
+      const copy = el('button', 'btn ghost mini', 'Copy'); copy.type = 'button';
+      copy.addEventListener('click', function () { if (navigator.clipboard) navigator.clipboard.writeText(j.suggested_note); toast('Copied — paste it into the rulebook below'); });
+      row.appendChild(copy);
+      row.appendChild(el('span', 'micro', 'Add it under the matching rule in “The rules your concierge follows on its own,” then Save. Nothing changes until you do.'));
+      card.appendChild(row);
+    } else {
+      const ok = el('div', 'micro'); ok.style.cssText = 'margin-top:8px;opacity:.75;'; ok.textContent = 'The coach didn’t suggest a change — these blocks look right.'; card.appendChild(ok);
+    }
+    out.appendChild(card);
+  } catch (e) {
+    out.appendChild(el('div', 'empty micro', 'Could not review — ' + (e && e.message ? e.message : e)));
+  } finally { btn.disabled = false; btn.textContent = orig; }
+}
 const NPS_RANGES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [0, 'All time']];
 function npsRangeRow() {
   const holder = $('nps-range');
@@ -10994,6 +11172,7 @@ function jcTrendWhy(mount, o) {
 async function loadJudgeTrend() {
   const mount = $('jc-trend'); if (!mount) return;
   const cap = $('jc-trend-cap');
+  const drillEl = $('jc-drill'); if (drillEl) drillEl.textContent = '';
   const mSel = $('jc-trend-metric'); const rSel = $('jc-trend-range');
   const key = (mSel && mSel.value) || 'block_rate';
   const range = Math.max(parseInt((rSel && rSel.value) || '30', 10) || 30, 2);
@@ -11025,6 +11204,33 @@ async function loadJudgeTrend() {
       const seen = {}; const uniq = markMap[i].filter(function (l) { return seen[l] ? false : (seen[l] = true); });
       return { i: +i, label: 'You ' + uniq.join('; you ') + ' this day.' };
     });
+    // "By category": one line per defect family; points + legend drill into the
+    // actual blocked lines. Uses the per-day `families` object the RPC now emits.
+    if (key === 'families') {
+      state.jcRange = range;
+      const drill = $('jc-drill'); if (drill) drill.textContent = '';
+      const FAM_ORDER = ['inventorying', 'invented', 'plumbing', 'etiquette', 'house_rules', 'prefilter', 'other'];
+      const totals = {};
+      series.forEach(function (s) { const f = s.families || {}; Object.keys(f).forEach(function (k) { totals[k] = (totals[k] || 0) + (f[k] || 0); }); });
+      const fams = FAM_ORDER.filter(function (k) { return totals[k]; });
+      if (!fams.length) {
+        mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No lines were blocked in this range — nothing to break down.'));
+        if (cap) cap.textContent = ''; if (why) why.textContent = ''; return;
+      }
+      const famSeries = fams.map(function (k) {
+        return { key: k, label: (JC_FAM_SHORT[k] || k), color: (JC_FAM_COLOR[k] || '#b0a89a'), total: totals[k],
+          values: series.map(function (s) { return (s.families && s.families[k]) || 0; }) };
+      });
+      npsMultiLineChart(mount, {
+        labels: labels, series: famSeries, marks: marks,
+        aria: 'blocked lines by category over ' + range + ' days',
+        onPoint: function (k, i) { judgeDrill(k, series[i] && series[i].day); },
+        onLegend: function (k) { judgeDrill(k, null); }
+      });
+      if (cap) cap.textContent = 'Each line is one reason the reviewer blocks lines. Click a dot to read the exact lines blocked that day, or a legend item to review the whole range — every one links to the chat it happened in.';
+      if (why) why.textContent = '';
+      return;
+    }
     npsLineChart(mount, {
       labels: labels, values: values, yMin: 0, yMax: hi, color: spec.color, marks: marks,
       aria: spec.label + ' over ' + range + ' days', fmt: fmt

@@ -2553,7 +2553,9 @@ begin
      where created_at > now() - make_interval(days => v_days) and action like 'beat_%'),
   classed as (
     select *, case
-        when reason like 'pre-filter:%' then 'prefilter'
+        -- case-insensitive + anchored to match the studio/endpoint classifiers
+        -- exactly, so a drilled 'families' point selects the rows it counted
+        when reason ~* '^pre-filter:' then 'prefilter'
         -- inventorying first: 'INVENTORIES the shopper' also contains 'invent',
         -- and read-records-aloud reasons belong here, not in 'other'
         when reason ~* 'inventor|recit|read(s|ing)? .{0,12}aloud|stored (data|contact|phone)|records aloud|tally|dossier|scorekeep' then 'inventorying'
@@ -2605,6 +2607,11 @@ begin
   day_top as (
     select day, (array_agg(klass order by n desc, klass))[1] as top_family
       from day_fam group by day),
+  -- per-day, per-family veto counts as one object {family: n} — feeds the
+  -- "lines by category" view so each defect family is its own line on the chart
+  day_fam_obj as (
+    select day, jsonb_object_agg(klass, n) as families
+      from day_fam group by day),
   -- the causal overlay: every versioned change to a judge-relevant setting or to
   -- knowledge, so the merchant can see the line respond to what THEY did
   changes as (
@@ -2650,11 +2657,13 @@ begin
         'q', q, 'n', n, 'latest', latest, 'system', is_system, 'feedback', is_feedback,
         'ids', to_jsonb(ids)) order by is_feedback desc, n desc), '[]'::jsonb) from gaps),
     'series', (select coalesce(jsonb_agg(jsonb_build_object(
-        'day', to_char(day, 'YYYY-MM-DD'),
-        'spoke', spoke, 'held', held, 'vetoed', vetoed, 'prefilter', prefilter,
-        'redraft_ok', redraft_ok, 'redraft_blocked', redraft_blocked,
-        'floored', floored, 'gaps_cleared', gaps_cleared,
-        'top_family', top_family) order by day), '[]'::jsonb) from series),
+        'day', to_char(s.day, 'YYYY-MM-DD'),
+        'spoke', s.spoke, 'held', s.held, 'vetoed', s.vetoed, 'prefilter', s.prefilter,
+        'redraft_ok', s.redraft_ok, 'redraft_blocked', s.redraft_blocked,
+        'floored', s.floored, 'gaps_cleared', s.gaps_cleared,
+        'top_family', s.top_family,
+        'families', coalesce(dfo.families, '{}'::jsonb)) order by s.day), '[]'::jsonb)
+        from series s left join day_fam_obj dfo on dfo.day = s.day),
     'changes', (select coalesce(jsonb_agg(jsonb_build_object(
         'day', to_char(day, 'YYYY-MM-DD'), 'entity', entity, 'ref', ref, 'n', n)
         order by day), '[]'::jsonb) from changes))

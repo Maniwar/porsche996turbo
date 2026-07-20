@@ -5636,6 +5636,100 @@ async function handleLintPost(req: Request): Promise<Response> {
   }
 }
 
+// ── POST ?judge_review=1 — the coach reviews ONE family of blocked reach-outs ──
+// The judge dashboard drills into a defect family and asks the coach to read the
+// actual blocked lines and say (a) whether the blocks look right or over-strict
+// and (b) if over-strict, a plain-language amendment the owner could add to that
+// rule so the legitimate lines pass — WITHOUT weakening the honesty floor.
+// SUGGEST-ONLY: it never writes the rulebook; the owner copies what they want.
+// Admin-only; fail-open (an error returns an empty review with the reason).
+const JUDGE_REVIEW_SYSTEM =
+  "You are the house's sales coach. You are shown proactive lines the reach-out reviewer BLOCKED, " +
+  "all in ONE defect family. The owner wants FEWER false blocks WITHOUT weakening real guardrails. " +
+  "(1) SUMMARY: in 2-4 sentences, what these blocked lines have in common, and whether the blocks look " +
+  "mostly right, mostly over-strict, or mixed — describe the pattern, do not re-list each line. " +
+  "(2) SUGGESTED_NOTE: if some blocks are over-strict, write ONE short plain-language amendment (2-3 " +
+  "sentences, addressed to the reviewer) the owner could add to THIS rule so the legitimate lines pass " +
+  "while genuinely bad ones still fail. If the blocks all look correct, leave SUGGESTED_NOTE empty. NEVER " +
+  "propose weakening honesty: no inventing facts, prices, or offers; no discounts; no reading a stored " +
+  "phone, email, or address aloud; no reciting a multi-detail dossier. Reply with a single tool call.";
+async function handleJudgeReviewPost(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  let body: { family?: unknown; days?: unknown };
+  try { body = await req.json(); } catch { return jsonError(req, 400, "Bad JSON."); }
+  const family = typeof body.family === "string" ? body.family.slice(0, 32) : "";
+  const days = Math.min(Math.max(typeof body.days === "number" ? body.days : 30, 1), 120);
+  if (!family) return jsonResponse(req, 200, { ok: false, error: "no family named" });
+  if (!apiKey) return jsonResponse(req, 200, { ok: false, error: "no API key — review skipped" });
+  // Same family buckets as the judge_findings RPC and the studio classifier, so
+  // the coach reviews exactly the lines the drilled-into chart point counted.
+  const famOf = (reason: string): string => {
+    const r = reason || "";
+    if (/^pre-filter:/i.test(r)) return "prefilter";
+    if (/inventor|recit|read(s|ing)? .{0,12}aloud|stored (data|contact|phone)|records aloud|tally|dossier|scorekeep/i.test(r)) return "inventorying";
+    if (/invent|fabricat|unsupported|not authorized|guarantee|refund|discount|not (in|from) house/i.test(r)) return "invented";
+    if (/plumbing|template|token|meta|narrat|sign.?in|process talk/i.test(r)) return "plumbing";
+    if (/house rules/i.test(r)) return "house_rules";
+    if (/question|unsolicited/i.test(r)) return "etiquette";
+    return "other";
+  };
+  const sinceIso = new Date(Date.now() - days * 86400000).toISOString();
+  const rows = await pgSelect<{ payload: Record<string, unknown> | null; result: string | null; created_at: string }>(
+    `concierge_actions?select=payload,result,created_at&action=eq.beat_veto&created_at=gte.${encodeURIComponent(sinceIso)}&order=created_at.desc&limit=200`,
+  );
+  // Distinguish a read FAILURE (pgSelect → null) from a genuinely empty result, so
+  // a DB hiccup isn't reported to the owner as "this family is clean" (fail-open
+  // WITH a reason, matching the header contract).
+  if (rows === null) return jsonResponse(req, 200, { ok: false, error: "could not read the blocked lines — try again" });
+  const picked = (rows || []).filter((a) => {
+    const reason = (a.payload && typeof a.payload.reason === "string") ? a.payload.reason : (a.result || "");
+    return famOf(String(reason)) === family;
+  }).slice(0, 40);
+  if (!picked.length) {
+    return jsonResponse(req, 200, { ok: true, count: 0, summary: "No blocked lines in this family and range to review.", suggested_note: "" });
+  }
+  const listing = picked.map((a, i) => {
+    const line = (a.payload && typeof a.payload.line === "string") ? a.payload.line : "";
+    const reason = (a.payload && typeof a.payload.reason === "string") ? a.payload.reason : (a.result || "");
+    return `${i + 1}. LINE: ${String(line).slice(0, 240)}\n   BLOCKED BECAUSE: ${String(reason).slice(0, 200)}`;
+  }).join("\n");
+  const data = await loadConciergeData();
+  const model = resolveModel(data);
+  try {
+    const res = await llmFetch("judge_review", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model, max_tokens: 900, system: JUDGE_REVIEW_SYSTEM,
+        tool_choice: { type: "tool", name: "judge_review" },
+        tools: [{
+          name: "judge_review", description: "The coach's read and optional amendment.",
+          input_schema: {
+            type: "object",
+            properties: {
+              summary: { type: "string", description: "2-4 sentence read of the pattern and whether the blocks look right or over-strict" },
+              suggested_note: { type: "string", description: "one short plain-language amendment to this rule, or empty if the blocks look correct" },
+            },
+            required: ["summary", "suggested_note"],
+          },
+        }],
+        messages: [{ role: "user", content: `DEFECT FAMILY: ${family}\nBLOCKED LINES (${picked.length}):\n${listing}` }],
+      }),
+    });
+    if (!res.ok) return jsonResponse(req, 200, { ok: false, count: picked.length, error: `review model error ${res.status}` });
+    // deno-lint-ignore no-explicit-any
+    const j = await res.json() as any;
+    // deno-lint-ignore no-explicit-any
+    const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "judge_review");
+    const summary = typeof tool?.input?.summary === "string" ? tool.input.summary.slice(0, 1200) : "";
+    const suggested = typeof tool?.input?.suggested_note === "string" ? tool.input.suggested_note.slice(0, 600) : "";
+    return jsonResponse(req, 200, { ok: true, count: picked.length, summary, suggested_note: suggested, model });
+  } catch (e) {
+    return jsonResponse(req, 200, { ok: false, count: picked.length, error: "review error: " + (e instanceof Error ? e.message : String(e)) });
+  }
+}
+
 // ── GET ?secrets=1 — server-secret STATUS for the admin panel (admin only) ───
 // Returns ONLY booleans (is each secret present) plus the model in effect — never
 // a value. Lets the studio show a live "what's configured" readout so setup isn't
@@ -8383,6 +8477,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "POST" && new URL(req.url).searchParams.get("lint")) {
     return await handleLintPost(req);
+  }
+  if (req.method === "POST" && new URL(req.url).searchParams.get("judge_review")) {
+    return await handleJudgeReviewPost(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("selftest")) {
     return await handleSelfTest(req);
