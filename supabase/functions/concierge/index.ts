@@ -3767,6 +3767,26 @@ function authorizedScopeForJudge(kbText: string | null | undefined): string {
     picked.replace(/\s+$/, "").slice(0, 700);
 }
 
+// The judge needs the house's PROMISES too, not just its products. The drafter
+// sees the whole KB and legitimately states a real policy ("the 30-night trial…
+// full refund"); the judge, grounded only in product scope, was killing those as
+// "invented commerce" (defect 3 — a trial/refund/guarantee "not authorized"). This
+// lifts the KB's policy/promise sections so a line STATING a real house policy
+// passes — while an invented discount, which is still absent from the KB, is still
+// vetoed. Same shape and grounding discipline as authorizedScopeForJudge.
+function authorizedPoliciesForJudge(kbText: string | null | undefined): string {
+  const kb = (typeof kbText === "string" && kbText.trim()) ? kbText : "";
+  if (!kb) return "";
+  const POLICY =
+    /^#{2,3}\s*(trial|return|refund|exchange|guarantee|warrant|deliver|shipping|care|mend|repair|value|policy|policies|terms)/i;
+  const picked = kb.split(/\n(?=##\s)/).filter((b) => POLICY.test(b.trim())).join("\n\n");
+  if (!picked.trim()) return "";
+  return "\n\nHOUSE POLICIES — AUTHORITATIVE (from the house KB; any trial, return, refund, guarantee, " +
+    "warranty, delivery, or care term STATED here is REAL, standing house policy — a line that offers or " +
+    "states it is LEGITIMATE, NEVER invented commerce and NEVER an invented discount):\n" +
+    picked.replace(/\s+$/, "").slice(0, 900);
+}
+
 async function judgeBeatLine(
   apiKey: string,
   line: string,
@@ -7251,6 +7271,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               //               this shopper + the recent transcript.
               //   + the drafted line and the shopper's last message.
               const rules = houseHonestyRules(jcfg) + authorizedScopeForJudge(data.kbText) +
+                authorizedPoliciesForJudge(data.kbText) +
                 extraJudgeRules(jcfg as Record<string, unknown>);
               // The merchant's floor (Judge & coach → House rules): which
               // defect families they choose to allow through. Below-floor
@@ -8296,6 +8317,7 @@ async function handleReengage(req: Request): Promise<Response> {
         // as invented either.
         const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble",
           houseHonestyRules(data.config) + authorizedScopeForJudge(data.kbText) +
+            authorizedPoliciesForJudge(data.kbText) +
             extraJudgeRules(data.config as Record<string, unknown>),
           "", bubbleGrounding);
         if (v.veto) {
