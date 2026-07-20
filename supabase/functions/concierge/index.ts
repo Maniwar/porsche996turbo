@@ -3743,48 +3743,29 @@ function recentTurnsForJudge(messages: { role: string; content: unknown }[] | nu
     "follow-up on it is service, not inventorying):\n" + turns.join("\n");
 }
 
-/** WHAT THE HOUSE SELLS, named for the reviewer — the fix for a false-veto
- * cluster. The drafter is grounded in the full KB (which names the product and
- * its variants); the judge was handed only the HONESTY & SCOPE tail of the
- * constitution, which states the variant COUNT but never their NAMES — so a
- * correct reference to an authorized variant read as an INVENTED one and was
- * falsely vetoed. This lifts the KB sections that NAME what the house sells
- * (product / range / variants / …) and hands them to the judge, so authorized ≠
- * invented. KB rows are joined as "## <title>\n<body>" (loadConciergeData), so we
- * key on the section header. Data-driven from the house's own KB, so it travels
- * to any stamped house — a site with no such section (single-variant /
- * inquiry-mode) yields "" (no-op). See JUDGE.md §4b "What the judge sees".
- * (The section-header regex keeps a bare-word form so the stamp's global rename
- * of the variant token never has to touch it.) */
-function authorizedScopeForJudge(kbText: string | null | undefined): string {
-  const kb = (typeof kbText === "string" && kbText.trim()) ? kbText : "";
+/** THE HOUSE KNOWLEDGE, handed WHOLE to the reviewer — the fix for a false-veto
+ * cluster. The drafter writes from the FULL KB; the judge was handed only the
+ * HONESTY & SCOPE tail of the constitution plus a couple of regex-sliced KB
+ * sections ("what the house sells", "house policies"). Every KB section those
+ * slices missed — Materials, Mill & provenance, the mending guarantee, Packaging,
+ * the comparison table — was INVISIBLE to the judge, so a TRUE line grounded in one
+ * (a real material spec, weight, guarantee, or sourcing fact) read as INVENTED and
+ * was falsely vetoed. Proven live: "80% mulesing-free merino", "three pounds",
+ * "a mending promise", "German mill" were all killed as invented — every one
+ * verbatim from the KB. The KB is small, so we STOP slicing and hand the judge the
+ * SAME knowledge the drafter has; authorized ≠ invented, wholesale. Capped
+ * generously so a very large catalog can't blow the reviewer prompt; an empty KB
+ * (fresh / inquiry site) yields "" (no-op). See JUDGE.md §4b "What the judge sees". */
+function authorizedFactsForJudge(kbText: string | null | undefined): string {
+  const kb = (typeof kbText === "string" && kbText.trim()) ? kbText.trim() : "";
   if (!kb) return "";
-  const SCOPE = /^#{2,3}\s*(product|cloth|colou?rway|colou?r|range|edition|variant|model|finish|trim|lineup|catalog)/i;
-  const picked = kb.split(/\n(?=##\s)/).filter((b) => SCOPE.test(b.trim())).join("\n\n");
-  if (!picked.trim()) return "";
-  return "\n\nWHAT THE HOUSE SELLS — AUTHORITATIVE (from the house KB; every product, variant, or " +
-    "item NAMED here is AUTHORIZED — a reference to it is LEGITIMATE, NEVER an invented one):\n" +
-    picked.replace(/\s+$/, "").slice(0, 700);
-}
-
-// The judge needs the house's PROMISES too, not just its products. The drafter
-// sees the whole KB and legitimately states a real policy ("the 30-night trial…
-// full refund"); the judge, grounded only in product scope, was killing those as
-// "invented commerce" (defect 3 — a trial/refund/guarantee "not authorized"). This
-// lifts the KB's policy/promise sections so a line STATING a real house policy
-// passes — while an invented discount, which is still absent from the KB, is still
-// vetoed. Same shape and grounding discipline as authorizedScopeForJudge.
-function authorizedPoliciesForJudge(kbText: string | null | undefined): string {
-  const kb = (typeof kbText === "string" && kbText.trim()) ? kbText : "";
-  if (!kb) return "";
-  const POLICY =
-    /^#{2,3}\s*(trial|return|refund|exchange|guarantee|warrant|deliver|shipping|care|mend|repair|value|policy|policies|terms)/i;
-  const picked = kb.split(/\n(?=##\s)/).filter((b) => POLICY.test(b.trim())).join("\n\n");
-  if (!picked.trim()) return "";
-  return "\n\nHOUSE POLICIES — AUTHORITATIVE (from the house KB; any trial, return, refund, guarantee, " +
-    "warranty, delivery, or care term STATED here is REAL, standing house policy — a line that offers or " +
-    "states it is LEGITIMATE, NEVER invented commerce and NEVER an invented discount):\n" +
-    picked.replace(/\s+$/, "").slice(0, 900);
+  const CAP = 8000;
+  const body = kb.length > CAP ? kb.slice(0, CAP) + "\n…(house knowledge continues)" : kb;
+  return "\n\nTHE HOUSE KNOWLEDGE — AUTHORITATIVE (the SAME knowledge base the concierge writes from; " +
+    "every product, variant, material, price, weight, policy, guarantee, and provenance fact STATED here " +
+    "is REAL and AUTHORIZED — a line that states or offers it is LEGITIMATE, NEVER invented. Only a claim " +
+    "with NO basis here — an invented discount, a fabricated spec or number, a policy not written here — " +
+    "is invented):\n" + body;
 }
 
 async function judgeBeatLine(
@@ -7270,8 +7251,7 @@ async function handleChatPost(req: Request): Promise<Response> {
               //   beatFacts = live edition + booking/callback facts + HOUSE NOTES on
               //               this shopper + the recent transcript.
               //   + the drafted line and the shopper's last message.
-              const rules = houseHonestyRules(jcfg) + authorizedScopeForJudge(data.kbText) +
-                authorizedPoliciesForJudge(data.kbText) +
+              const rules = houseHonestyRules(jcfg) + authorizedFactsForJudge(data.kbText) +
                 extraJudgeRules(jcfg as Record<string, unknown>);
               // The merchant's floor (Judge & coach → House rules): which
               // defect families they choose to allow through. Below-floor
@@ -8316,8 +8296,7 @@ async function handleReengage(req: Request): Promise<Response> {
         // JUDGE SEES above) — the bubble path must not veto an authorized cloth
         // as invented either.
         const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble",
-          houseHonestyRules(data.config) + authorizedScopeForJudge(data.kbText) +
-            authorizedPoliciesForJudge(data.kbText) +
+          houseHonestyRules(data.config) + authorizedFactsForJudge(data.kbText) +
             extraJudgeRules(data.config as Record<string, unknown>),
           "", bubbleGrounding);
         if (v.veto) {
