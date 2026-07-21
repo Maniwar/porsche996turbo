@@ -38,6 +38,7 @@ import {
   describeTokensForJudge,
   widgetTokensJudgeNote,
   RECOGNITION_JUDGE_NOTE,
+  tallyJudgeVotes,
 } from "./beats.ts";
 
 function assert(cond: unknown, msg: string) {
@@ -412,6 +413,24 @@ Deno.test("digest caps at six buckets and tolerates missing fields", () => {
   assert(sparse.includes("? on a ?: 0% replied (n=10)"), "missing move/beat/rate degrade to placeholders: " + sparse);
 });
 
+Deno.test("veto-aware: a blocked count surfaces the suppression note, even on thin spoke data", () => {
+  // The confound fix: even below the spoke floor, if lines were BLOCKED the coach must
+  // hear it — a weak reply signal can be review suppressing the voice, not shoppers.
+  const out = renderLearningDigest(digest({
+    total_spoke: 2, buckets: [], blocked_total: 7,
+    blocked_families: [{ family: "invented / unsupported", n: 5 }, { family: "process talk", n: 2 }],
+  }), 8);
+  assert(/SUPPRESSING/.test(out), "names the suppression");
+  assert(/7 proactive lines were BLOCKED/.test(out), "counts the blocked lines: " + out);
+  assert(/invented \/ unsupported ×5/.test(out), "names the top blocked family");
+  assert(/Keep reaching|don't retreat/.test(out), "tells the coach not to abandon vivid selling");
+  // No blocked count → no note (backward compatible with the thin-data contract).
+  assertEq(renderLearningDigest(digest({ total_spoke: 3, buckets: [] }), 8), "", "thin spoke + no blocked ⇒ empty");
+  // Both blocks appear together when there's spoke AND blocked data.
+  const both = renderLearningDigest(digest({ blocked_total: 4 }), 8);
+  assert(/LANDING LATELY/.test(both) && /SUPPRESSING/.test(both), "shows both blocks together");
+});
+
 
 // ── NPS — segments, score math, the survey trigger, detractor reasons, brief ──
 const DAY = 24 * HOUR;
@@ -683,6 +702,25 @@ Deno.test("widget tokens: the judge sees a described control, never the raw {{�
   const note = widgetTokensJudgeNote();
   ["Sign-in button", "Commission button", "Snooze control", "Inline form", "Quick-reply chip", "Rating scale", "Image", "Video"]
     .forEach((label) => assert(note.includes(label), "the judge note names the " + label));
+});
+
+Deno.test("tallyJudgeVotes: precision-biased majority — a lone spurious veto is outvoted", () => {
+  const V = (reason: string) => ({ veto: true, reason });
+  const P = { veto: false, reason: "" };
+  // 1 veto vs 2 passes → the good line SURVIVES (the "same line, two verdicts" fix).
+  assertEq(tallyJudgeVotes([V("invented"), P, P]).veto, false, "1 of 3 vetoes → pass");
+  // 2 of 3 vetoes → block, carrying a vetoing reason.
+  const maj = tallyJudgeVotes([V("defect 6"), V("defect 6"), P]);
+  assertEq(maj.veto, true, "2 of 3 vetoes → block");
+  assert(/defect 6/.test(maj.reason), "carries a vetoing reason");
+  // Exact tie never blocks (strict majority) — favours the line.
+  assertEq(tallyJudgeVotes([V("x"), P]).veto, false, "1-1 tie → pass");
+  // Unanimous veto blocks; empty input fails open.
+  assertEq(tallyJudgeVotes([V("a"), V("b"), V("c")]).veto, true, "3 of 3 → block");
+  assertEq(tallyJudgeVotes([]).veto, false, "no verdicts → fail open (pass)");
+  // A floor tag on the winning veto is preserved for the audit trail.
+  assertEq(tallyJudgeVotes([{ veto: true, reason: "r", floored: "invented" }, { veto: true, reason: "r2" }, P]).floored, "invented",
+    "surfaces the floor tag when the majority vetoes");
 });
 
 Deno.test("recognition note: allows sign-in recognition, still bans unprompted outreach", () => {

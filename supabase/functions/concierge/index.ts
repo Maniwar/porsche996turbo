@@ -59,6 +59,7 @@ import {
   describeTokensForJudge,
   widgetTokensJudgeNote,
   RECOGNITION_JUDGE_NOTE,
+  tallyJudgeVotes,
 } from "./beats.ts";
 
 // Editable built-in bases. The admin can override each via a concierge_config key
@@ -3612,6 +3613,15 @@ function stripPlumbing(t: string): string {
 // Admin toggle: Engagement → House rules → outreach.beatJudge (default ON).
 // Every veto writes a beat_veto row (Actions tab: spoke · held · vetoed).
 const BEAT_JUDGE_MODEL = "claude-haiku-4-5-20251001";
+// Self-consistency for the reach-out judge. config.judge.votes (1..5, default 1)
+// samples the judge that many times and takes the majority; >1 needs a non-zero
+// temperature so the samples differ. Default 1 = today's single deterministic
+// call (zero behaviour change until a merchant opts in). See JUDGE.md § voting.
+const JUDGE_VOTE_TEMP = 0.6;
+function judgeVoteCount(jcfg: Record<string, unknown> | null | undefined): number {
+  const n = Number((jcfg as { votes?: unknown } | null | undefined)?.votes);
+  return Number.isFinite(n) ? Math.min(5, Math.max(1, Math.round(n))) : 1;
+}
 // The sales-strategist coach reuses the conversation model by default (its value
 // is smart, house-grounded tactical reasoning — the same brain the house paid
 // for), but a dedicated tier can be pinned here without touching the call sites.
@@ -3652,7 +3662,10 @@ const BEAT_JUDGE_CRITERION =
   "the house USED it to contact them is defect 10 below); " +
   "(8) selling past a problem — the shopper's latest message (given below when available) raises an " +
   "unresolved complaint, error, or trust issue, and the line pitches, nudges, or changes the subject " +
-  "instead of serving it. " +
+  "instead of serving it. SILENCE IS NOT A PROBLEM: a quiet shopper, a pause, a dropped or half-finished " +
+  "message, or simply not having replied yet is NOT an unresolved complaint — re-engaging after quiet is " +
+  "the whole point of a proactive line. Defect 8 needs an actual complaint, error, or trust issue the " +
+  "shopper RAISED, never an unanswered topic or a gap in the conversation. " +
   "(9) inventing availability — naming a time, an opening hour, a bookable slot, or a STAFF MEMBER the register did " +
   "not provide this turn. " +
   "(10) inventing an outbound contact — claiming the house called, phoned, texted, messaged, or reached out to the " +
@@ -3661,8 +3674,16 @@ const BEAT_JUDGE_CRITERION =
   "the future call the shopper requested ('someone will call you') is fine; asserting a past one is not. " +
   "AGAINST THE HOUSE RULES: also veto if the line asserts a price, figure, count, product, guarantee, " +
   "or claim the house rules forbid or do not support — a fabricated number, a medical/therapeutic claim " +
-  "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. If " +
-  "the house rules PERMIT something, offering it is LEGITIMATE — never veto an authorized move as invented. " +
+  "the rules bar, a product outside the house's scope, a fact not grounded in what the house sells. But " +
+  "a MATERIAL, DURABILITY, or QUALITY property grounded in the KNOWLEDGE — it doesn't pill, softens with " +
+  "age, holds its shape, is gentler on the fiber, mends for life — is a legitimate PRODUCT fact, NOT a " +
+  "medical/therapeutic claim. That ban is for HEALTH or TREATMENT claims (cures, therapy, deep-pressure " +
+  "relief), never for how the material itself wears. And SENSORY FRAMING of a grounded spec is SELLING, " +
+  "not invention: when the KNOWLEDGE gives the weight, the weave, the ritual the product is named for, " +
+  "then a line like 'it settles over you rather than sitting on top' or 'the weight across your knees at " +
+  "the end of the day' is the house making a REAL fact vivid — the concierge's job — so PASS it. If the " +
+  "house rules PERMIT something, offering it is LEGITIMATE — never veto an authorized move, or a vivid " +
+  "rendering of a grounded fact, as invented. " +
   "Warmth, brevity, one light question, and {{reply:…}}/{{action:…}}/{{nps}} pills are all LEGITIMATE " +
   "(a {{nps}} token renders the house's rating scale — ASKING for a rating once, warmly, is fine; " +
   "quoting a past one is not). When uncertain, pass it.";
@@ -3786,6 +3807,7 @@ async function judgeBeatLine(
   recentUser = "",
   factsOnFile = "",
   floor: Record<string, unknown> | null = null,
+  votes = 1,
 ): Promise<{ veto: boolean; reason: string; floored?: string }> {
   // The floor never relaxes the mechanical pre-filter (a malformed token
   // can't be "allowed"), so the two pre-filter returns below are untouched.
@@ -3832,74 +3854,85 @@ async function judgeBeatLine(
   if (claimsOutboundContact(line) && !/ALREADY MADE the requested call/i.test(factsOnFile)) {
     return { veto: true, reason: "pre-filter: invented outbound-contact claim — no completed call is on file" };
   }
-  try {
-    const res = await llmFetch("judge", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      signal: AbortSignal.timeout(4000),
-      body: JSON.stringify({
-        model: BEAT_JUDGE_MODEL,
-        max_tokens: 150,
-        temperature: 0,
-        system:
-          "You are a strict, literal reviewer of ONE proactive line a sales concierge is about to " +
-          "send. Judge ONLY against the criterion. Ignore tone, length, and politeness unless the " +
-          "criterion names them. Reply with a single tool call.",
-        tool_choice: { type: "tool", name: "verdict" },
-        tools: [{
-          name: "verdict",
-          description: "Record whether the line may be sent.",
-          input_schema: {
-            type: "object",
-            properties: {
-              pass: { type: "boolean", description: "true = fit to send; false = veto" },
-              reason: {
-                type: "string",
-                description: "one short clause (<=20 words) citing the deciding evidence",
+  const userContent = "CRITERION:\n" + BEAT_JUDGE_CRITERION +
+    (houseRules ? "\n\nHOUSE RULES (authoritative for this house):\n" + houseRules : "") +
+    (factsOnFile
+      ? "\n\nGROUNDING (what the concierge legitimately knows THIS TURN — register facts, house " +
+        "notes on the shopper, and the recent conversation). A line consistent with any of this " +
+        "is GROUNDED, not invented; a warm callback to ONE OR TWO details here — a project, a room, " +
+        "a preference, a relationship, something the shopper themselves raised — is service, NOT " +
+        "defect 6 inventorying, even when it re-opens the conversation. Defect 6 is a TALLY of THREE " +
+        "OR MORE stored details listed together, or a detail the shopper never surfaced that serves " +
+        "only to show off memory. Acknowledging something is on file is service; only quoting stored " +
+        "digits or addresses aloud remains defect 7:\n" +
+        factsOnFile.slice(0, 3200)
+      : "") +
+    (recentUser
+      ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
+        recentUser.slice(0, 400)
+      : "") +
+    "\n\n" + widgetTokensJudgeNote() +
+    "\n\n" + RECOGNITION_JUDGE_NOTE +
+    "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + describeTokensForJudge(line);
+  // ONE judge sample. temperature 0 for the single-vote default (deterministic);
+  // a non-zero temp under self-consistency voting so the samples actually differ.
+  const castVote = async (temperature: number): Promise<{ veto: boolean; reason: string } | null> => {
+    try {
+      const res = await llmFetch("judge", {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        signal: AbortSignal.timeout(4000),
+        body: JSON.stringify({
+          model: BEAT_JUDGE_MODEL,
+          max_tokens: 150,
+          temperature,
+          system:
+            "You are a strict, literal reviewer of ONE proactive line a sales concierge is about to " +
+            "send. Judge ONLY against the criterion. Ignore tone, length, and politeness unless the " +
+            "criterion names them. Reply with a single tool call.",
+          tool_choice: { type: "tool", name: "verdict" },
+          tools: [{
+            name: "verdict",
+            description: "Record whether the line may be sent.",
+            input_schema: {
+              type: "object",
+              properties: {
+                pass: { type: "boolean", description: "true = fit to send; false = veto" },
+                reason: { type: "string", description: "one short clause (<=20 words) citing the deciding evidence" },
               },
+              required: ["pass", "reason"],
             },
-            required: ["pass", "reason"],
-          },
-        }],
-        messages: [{
-          role: "user",
-          content: "CRITERION:\n" + BEAT_JUDGE_CRITERION +
-            (houseRules ? "\n\nHOUSE RULES (authoritative for this house):\n" + houseRules : "") +
-            (factsOnFile
-              ? "\n\nGROUNDING (what the concierge legitimately knows THIS TURN — register facts, house " +
-                "notes on the shopper, and the recent conversation). A line consistent with any of this " +
-                "is GROUNDED, not invented; a warm callback to ONE OR TWO details here — a project, a room, " +
-                "a preference, a relationship, something the shopper themselves raised — is service, NOT " +
-                "defect 6 inventorying, even when it re-opens the conversation. Defect 6 is a TALLY of THREE " +
-                "OR MORE stored details listed together, or a detail the shopper never surfaced that serves " +
-                "only to show off memory. Acknowledging something is on file is service; only quoting stored " +
-                "digits or addresses aloud remains defect 7:\n" +
-                factsOnFile.slice(0, 3200)
-              : "") +
-            (recentUser
-              ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
-                recentUser.slice(0, 400)
-              : "") +
-            "\n\n" + widgetTokensJudgeNote() +
-            "\n\n" + RECOGNITION_JUDGE_NOTE +
-            "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + describeTokensForJudge(line),
-        }],
-      }),
-    });
-    if (!res.ok) return { veto: false, reason: "" };
-    // deno-lint-ignore no-explicit-any
-    const j = await res.json() as any;
-    // deno-lint-ignore no-explicit-any
-    const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "verdict");
-    if (!tool || typeof tool.input?.pass !== "boolean") return { veto: false, reason: "" };
-    return applyFloor({ veto: tool.input.pass === false, reason: String(tool.input.reason || "").slice(0, 160) });
-  } catch {
-    return { veto: false, reason: "" };
+          }],
+          messages: [{ role: "user", content: userContent }],
+        }),
+      });
+      if (!res.ok) return null;
+      // deno-lint-ignore no-explicit-any
+      const j = await res.json() as any;
+      // deno-lint-ignore no-explicit-any
+      const tool = (j.content || []).find((b: any) => b.type === "tool_use" && b.name === "verdict");
+      if (!tool || typeof tool.input?.pass !== "boolean") return null;
+      return { veto: tool.input.pass === false, reason: String(tool.input.reason || "").slice(0, 160) };
+    } catch {
+      return null;
+    }
+  };
+  const n = Math.min(5, Math.max(1, Math.round(votes) || 1));
+  if (n <= 1) {
+    const v = await castVote(0);
+    return v ? applyFloor(v) : { veto: false, reason: "" };
   }
+  // Self-consistency (config.judge.votes > 1): sample the judge n times at a
+  // non-zero temperature so the samples differ, apply the merchant's floor to
+  // each, then take the majority. Precision-biased — a STRICT majority must vote
+  // veto, so a lone spurious veto among passes is outvoted and the good line
+  // survives. This is the direct fix for the "same line, two verdicts" variance;
+  // all samples failing (timeout/error) fails open, exactly like the single path.
+  const raw = (await Promise.all(
+    Array.from({ length: n }, () => castVote(JUDGE_VOTE_TEMP)),
+  )).filter((v): v is { veto: boolean; reason: string } => v !== null);
+  if (!raw.length) return { veto: false, reason: "" };
+  return tallyJudgeVotes(raw.map(applyFloor));
 }
 
 // ── Sales-strategist coach on proactive lines ───────────────────────────────
@@ -3931,7 +3964,13 @@ const BEAT_COACH_TASK =
   "for THIS exact moment. Be specific to THIS person and THIS beat — not generic sales advice. Stay " +
   "strictly inside the house's honesty rules, price posture, and scope: never coach a discount, a claim, " +
   "or a pressure the house forbids. You are briefing the concierge who will write the line, not writing " +
-  "it. Reply with one coach_note tool call.";
+  "it. TWO STANDING RULES the house holds and you must not invert: (1) a partner or spouse the shopper " +
+  "mentions is a REASON they'll buy, never a GATE — 'I need to ask my wife' / 'we'll think about it' is " +
+  "a STALL to move past with momentum (hold their number, leave one warm thread), NOT a checkpoint. NEVER " +
+  "coach 'confirm spousal alignment before the register', or make a second person's sign-off a condition " +
+  "of selling — that stalls the sale the house wants. (2) Do not loop in discovery: once you've learned " +
+  "enough to recommend, coach the RECOMMEND, the SHOW (one vivid TRUE picture), or the ADVANCE — one real " +
+  "move that carries the sale forward — not another qualifying question. Reply with one coach_note tool call.";
 
 async function coachBeatLine(
   apiKey: string,
@@ -7288,7 +7327,8 @@ async function handleChatPost(req: Request): Promise<Response> {
               const houseNotesJ = await judgeGroundingFacts(customer);
               const beatFacts = [editionCtx, bookingCtx, houseNotesJ, recentTurnsForJudge(validated.messages)]
                 .filter((s) => s && String(s).trim()).join("\n\n").slice(0, 3000);
-              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts, floor);
+              const jvotes = judgeVoteCount(jconf);
+              const v = await judgeBeatLine(apiKey, text, jk, rules, recentU, beatFacts, floor, jvotes);
               if (v.floored && beatAudit) {
                 // the judge WOULD have blocked this, but the merchant's floor
                 // let the family through — record it so the tab shows what the
@@ -7309,7 +7349,7 @@ async function handleChatPost(req: Request): Promise<Response> {
                   "Draft ONE different line that fully avoids this defect — or hold. Never mention the review.");
                 redrafted = true;
                 if (second.speak && second.text) {
-                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU, beatFacts, floor);
+                  const v2 = await judgeBeatLine(apiKey, second.text, jk, rules, recentU, beatFacts, floor, jvotes);
                   text = second.text;
                   if (v2.floored && beatAudit) { beatAudit.floored = v2.floored; beatAudit.flooredReason = v2.reason; }
                   if (v2.veto) vetoReason = v2.reason || "vetoed again after redraft";
@@ -8319,7 +8359,7 @@ async function handleReengage(req: Request): Promise<Response> {
         const v = await judgeBeatLine(apiKey, text, postSale ? "bubble-postsale" : "bubble",
           houseHonestyRules(data.config) + authorizedFactsForJudge(data.kbText) +
             extraJudgeRules(data.config as Record<string, unknown>),
-          "", bubbleGrounding);
+          "", bubbleGrounding, null, judgeVoteCount((data.config?.judge ?? null) as Record<string, unknown> | null));
         if (v.veto) {
           if (beatAuditOn(data.config)) pgInsert("concierge_actions", {
             conversation_id: cid, user_id: customer?.id ?? null, email: customer?.email ?? null,

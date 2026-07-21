@@ -976,6 +976,29 @@ begin
   agg as (
     select beat, move, count(*) as n, count(*) filter (where answered) as answered
     from scored group by beat, move
+  ),
+  -- Veto-awareness: lines the review judge KILLED in the same window. A blocked
+  -- move never sends, so it never earns a reply rate above — the coach needs to
+  -- know a weak signal may be SUPPRESSION, not failure. Reason → friendly family
+  -- (mirrors the judge_findings ladder, human-readable for the coach brief).
+  vetoes as (
+    select case
+        when reason ~* '^pre-filter:' then 'malformed tokens'
+        when reason ~* 'inventor|recit|tally|dossier|stored (data|contact|phone)|records aloud' then 'reading details back'
+        when reason ~* 'invent|fabricat|unsupported|not authorized|guarantee|refund|discount|medical|therapeut' then 'invented / unsupported'
+        when reason ~* 'plumbing|template|token|meta|narrat|sign.?in|process talk' then 'process talk'
+        when reason ~* 'question|unsolicited|pressure' then 'etiquette'
+        else 'other'
+      end as fam
+    from (
+      select coalesce(nullif(a.payload->>'reason', ''), a.result, '') as reason
+      from public.concierge_actions a
+      where a.action = 'beat_veto'
+        and a.created_at > now() - make_interval(days => v_days)
+    ) r
+  ),
+  veto_agg as (
+    select fam, count(*) as n from vetoes group by fam
   )
   select jsonb_build_object(
     'window_days', v_days,
@@ -985,7 +1008,11 @@ begin
                'beat', beat, 'move', move, 'n', n,
                'reply_rate', round((answered::numeric / n), 2))
              order by (answered::numeric / n) desc, n desc)
-      from agg where n >= v_min), '[]'::jsonb)
+      from agg where n >= v_min), '[]'::jsonb),
+    'blocked_total', coalesce((select count(*) from vetoes), 0),
+    'blocked_families', coalesce((
+      select jsonb_agg(jsonb_build_object('family', fam, 'n', n) order by n desc)
+      from (select fam, n from veto_agg order by n desc limit 3) t), '[]'::jsonb)
   ) into v_payload;
 
   insert into public.concierge_insights (kind, payload, computed_at)

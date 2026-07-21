@@ -356,6 +356,8 @@ export interface LearningDigest {
   window_days?: number;
   total_spoke?: number;
   buckets?: LearningBucket[];
+  blocked_total?: number; // reach-out lines the review judge KILLED in the window
+  blocked_families?: { family?: string; n?: number }[]; // the top reasons they were killed
 }
 
 export function renderLearningDigest(
@@ -365,21 +367,43 @@ export function renderLearningDigest(
   if (!digest || typeof digest !== "object") return "";
   const buckets = Array.isArray(digest.buckets) ? digest.buckets : [];
   const totalSpoke = typeof digest.total_spoke === "number" ? digest.total_spoke : 0;
-  // Honest about thin data: below the floor, or with no surviving buckets, the
-  // coach gets nothing and falls back to method-only.
-  if (totalSpoke < minSpoke || buckets.length === 0) return "";
-  const lines = buckets.slice(0, 6).map((b) => {
-    const pct = Math.round((Number(b.reply_rate) || 0) * 100);
-    return "- " + String(b.move ?? "?") + " on a " + String(b.beat ?? "?") +
-      ": " + pct + "% replied (n=" + (Number(b.n) || 0) + ")";
-  });
-  return "[WHAT'S LANDING LATELY — this house's OWN outcomes over the last " +
-    (digest.window_days ?? 14) + " days: the share of shoppers who answered within " +
-    "half an hour of each kind of proactive line. This is real reaction, not theory.]\n" +
-    lines.join("\n") +
-    "\nWeigh it: lean toward the moves that are landing and away from the ones that " +
-    "aren't; treat a small n as a weak signal, never a rule. Silence after a move is " +
-    "itself a signal — if a move keeps getting ignored, a lighter touch (or holding) may beat repeating it.";
+  // The reply-rate block only when there's enough spoken data (below the floor it
+  // would be noise). The BLOCKED block below is independent — it matters MOST when
+  // little got spoken, because that can be review suppressing the voice.
+  let replyBlock = "";
+  if (totalSpoke >= minSpoke && buckets.length > 0) {
+    const lines = buckets.slice(0, 6).map((b) => {
+      const pct = Math.round((Number(b.reply_rate) || 0) * 100);
+      return "- " + String(b.move ?? "?") + " on a " + String(b.beat ?? "?") +
+        ": " + pct + "% replied (n=" + (Number(b.n) || 0) + ")";
+    });
+    replyBlock = "[WHAT'S LANDING LATELY — this house's OWN outcomes over the last " +
+      (digest.window_days ?? 14) + " days: the share of shoppers who answered within " +
+      "half an hour of each kind of proactive line. This is real reaction, not theory.]\n" +
+      lines.join("\n") +
+      "\nWeigh it: lean toward the moves that are landing and away from the ones that " +
+      "aren't; treat a small n as a weak signal, never a rule. Silence after a move is " +
+      "itself a signal — if a move keeps getting ignored, a lighter touch (or holding) may beat repeating it.";
+  }
+  // Veto-aware: a move the review judge keeps killing never SENDS, so it never earns
+  // a reply rate — a weak signal above can be SUPPRESSION, not failure. Say so, or the
+  // coach quietly abandons the house's own vivid selling for whatever survives review.
+  const blocked = typeof digest.blocked_total === "number" ? digest.blocked_total : 0;
+  const fams = Array.isArray(digest.blocked_families) ? digest.blocked_families : [];
+  let blockedBlock = "";
+  if (blocked > 0) {
+    const famStr = fams.filter((f) => f && f.family).slice(0, 3)
+      .map((f) => String(f.family) + " ×" + (Number(f.n) || 0)).join(", ");
+    blockedBlock = "[REVIEW IS ALSO SUPPRESSING MOVES — in this window " + blocked +
+      " proactive line" + (blocked === 1 ? "" : "s") + " were BLOCKED by the reviewer before any shopper saw them" +
+      (famStr ? " (most often: " + famStr + ")" : "") +
+      ". A blocked move is SUPPRESSED, not proof it fell flat: a weak reply rate on a vivid, grounded, TRUE " +
+      "selling move can simply mean review kept killing it. Keep reaching for the real, vivid move — the " +
+      "recommendation, the sensory picture, the ritual — don't retreat to safe questions because review has " +
+      "been strict. If a whole family is over-blocked, that's a rulebook question for the owner, not a signal " +
+      "that selling doesn't work here.]";
+  }
+  return [replyBlock, blockedBlock].filter(Boolean).join("\n\n");
 }
 
 // ── NPS — survey trigger, score math, and the customer brief ─────────────────
@@ -869,6 +893,24 @@ export function widgetTokensJudgeNote(): string {
     "shows a bracketed control — " + WIDGET_TOKENS.map((t) => "[" + t.label + "]").join(", ") +
     " — that is a genuine affordance the app renders for the visitor: customer-facing PRODUCT, never a " +
     "tool/meta/plumbing token. Never veto a line for offering one.";
+}
+
+// Majority-vote a set of reach-out judge verdicts (self-consistency). Precision-
+// biased: a STRICT majority must vote veto, so a lone spurious veto among passes is
+// outvoted and the line survives — matching the design rule that a false veto is the
+// worse error. Empty input fails open (pass). When the majority vetoes, the first
+// vetoing verdict's reason (and any floor tag) represents the group.
+export function tallyJudgeVotes(
+  verdicts: { veto: boolean; reason: string; floored?: string }[],
+): { veto: boolean; reason: string; floored?: string } {
+  const list = (verdicts || []).filter((v) => v && typeof v.veto === "boolean");
+  if (!list.length) return { veto: false, reason: "" };
+  const vetoes = list.filter((v) => v.veto);
+  if (vetoes.length > list.length / 2) {
+    const w = vetoes[0];
+    return w.floored ? { veto: true, reason: w.reason, floored: w.floored } : { veto: true, reason: w.reason };
+  }
+  return { veto: false, reason: "" };
 }
 
 // Recognition on return is a REAL capability (signing in / leaving an email lets the
