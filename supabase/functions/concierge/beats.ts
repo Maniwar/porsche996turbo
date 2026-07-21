@@ -763,3 +763,110 @@ export function bookSlugRecovery(
       "is live; this was a bad slug.",
   };
 }
+
+// ── Canonical widget-token registry — the ONE source of truth ────────────────
+// Every {{…}} token the visitor's app renders as real inline UI. The renderable
+// pre-filter (RENDERABLE_TOKEN_RE), the reach-out judge's token awareness
+// (widgetTokensJudgeNote / describeTokensForJudge), and the studio's token
+// reference (served by GET ?tokens=1) ALL derive from this list, so they can
+// never drift apart — that drift is what let the judge false-veto a real
+// {{action:signin}}. Anything NOT matched here is treated as plumbing and vetoed.
+// `pattern` is a regex fragment placed inside ^\{\{( … )\}\}$ ; keep it in lockstep
+// with what assets/concierge.js actually renders (a beats test guards the union).
+export interface WidgetToken {
+  example: string; // canonical form shown in the studio, e.g. "{{action:signin}}"
+  pattern: string; // regex fragment matching the token body, e.g. "action:signin"
+  label: string; // short name of the control, e.g. "Sign-in button"
+  renders: string; // what the widget draws for the visitor
+  usage: string; // when the concierge should reach for it
+}
+export const WIDGET_TOKENS: WidgetToken[] = [
+  {
+    example: "{{action:signin}}",
+    pattern: "action:signin",
+    label: "Sign-in button",
+    renders: "a “Sign in — the key arrives by mail” button",
+    usage: "Close a warm welcome-back to a not-signed-in visitor. Put it on its OWN line.",
+  },
+  {
+    example: "{{action:commission}}",
+    pattern: "action:commission",
+    label: "Commission button",
+    renders: "a “✳ Begin the commission” button",
+    usage: "On an unmistakable buying signal — opens checkout from the concierge. Its own line.",
+  },
+  {
+    example: "{{action:snooze}}",
+    pattern: "action:snooze",
+    label: "Snooze control",
+    renders: "an invisible wind-down control that lets a busy visitor defer",
+    usage: "Alone on the last line of a goodbye, so the thread can resume later.",
+  },
+  {
+    example: "{{form:<name>}}",
+    pattern: "form:[a-z0-9-]{2,40}(:\\d{1,6})?",
+    label: "Inline form",
+    renders: "an inline form (e.g. the appointment booker)",
+    usage: "Collect structured details in-chat — e.g. {{form:appointment}}.",
+  },
+  {
+    example: "{{reply:…}}",
+    pattern: "reply:[^{}]{1,200}",
+    label: "Quick-reply chip",
+    renders: "a tap-to-answer chip carrying the suggested reply",
+    usage: "Offer 1–3 easy replies — e.g. {{reply:Tell me about the wool}}.",
+  },
+  {
+    example: "{{nps}}",
+    pattern: "nps",
+    label: "Rating scale",
+    renders: "the 0–10 rating scale",
+    usage: "The single rating question at a natural close (handled automatically).",
+  },
+  {
+    example: "{{img:<id>}}",
+    pattern: "img:[A-Za-z0-9_-]+",
+    label: "Image",
+    renders: "an inline image by id",
+    usage: "Show a saved image — e.g. {{img:selvedge_number}}.",
+  },
+  {
+    example: "{{video:<id>}}",
+    pattern: "video:[A-Za-z0-9_-]+",
+    label: "Video",
+    renders: "an inline video by id",
+    usage: "Show a saved clip — e.g. {{video:mending}}.",
+  },
+];
+
+// A whole line that IS one of these tokens (trimmed) is renderable UI, not plumbing.
+export const RENDERABLE_TOKEN_RE = new RegExp(
+  "^\\{\\{(" + WIDGET_TOKENS.map((t) => t.pattern).join("|") + ")\\}\\}$",
+  "i",
+);
+const TOKEN_LABELERS = WIDGET_TOKENS.map((t) => ({
+  re: new RegExp("^\\{\\{" + t.pattern + "\\}\\}$", "i"),
+  label: t.label,
+}));
+
+// For the reach-out judge: swap each rendered token for a plain-English description of
+// the control it draws, so the model judges the LANGUAGE and can't mistake the raw
+// {{…}} syntax for a tool/meta "plumbing" leak (it was told these are legitimate and
+// still misfired on one). Non-renderable tokens never reach here — the pre-filter
+// vetoes them first — so anything left unmatched is passed through untouched.
+export function describeTokensForJudge(line: string): string {
+  return String(line || "").replace(/\{\{[^{}]*\}\}/g, (t) => {
+    const m = TOKEN_LABELERS.find((x) => x.re.test(t));
+    return m ? "[" + m.label + "]" : t;
+  });
+}
+
+// The judge's WIDGET-CONTROLS note, generated from the registry (never hand-listed,
+// so it can't fall out of sync with what actually renders — as the old inline list did,
+// which omitted snooze/img/video).
+export function widgetTokensJudgeNote(): string {
+  return "WIDGET CONTROLS: the visitor's app draws real interactive controls inline. Where the line " +
+    "shows a bracketed control — " + WIDGET_TOKENS.map((t) => "[" + t.label + "]").join(", ") +
+    " — that is a genuine affordance the app renders for the visitor: customer-facing PRODUCT, never a " +
+    "tool/meta/plumbing token. Never veto a line for offering one.";
+}

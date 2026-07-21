@@ -2690,12 +2690,16 @@ need to ask my partner | Of course — the hold keeps their number while they ta
             <option value="redraft_rate">Redraft success — blocked lines that passed on the retry</option>
             <option value="gaps_cleared">Knowledge gaps you cleared per day</option>
           </select>
-          <label class="micro">Range</label>
-          <select id="jc-trend-range" title="How far back to plot.">
-            <option value="14">14 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="90">90 days</option>
-          </select>
+          <button id="jc-export" class="btn ghost" type="button" style="margin-left:auto;" title="Download the plotted buckets as a spreadsheet — one row per bucket, one column per reason.">Export CSV</button>
+          <button id="jc-refresh" class="btn ghost" type="button">Refresh</button>
+        </div>
+        <div class="cal-frow" style="align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+          <span class="ct-tag" title="How far back to plot. Calendar periods run period-to-date; rolling windows count back from today.">Range</span>
+          <div id="jc-range" class="ord-chips" style="margin-bottom:0;"></div>
+        </div>
+        <div class="cal-frow" style="align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <span class="ct-tag" title="Group the days into buckets. Auto picks a sensible bucket for the range.">View by</span>
+          <div id="jc-gran" class="ord-chips" style="margin-bottom:0;"></div>
         </div>
         <div id="jc-trend" class="cv-chart"></div>
         <div id="jc-trend-cap" class="micro" style="margin-top:8px;opacity:.78;text-transform:none;letter-spacing:0;"></div>
@@ -2737,6 +2741,13 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           <button id="jc-floor-save" class="btn primary" type="button" title="Saves the whole rulebook — the on/off for each rule, your wording, and any rules you added. Versioned like every setting; takes effect on the concierge's next unprompted line.">Save the rulebook</button>
           <span id="jc-floor-note" class="micro" style="opacity:.75;"></span>
         </div>
+      </section>
+
+      <!-- CARD 3½ — MESSAGE CONTROLS: the {{…}} tokens the app renders, discovered live -->
+      <section class="card">
+        <div class="card-head"><h3>Message controls the concierge can use</h3><span class="micro">the {{…}} tokens your app renders — the reviewer allows every one</span></div>
+        <p class="note" style="margin:0 0 12px;">A message can carry a control the visitor’s app draws inline — a button, a form, tap-to-answer chips, the rating scale. Put one on its <strong>own line</strong> so it renders (buried mid-sentence it’s dropped). This list is read <strong>live from the engine</strong>, so it’s always exactly what the app renders and what the reviewer allows — one of these is never a “plumbing” block. You’ll see these in your procedures and prompts; anything else in <code>{{…}}</code> is a tool/meta token and is kept out of what visitors see.</p>
+        <div id="jc-tokens"><div class="micro" style="opacity:.7;">Loading…</div></div>
       </section>
 
       <!-- CARD 4 — the coach's self-healing + the weekly email -->
@@ -3549,7 +3560,7 @@ function activateTab(name, fromHistory) {
   if (name === 'conversion') loadConversion();
   if (name === 'spend') loadSpend();
   if (name === 'calendar') loadCalendar();
-  if (name === 'judge') loadJudge();
+  if (name === 'judge') { loadJudge(); loadTokensRef(); }
   if (name === 'nps') loadNps();
   if (name === 'tuning') autoGrowAll('#panel-tuning .tsub.on');
   if (name === 'knowledge') autoGrowAll('#kb-list');
@@ -10230,10 +10241,16 @@ function classifyFamilyClient(reason) {
 function npsMultiLineChart(mount, opts) {
   mount.textContent = '';
   const labels = opts.labels || []; const n = labels.length;
-  const series = (opts.series || []).filter(function (s) { return (s.values || []).some(function (v) { return v; }); });
-  if (!n || !series.length) { mount.appendChild(el('div', 'empty micro', 'No blocked lines to plot in this range yet.')); return; }
+  // keepAll: a single, explicitly-passed metric line stays even when every value is 0
+  // (a 0% block rate is a REAL, good reading — not "nothing to plot").
+  const keepAll = !!opts.keepAll;
+  const fmtV = typeof opts.fmt === 'function' ? opts.fmt : function (v) { return String(Math.round(v)); };
+  const series = (opts.series || []).filter(function (s) { return keepAll || (s.values || []).some(function (v) { return v; }); });
+  if (!n || !series.length) { mount.appendChild(el('div', 'empty micro', opts.emptyText || 'No blocked lines to plot in this range yet.')); return; }
   const W = 640, H = 235, L = 40, R = 14, T = 12, B = 26; const iw = W - L - R, ih = H - T - B;
-  let hi = 1; series.forEach(function (s) { (s.values || []).forEach(function (v) { if (v != null && v > hi) hi = v; }); });
+  const fixedMax = (typeof opts.yMax === 'number' && opts.yMax > 0);
+  let hi = fixedMax ? opts.yMax : 1;
+  if (!fixedMax) series.forEach(function (s) { (s.values || []).forEach(function (v) { if (v != null && v > hi) hi = v; }); });
   const X = function (i) { return L + (n === 1 ? iw / 2 : iw * i / (n - 1)); };
   const Y = function (v) { return T + ih - ih * (v / hi); };
   const NS = 'http://www.w3.org/2000/svg'; const mk = function (t) { return document.createElementNS(NS, t); };
@@ -10244,7 +10261,7 @@ function npsMultiLineChart(mount, opts) {
     const ln = mk('line'); ln.setAttribute('x1', L); ln.setAttribute('x2', W - R); ln.setAttribute('y1', y); ln.setAttribute('y2', y);
     ln.setAttribute('stroke', 'rgba(241,236,226,.08)'); ln.setAttribute('stroke-width', '1'); sv.appendChild(ln);
     const tx = mk('text'); tx.setAttribute('x', L - 6); tx.setAttribute('y', y + 3.5); tx.setAttribute('text-anchor', 'end');
-    tx.setAttribute('font-size', '10'); tx.setAttribute('fill', 'rgba(241,236,226,.38)'); tx.textContent = String(Math.round(v)); sv.appendChild(tx);
+    tx.setAttribute('font-size', '10'); tx.setAttribute('fill', 'rgba(241,236,226,.38)'); tx.textContent = fmtV(v); sv.appendChild(tx);
   }
   (opts.marks || []).forEach(function (m) {
     if (m.i < 0 || m.i >= n) return; const x = X(m.i);
@@ -10279,7 +10296,7 @@ function npsMultiLineChart(mount, opts) {
   // its OWN family+day, not whichever family's fat hit-path happens to overlap it.
   series.forEach(function (s) {
     (s.values || []).forEach(function (v, i) {
-      if (!v) return;
+      if (v == null) return; if (!v && !keepAll) return;   // keepAll: a 0 on a metric line is still a clickable point
       const c = mk('circle'); c.setAttribute('cx', X(i)); c.setAttribute('cy', Y(v)); c.setAttribute('r', '3.5');
       c.setAttribute('fill', s.color); c.setAttribute('cursor', 'pointer');
       if (opts.onPoint) c.addEventListener('click', function () { opts.onPoint(s.key, i); });
@@ -10304,66 +10321,79 @@ function npsMultiLineChart(mount, opts) {
     let i = Math.round((vbX - L) / (iw / (n - 1 || 1)));
     i = Math.max(0, Math.min(n - 1, i));
     if (hideT) { clearTimeout(hideT); hideT = null; }
-    // Rebuild the rows only when the hovered DAY changes — otherwise every pixel of
-    // cursor motion churns up to 7 buttons + listeners for nothing.
-    if (i !== lastI) {
-      lastI = i;
-      guide.setAttribute('x1', X(i)); guide.setAttribute('x2', X(i));
-      const here = series.map(function (s) { return { s: s, v: (s.values && s.values[i]) || 0 }; })
-        .filter(function (o) { return o.v; }).sort(function (a, b) { return b.v - a.v; });
-      tip.textContent = '';
-      const th = el('div', 'micro'); th.style.cssText = 'opacity:.8;margin-bottom:5px;letter-spacing:.04em;'; th.textContent = labels[i]; tip.appendChild(th);
-      if (!here.length) { tip.appendChild(el('div', 'micro', 'no blocks')); }
-      here.forEach(function (o) {
-        const r = document.createElement('button'); r.type = 'button';
-        r.style.cssText = 'display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;color:inherit;cursor:pointer;padding:2px 0;font:inherit;text-align:left;';
-        const sw = document.createElement('span'); sw.style.cssText = 'width:9px;height:9px;border-radius:2px;flex:0 0 auto;background:' + o.s.color + ';'; r.appendChild(sw);
-        const nm = el('span'); nm.style.cssText = 'flex:1;'; nm.textContent = o.s.label; r.appendChild(nm);
-        const vv = el('span'); vv.style.cssText = 'opacity:.85;font-variant-numeric:tabular-nums;'; vv.textContent = o.v; r.appendChild(vv);
-        if (opts.onPoint) r.addEventListener('click', function () { opts.onPoint(o.s.key, i); hideTip(); });
-        tip.appendChild(r);
-      });
-    }
-    guide.style.display = '';
-    // Position against the tooltip's REAL measured size — flip left near the right edge,
-    // clamp up near the bottom — so its clickable rows never fall off the chart.
+    // Same day as last move → leave the tooltip exactly where it is. This is what lets
+    // you walk the cursor INTO the tooltip to click a row without it fleeing.
+    if (i === lastI) { guide.style.display = ''; return; }
+    lastI = i;
+    guide.setAttribute('x1', X(i)); guide.setAttribute('x2', X(i)); guide.style.display = '';
+    const here = series.map(function (s) { return { s: s, v: (s.values && s.values[i] != null) ? s.values[i] : null }; })
+      .filter(function (o) { return keepAll || o.v; }).sort(function (a, b) { return (b.v || 0) - (a.v || 0); });
+    tip.textContent = '';
+    const th = el('div', 'micro'); th.style.cssText = 'opacity:.8;margin-bottom:5px;letter-spacing:.04em;'; th.textContent = labels[i]; tip.appendChild(th);
+    if (!here.length) { tip.appendChild(el('div', 'micro', opts.emptyRow || 'no blocks')); }
+    here.forEach(function (o) {
+      const r = document.createElement('button'); r.type = 'button';
+      r.style.cssText = 'display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;color:inherit;cursor:pointer;padding:2px 0;font:inherit;text-align:left;';
+      const sw = document.createElement('span'); sw.style.cssText = 'width:9px;height:9px;border-radius:2px;flex:0 0 auto;background:' + o.s.color + ';'; r.appendChild(sw);
+      const nm = el('span'); nm.style.cssText = 'flex:1;'; nm.textContent = o.s.label; r.appendChild(nm);
+      const vv = el('span'); vv.style.cssText = 'opacity:.85;font-variant-numeric:tabular-nums;'; vv.textContent = (o.v == null) ? '—' : fmtV(o.v); r.appendChild(vv);
+      if (opts.onPoint) r.addEventListener('click', function () { opts.onPoint(o.s.key, i); hideTip(); });
+      tip.appendChild(r);
+    });
+    // ANCHOR to the hovered day's COLUMN, centered over it near the top — NOT to the
+    // cursor. Moving straight up to the tooltip keeps you in the same column (same i),
+    // so it holds still and its rows stay clickable. It only re-places on a new day.
     tip.style.display = 'block';
     const mrect = mount.getBoundingClientRect();
-    const tw = tip.offsetWidth || 200, th2 = tip.offsetHeight || 0, gap = 14;
-    let lx = e.clientX - mrect.left + gap;
-    if (lx + tw + gap > mrect.width) lx = e.clientX - mrect.left - tw - gap;
-    let ty = e.clientY - mrect.top + 8;
-    if (ty + th2 + 4 > mrect.height) ty = mrect.height - th2 - 4;
-    tip.style.left = Math.max(0, lx) + 'px'; tip.style.top = Math.max(0, ty) + 'px';
+    const colX = (rect.left - mrect.left) + (X(i) / W) * rect.width;
+    const tw = tip.offsetWidth || 200, th2 = tip.offsetHeight || 0;
+    let lx = colX - tw / 2; lx = Math.max(0, Math.min(lx, mrect.width - tw));
+    let ty = (rect.top - mrect.top) + 6;
+    if (ty + th2 + 4 > mrect.height) ty = Math.max(0, mrect.height - th2 - 4);
+    tip.style.left = lx + 'px'; tip.style.top = ty + 'px';
   });
-  const leg = el('div', 'jc-legend'); leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;';
-  series.forEach(function (s) {
-    const item = el('button', 'jc-legend-item'); item.type = 'button';
-    item.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;opacity:.85;';
-    item.title = 'Review the ' + s.label + ' blocks';
-    const sw = document.createElement('span'); sw.style.cssText = 'width:10px;height:10px;border-radius:2px;display:inline-block;background:' + s.color + ';';
-    item.appendChild(sw); item.appendChild(el('span', 'micro', s.label + ' (' + s.total + ')'));
-    if (opts.onLegend) item.addEventListener('click', function () { opts.onLegend(s.key); });
-    leg.appendChild(item);
-  });
-  mount.appendChild(leg);
+  // A single metric line needs no legend (the card title already names it).
+  if (!opts.hideLegend && series.length > 1) {
+    const leg = el('div', 'jc-legend'); leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;';
+    series.forEach(function (s) {
+      const item = el('button', 'jc-legend-item'); item.type = 'button';
+      item.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;opacity:.85;';
+      item.title = 'Review the ' + s.label + ' blocks';
+      const sw = document.createElement('span'); sw.style.cssText = 'width:10px;height:10px;border-radius:2px;display:inline-block;background:' + s.color + ';';
+      item.appendChild(sw); item.appendChild(el('span', 'micro', s.label + ' (' + (s.total != null ? s.total : '') + ')'));
+      if (opts.onLegend) item.addEventListener('click', function () { opts.onLegend(s.key); });
+      leg.appendChild(item);
+    });
+    mount.appendChild(leg);
+  }
 }
-// Drill-in: the specific blocked lines behind a chart point (day+family) or a
-// legend family (whole range) — each with a jump to the chat it happened in, so
-// the owner can read them in context. dayIso null = the whole current range.
-async function judgeDrill(famKey, dayIso) {
+// Drill-in: the specific blocked lines behind a chart point (a bucket [startIso,endIso],
+// a single day, or the whole active window) — each with a jump to the chat it happened
+// in. famKey '__all__' (or empty) = every reason, used by the single-metric charts.
+async function judgeDrill(famKey, startIso, endIso) {
   const mount = $('jc-drill'); if (!mount) return;
-  const famLabel = (JC_FAM_SHORT[famKey] || famKey);
+  const isAll = (!famKey || famKey === '__all__');
+  const famLabel = isAll ? 'all reasons' : (JC_FAM_SHORT[famKey] || famKey);
+  const win = state.jcWindow || {};
+  // The slice to read: an explicit bucket, a single day (startIso only), or — when the
+  // chart passed no span — the whole active window that's currently plotted.
+  const lo = startIso || win.startIso || null;
+  const hi = endIso || startIso || win.endIso || null;
   mount.textContent = '';
   const head = el('div', 'micro'); head.style.cssText = 'letter-spacing:.08em;opacity:.85;margin-bottom:8px;';
-  head.textContent = 'BLOCKED LINES · ' + famLabel.toUpperCase() + (dayIso ? ' · ' + dayIso : ' · last ' + (state.jcRange || 30) + ' days');
+  let spanLabel;
+  if (startIso && endIso && endIso !== startIso) spanLabel = startIso + ' – ' + endIso;
+  else if (startIso) spanLabel = startIso;
+  else spanLabel = win.label || ('last ' + (typeof state.jcRange === 'number' ? state.jcRange : 30) + ' days');
+  head.textContent = 'BLOCKED LINES · ' + famLabel.toUpperCase() + ' · ' + spanLabel;
   mount.appendChild(head);
   const loading = el('div', 'micro', 'Loading…'); mount.appendChild(loading);
   const DRILL_CAP = 500;
   let q = sb.from('concierge_actions').select('created_at,email,payload,result,conversation_id')
     .eq('action', 'beat_veto').order('created_at', { ascending: false }).limit(DRILL_CAP);
-  if (dayIso) { const nx = new Date(dayIso + 'T00:00:00Z'); nx.setUTCDate(nx.getUTCDate() + 1); q = q.gte('created_at', dayIso + 'T00:00:00Z').lt('created_at', nx.toISOString()); }
-  else { const days = state.jcRange || 30; q = q.gte('created_at', new Date(Date.now() - days * 86400000).toISOString()); }
+  if (lo) q = q.gte('created_at', lo + 'T00:00:00Z');
+  else if (typeof state.jcRange === 'number' && state.jcRange > 0) q = q.gte('created_at', new Date(Date.now() - state.jcRange * 86400000).toISOString());
+  if (hi) { const nx = new Date(hi + 'T00:00:00Z'); nx.setUTCDate(nx.getUTCDate() + 1); q = q.lt('created_at', nx.toISOString()); }
   let rows = [];
   try { const r = await q; if (r.error) throw new Error(r.error.message); rows = r.data || []; }
   catch (e) { loading.textContent = 'Could not load — ' + (e && e.message ? e.message : e); return; }
@@ -10371,24 +10401,27 @@ async function judgeDrill(famKey, dayIso) {
   // only when reason is ABSENT (null), keeping a present-but-empty reason — so the
   // drill classifies each row identically to the chart that counted it.
   const reasonOf = function (a) { return (a.payload && a.payload.reason != null) ? String(a.payload.reason) : (a.result || ''); };
-  const fam = rows.filter(function (a) { return classifyFamilyClient(reasonOf(a)) === famKey; });
+  const fam = isAll ? rows.slice() : rows.filter(function (a) { return classifyFamilyClient(reasonOf(a)) === famKey; });
   loading.remove();
   if (!fam.length) { mount.appendChild(el('div', 'empty micro', 'No blocked lines in this slice.')); return; }
-  // The drill re-reads the raw veto rows (capped at DRILL_CAP); the chart's legend/
-  // point count is the authoritative total. When the raw read hit the cap, say so —
-  // the owner is seeing recent examples, not necessarily every line.
-  if (!dayIso && rows.length >= DRILL_CAP) {
+  // The drill re-reads the raw veto rows (capped at DRILL_CAP); the chart's count is the
+  // authoritative total. When the raw read hit the cap, say so — the owner is seeing
+  // recent examples, not necessarily every line.
+  if (rows.length >= DRILL_CAP) {
     const cnote = el('div', 'micro'); cnote.style.cssText = 'opacity:.62;margin-bottom:6px;text-transform:none;letter-spacing:0;';
-    cnote.textContent = 'Showing examples from the most recent ' + DRILL_CAP + ' blocked lines in this range — the count on the chart is the full total.';
+    cnote.textContent = 'Showing examples from the most recent ' + DRILL_CAP + ' blocked lines in this slice — the count on the chart is the full total.';
     mount.appendChild(cnote);
   }
-  // Ask the coach to read this family and suggest a rule tweak (suggest-only —
-  // it never changes the rulebook; you copy what you want).
-  const rev = el('button', 'btn ghost mini', 'Ask the coach to review these & suggest a rule tweak'); rev.type = 'button';
-  rev.style.margin = '2px 0 10px';
-  const revOut = el('div'); revOut.style.marginBottom = '10px';
-  rev.addEventListener('click', function () { judgeReviewFamily(famKey, rev, revOut); });
-  mount.appendChild(rev); mount.appendChild(revOut);
+  // Ask the coach to read this family and suggest a rule tweak (suggest-only — it never
+  // changes the rulebook; you copy what you want). A mixed "all reasons" slice maps to no
+  // single rule, so the coach button only shows on a specific family.
+  if (!isAll) {
+    const rev = el('button', 'btn ghost mini', 'Ask the coach to review these & suggest a rule tweak'); rev.type = 'button';
+    rev.style.margin = '2px 0 10px';
+    const revOut = el('div'); revOut.style.marginBottom = '10px';
+    rev.addEventListener('click', function () { judgeReviewFamily(famKey, rev, revOut); });
+    mount.appendChild(rev); mount.appendChild(revOut);
+  }
   const renderRow = function (a) {
     const row = el('div', 'jc-drill-row'); row.style.cssText = 'border-left:2px solid rgba(241,236,226,.14);padding:6px 10px;margin:6px 0;';
     const line = (a.payload && a.payload.line) || '';
@@ -10434,7 +10467,7 @@ async function judgeDrill(famKey, dayIso) {
 async function judgeReviewFamily(famKey, btn, out) {
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Reading the blocked lines…'; out.textContent = '';
   try {
-    const days = state.jcRange || 30;
+    const days = jcWindowDays();
     // Read the current amendment CONCURRENTLY with the review (supabase-js is lazy — it
     // only fires on await/then, so both must be launched together to actually overlap).
     const [j, c] = await Promise.all([
@@ -10961,6 +10994,47 @@ const JC_CLASS_LABELS = {
   etiquette: 'asked something unprompted',
   other: 'other',
 };
+// The message-controls reference — DISCOVERED live from the engine (?tokens=1), never
+// hardcoded here. WIDGET_TOKENS in the engine is the single source of truth, so this
+// list is always exactly what the app renders and what the reviewer allows.
+let _tokensRef = null;
+async function loadTokensRef() {
+  const mount = $('jc-tokens'); if (!mount) return;
+  const render = function (data) {
+    mount.textContent = '';
+    const toks = (data && data.tokens) || [];
+    if (!toks.length) { mount.appendChild(el('div', 'empty micro', 'No controls returned.')); return; }
+    const grid = el('div'); grid.style.cssText = 'display:grid;gap:8px;';
+    toks.forEach(function (t) {
+      const row = el('div'); row.style.cssText = 'border-left:2px solid rgba(216,198,154,.35);padding:6px 10px;';
+      const top = el('div'); top.style.cssText = 'display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;';
+      const code = el('code'); code.style.cssText = 'font-size:13px;color:var(--brass,#d8c69a);background:rgba(241,236,226,.05);padding:1px 6px;border-radius:4px;'; code.textContent = t.example;
+      const name = el('span', 'micro'); name.style.cssText = 'opacity:.85;'; name.textContent = t.label;
+      top.appendChild(code); top.appendChild(name); row.appendChild(top);
+      const rn = el('div', 'micro'); rn.style.cssText = 'opacity:.72;margin-top:3px;text-transform:none;letter-spacing:0;'; rn.textContent = 'Renders ' + t.renders + '.'; row.appendChild(rn);
+      if (t.usage) { const us = el('div', 'micro'); us.style.cssText = 'opacity:.6;margin-top:2px;text-transform:none;letter-spacing:0;'; us.textContent = t.usage; row.appendChild(us); }
+      grid.appendChild(row);
+    });
+    mount.appendChild(grid);
+    if (data.blocked_examples && data.blocked_examples.length) {
+      const bl = el('div', 'micro'); bl.style.cssText = 'margin-top:10px;opacity:.6;text-transform:none;letter-spacing:0;';
+      bl.textContent = 'Blocked as plumbing (never shown to visitors): ' + data.blocked_examples.join('   ');
+      mount.appendChild(bl);
+    }
+  };
+  if (_tokensRef) { render(_tokensRef); return; }
+  try {
+    const token = state.session && state.session.access_token;
+    const res = await fetch(SUPABASE_URL + '/functions/v1/concierge?tokens=1', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + (token || SUPABASE_ANON_KEY) }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _tokensRef = await res.json();
+    render(_tokensRef);
+  } catch (e) {
+    mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'Could not load the controls — ' + (e && e.message ? e.message : e)));
+  }
+}
 async function loadJudge() {
   const note = $('jc-note'); if (note) { note.textContent = ''; note.className = 'micro'; }
   try {
@@ -11295,84 +11369,192 @@ function jcTrendWhy(mount, o) {
   if (Object.keys(o.markMap).length) softNote('Dashed lines mark the days you changed a setting — hover any one to see what.');
   else softNote('No setting changes in this range — the movement is the concierge’s own drift, not something you did.');
 }
+// ── Range + granularity for the trend report (parity with the Conversion report) ──
+// judge_findings returns DAILY rows; we fetch enough days to cover the chosen window,
+// slice to it, then bucket the days by the chosen granularity — summing the underlying
+// counts so an aggregated RATE stays a weighted rate, not an average of daily rates.
+// Range + View-by reuse the Conversion report's exact chip sets (CV_RANGES/CV_GRANS).
+function jcPeriodWindow(r, ws, now) {
+  const d = new Date(now); d.setHours(0, 0, 0, 0);
+  let curStart = null, curEnd = null;                       // curEnd null = runs to now
+  if (r === 'today') curStart = d.getTime();
+  else if (r === 'week') { d.setDate(d.getDate() - ((d.getDay() - ws + 7) % 7)); curStart = d.getTime(); }
+  else if (r === 'lastweek') { d.setDate(d.getDate() - ((d.getDay() - ws + 7) % 7)); curEnd = d.getTime(); curStart = curEnd - 7 * 86400000; }
+  else if (r === 'month') { d.setDate(1); curStart = d.getTime(); }
+  else if (r === 'lastmonth') { d.setDate(1); curEnd = d.getTime(); const p = new Date(curEnd); p.setMonth(p.getMonth() - 1); curStart = p.getTime(); }
+  else if (r === 'year') { d.setMonth(0, 1); curStart = d.getTime(); }
+  else if (typeof r === 'number' && r > 0) curStart = now - r * 86400000;
+  return { curStart: curStart, curEnd: curEnd };            // r === 0 (all time) → both null
+}
+function jcIsoDay(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function jcRangeLabel(r) { for (let i = 0; i < CV_RANGES.length; i++) if (CV_RANGES[i][0] === r) return CV_RANGES[i][1]; return String(r); }
+function jcAutoGran(spanDays) { return spanDays <= 32 ? 'day' : spanDays <= 210 ? 'week' : 'month'; }
+function jcBucketKey(dayIso, gran, ws) {
+  if (gran === 'week') { const dt = new Date(dayIso + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() - ws + 7) % 7)); return dt.toISOString().slice(0, 10); }
+  if (gran === 'month') return dayIso.slice(0, 7) + '-01';
+  if (gran === 'year') return dayIso.slice(0, 4) + '-01-01';
+  return dayIso;
+}
+const JC_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function jcBucketLabel(dayIso, gran) {
+  const p = dayIso.split('-');
+  if (gran === 'month') return JC_MONTHS[(+p[1]) - 1] + " '" + p[0].slice(2);
+  if (gran === 'year') return p[0];
+  return (+p[1]) + '/' + (+p[2]);                           // day + week keyed by start day
+}
+// Daily rows → coarser buckets: sum the count fields + the per-family object, and track
+// each bucket's real [_start,_end] day span so a click drills exactly that span.
+function jcBucketize(series, gran, ws) {
+  const COUNTS = ['spoke', 'vetoed', 'redraft_ok', 'redraft_blocked', 'gaps_cleared'];
+  if (gran === 'day') return series.map(function (s) { const o = Object.assign({}, s); o._start = s.day; o._end = s.day; return o; });
+  const map = {}, order = [];
+  series.forEach(function (s) {
+    const k = jcBucketKey(s.day, gran, ws);
+    let b = map[k];
+    if (!b) { b = map[k] = { day: k, _start: s.day, _end: s.day, families: {} }; COUNTS.forEach(function (f) { b[f] = 0; }); order.push(k); }
+    COUNTS.forEach(function (f) { b[f] += (s[f] || 0); });
+    const fam = s.families || {}; Object.keys(fam).forEach(function (f) { b.families[f] = (b.families[f] || 0) + (fam[f] || 0); });
+    if (s.day < b._start) b._start = s.day;
+    if (s.day > b._end) b._end = s.day;
+  });
+  order.sort();
+  return order.map(function (k) { return map[k]; });
+}
+function jcWindowDays() {
+  const w = state.jcWindow;
+  if (w && w.startIso) {
+    const s = new Date(w.startIso + 'T00:00:00Z').getTime();
+    const e = new Date((w.endIso || w.startIso) + 'T00:00:00Z').getTime() + 86400000;
+    return Math.min(120, Math.max(1, Math.round((e - s) / 86400000)));
+  }
+  return (typeof state.jcRange === 'number' && state.jcRange > 0) ? Math.min(120, state.jcRange) : 30;
+}
+function downloadCsv(filename, rows) {
+  const esc = function (v) { v = (v == null ? '' : String(v)); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const blob = new Blob([rows.map(function (r) { return r.map(esc).join(','); }).join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) { /* */ } }, 1000);
+}
+function jcExportCsv() {
+  const x = state.jcExport;
+  if (!x || !x.rows || !x.rows.length) { toast('Nothing to export yet', true); return; }
+  downloadCsv(x.filename || 'judge-trend.csv', [x.headers].concat(x.rows));
+}
+function jcChipRow(holderId, items, key, def) {
+  const holder = $(holderId); if (!holder) return;
+  holder.textContent = '';
+  const cur = state[key] === undefined ? def : state[key];
+  items.forEach(function (row) {
+    const c = el('button', 'ord-chip' + (cur === row[0] ? ' on' : ''), row[1]); c.type = 'button';
+    c.addEventListener('click', function () { state[key] = row[0]; jcRangeChips(); loadJudgeTrend(); });
+    holder.appendChild(c);
+  });
+}
+function jcRangeChips() { jcChipRow('jc-range', CV_RANGES, 'jcRange', 30); jcChipRow('jc-gran', CV_GRANS, 'jcGran', 'auto'); }
 async function loadJudgeTrend() {
   const mount = $('jc-trend'); if (!mount) return;
   const cap = $('jc-trend-cap');
   const drillEl = $('jc-drill'); if (drillEl) drillEl.textContent = '';
-  const mSel = $('jc-trend-metric'); const rSel = $('jc-trend-range');
+  const why = $('jc-trend-why'); if (why) why.textContent = '';
+  const mSel = $('jc-trend-metric');
   const key = (mSel && mSel.value) || 'block_rate';
-  const range = Math.max(parseInt((rSel && rSel.value) || '30', 10) || 30, 2);
   const spec = JC_TREND_METRICS[key] || JC_TREND_METRICS.block_rate;
+  const now = Date.now();
+  const ws = (typeof state.weekStart === 'number') ? state.weekStart : 0;
+  const rangeVal = state.jcRange === undefined ? 30 : state.jcRange;
+  const w = jcPeriodWindow(rangeVal, ws, now);
+  const curStart = w.curStart, curEnd = w.curEnd;
+  const endMs = curEnd != null ? curEnd : now;
+  const pDays = curStart == null ? 3650 : Math.min(3650, Math.max(2, Math.ceil((now - curStart) / 86400000) + 1));
   try {
-    const r = await sb.rpc('judge_findings', { p_days: range });
+    const r = await sb.rpc('judge_findings', { p_days: pDays });
     if (r.error) throw new Error(r.error.message);
-    const series = (r.data && r.data.series) || [];
-    const why = $('jc-trend-why'); if (why) why.textContent = '';
-    if (!series.length) { mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No days to plot yet.')); if (cap) cap.textContent = ''; return; }
-    const labels = series.map(function (s) { const p = String(s.day).split('-'); return p.length === 3 ? (+p[1] + '/' + (+p[2])) : s.day; });
-    const values = series.map(function (s) { return spec.val(s); });
-    const fmt = spec.pct ? function (v) { return Math.round(v) + '%'; } : function (v) { return String(Math.round(v)); };
-    let hi = spec.pct ? 100 : 1;
-    values.forEach(function (v) { if (v !== null && v > hi) hi = v; });
-    // ── change markers: where the merchant changed a judge-relevant setting ──
-    const dayIdx = {}; series.forEach(function (s, i) { dayIdx[s.day] = i; });
+    let series = (r.data && r.data.series) || [];
+    // Slice the daily series to the selected window (calendar ranges can end in the past).
+    const startDay = curStart == null ? null : jcIsoDay(curStart);
+    const endDay = jcIsoDay(curEnd != null ? curEnd - 86400000 : now);
+    series = series.filter(function (s) { return (startDay == null || s.day >= startDay) && s.day <= endDay; });
+    if (!series.length) { mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No days to plot in this range yet.')); if (cap) cap.textContent = ''; return; }
+    // Resolve granularity, then bucket the days.
+    const spanDays = curStart == null ? series.length : Math.max(1, Math.round((endMs - curStart) / 86400000));
+    let gran = (state.jcGran && state.jcGran !== 'auto') ? state.jcGran : jcAutoGran(spanDays);
+    if (gran === 'hour') gran = 'day';
+    const buckets = jcBucketize(series, gran, ws);
+    const labels = buckets.map(function (b) { return jcBucketLabel(b.day, gran); });
+    // Remember the active window (for the drill's "whole range" + the coach's day count).
+    state.jcRange = rangeVal;
+    state.jcWindow = {
+      startIso: (buckets[0] && buckets[0]._start) || startDay,
+      endIso: (buckets[buckets.length - 1] && buckets[buckets.length - 1]._end) || endDay,
+      label: jcRangeLabel(rangeVal) + (gran !== 'day' ? ' · ' + gran + 'ly' : '')
+    };
+    // ── change markers, mapped to the bucket that contains each change day ──
     const changeLabel = function (c) {
       if (c.entity === 'config') return c.ref === 'judge' ? 'edited the rulebook'
         : c.ref === 'outreach' ? 'changed reach-out settings' : 'edited the house voice';
       return c.entity === 'kb' ? 'updated knowledge' : c.entity === 'sop' ? 'edited a procedure' : 'changed a setting';
     };
+    const bucketOf = function (dayIso) { for (let i = 0; i < buckets.length; i++) if (dayIso >= buckets[i]._start && dayIso <= buckets[i]._end) return i; return -1; };
     const markMap = {};
-    ((r.data && r.data.changes) || []).forEach(function (c) {
-      const i = dayIdx[c.day]; if (i == null) return;
-      (markMap[i] = markMap[i] || []).push(changeLabel(c));
-    });
+    ((r.data && r.data.changes) || []).forEach(function (c) { const i = bucketOf(c.day); if (i < 0) return; (markMap[i] = markMap[i] || []).push(changeLabel(c)); });
     const marks = Object.keys(markMap).map(function (i) {
       const seen = {}; const uniq = markMap[i].filter(function (l) { return seen[l] ? false : (seen[l] = true); });
-      return { i: +i, label: 'You ' + uniq.join('; you ') + ' this day.' };
+      return { i: +i, label: 'You ' + uniq.join('; you ') + ' this ' + (gran === 'day' ? 'day' : gran) + '.' };
     });
-    // "By category": one line per defect family; points + legend drill into the
-    // actual blocked lines. Uses the per-day `families` object the RPC now emits.
+    const spanNote = gran === 'day' ? '' : ' · ' + gran + 'ly buckets';
+    // ── "By category": one line per defect family ──
     if (key === 'families') {
-      state.jcRange = range;
-      const drill = $('jc-drill'); if (drill) drill.textContent = '';
       const FAM_ORDER = ['inventorying', 'invented', 'plumbing', 'etiquette', 'house_rules', 'prefilter', 'other'];
       const totals = {};
-      series.forEach(function (s) { const f = s.families || {}; Object.keys(f).forEach(function (k) { totals[k] = (totals[k] || 0) + (f[k] || 0); }); });
+      buckets.forEach(function (b) { const f = b.families || {}; Object.keys(f).forEach(function (k) { totals[k] = (totals[k] || 0) + (f[k] || 0); }); });
       const fams = FAM_ORDER.filter(function (k) { return totals[k]; });
-      if (!fams.length) {
-        mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No lines were blocked in this range — nothing to break down.'));
-        if (cap) cap.textContent = ''; if (why) why.textContent = ''; return;
-      }
+      if (!fams.length) { mount.textContent = ''; mount.appendChild(el('div', 'empty micro', 'No lines were blocked in this range — nothing to break down.')); if (cap) cap.textContent = ''; return; }
       const famSeries = fams.map(function (k) {
         return { key: k, label: (JC_FAM_SHORT[k] || k), color: (JC_FAM_COLOR[k] || '#b0a89a'), total: totals[k],
-          values: series.map(function (s) { return (s.families && s.families[k]) || 0; }) };
+          values: buckets.map(function (b) { return (b.families && b.families[k]) || 0; }) };
       });
       npsMultiLineChart(mount, {
         labels: labels, series: famSeries, marks: marks,
-        aria: 'blocked lines by category over ' + range + ' days',
-        onPoint: function (k, i) { judgeDrill(k, series[i] && series[i].day); },
+        aria: 'blocked lines by category, ' + jcRangeLabel(rangeVal),
+        onPoint: function (k, i) { judgeDrill(k, buckets[i] && buckets[i]._start, buckets[i] && buckets[i]._end); },
         onLegend: function (k) { judgeDrill(k, null); }
       });
-      if (cap) cap.textContent = 'Each line is one reason the reviewer blocks lines. Click a dot to read the exact lines blocked that day, or a legend item to review the whole range — every one links to the chat it happened in.';
-      if (why) why.textContent = '';
+      state.jcExport = { filename: 'judge-by-category.csv', headers: ['Bucket'].concat(fams.map(function (k) { return (JC_FAM_SHORT[k] || k); })),
+        rows: buckets.map(function (b, i) { return [labels[i]].concat(fams.map(function (k) { return (b.families && b.families[k]) || 0; })); }) };
+      if (cap) cap.textContent = 'Each line is one reason the reviewer blocks lines' + spanNote + '. Hover any point to read the bucket; click a dot to open the exact lines in it, or a legend item / the line itself for the whole range — every one links to the chat.';
       return;
     }
-    npsLineChart(mount, {
-      labels: labels, values: values, yMin: 0, yMax: hi, color: spec.color, marks: marks,
-      aria: spec.label + ' over ' + range + ' days', fmt: fmt
+    // ── single metric: ONE line, but with the SAME hover tooltip + click-drill ──
+    const values = buckets.map(function (b) { return spec.val(b); });
+    const fmt = spec.pct ? function (v) { return Math.round(v) + '%'; } : function (v) { return String(Math.round(v)); };
+    let hi = spec.pct ? 100 : 1;
+    values.forEach(function (v) { if (v !== null && v > hi) hi = v; });
+    npsMultiLineChart(mount, {
+      labels: labels, marks: marks, yMax: hi, fmt: fmt, keepAll: true, hideLegend: true,
+      emptyText: 'No days to plot in this range yet.', emptyRow: 'no data',
+      series: [{ key: key, label: spec.label, color: spec.color, values: values }],
+      aria: spec.label + ', ' + jcRangeLabel(rangeVal),
+      onPoint: function (k, i) { judgeDrill('__all__', buckets[i] && buckets[i]._start, buckets[i] && buckets[i]._end); },
+      onLegend: function () { judgeDrill('__all__', null); }
     });
-    if (cap) cap.textContent = spec.cap;
-    // ── the "what moved & likely why" read ────────────────────────
-    if (why) jcTrendWhy(why, { key: key, spec: spec, series: series, labels: labels, values: values, fmt: fmt, markMap: markMap });
+    state.jcExport = { filename: 'judge-' + key + '.csv', headers: ['Bucket', spec.label], rows: buckets.map(function (b, i) { return [labels[i], values[i] == null ? '' : values[i]]; }) };
+    if (cap) cap.textContent = spec.cap + spanNote + ' · Hover a point for the value; click it to read the blocked lines behind it.';
+    if (why) jcTrendWhy(why, { key: key, spec: spec, series: buckets, labels: labels, values: values, fmt: fmt, markMap: markMap });
   } catch (e) {
     mount.textContent = '';
     mount.appendChild(el('div', 'empty micro', 'Could not load the trend — ' + (e && e.message ? e.message : e)));
   }
 }
 function bindJudgeTrend() {
-  const mSel = $('jc-trend-metric'); const rSel = $('jc-trend-range');
+  const mSel = $('jc-trend-metric');
   if (mSel && !mSel.dataset.bound) { mSel.dataset.bound = '1'; mSel.addEventListener('change', loadJudgeTrend); }
-  if (rSel && !rSel.dataset.bound) { rSel.dataset.bound = '1'; rSel.addEventListener('change', loadJudgeTrend); }
+  const rf = $('jc-refresh'); if (rf && !rf.dataset.bound) { rf.dataset.bound = '1'; rf.addEventListener('click', loadJudgeTrend); }
+  const ex = $('jc-export'); if (ex && !ex.dataset.bound) { ex.dataset.bound = '1'; ex.addEventListener('click', jcExportCsv); }
+  jcRangeChips();
   loadJudgeTrend();
 }
 function calRow(tone, html, qid) {

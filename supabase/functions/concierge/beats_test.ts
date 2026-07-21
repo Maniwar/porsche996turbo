@@ -33,6 +33,10 @@ import {
   proposalGate,
   proposalRestHoursFrom,
   type SalesLedger,
+  WIDGET_TOKENS,
+  RENDERABLE_TOKEN_RE,
+  describeTokensForJudge,
+  widgetTokensJudgeNote,
 } from "./beats.ts";
 
 function assert(cond: unknown, msg: string) {
@@ -636,4 +640,46 @@ Deno.test("bookSlugRecovery: a real bug — hands back the true slug, bans 'syst
   const empty = bookSlugRecovery("unknown_type", [], []);
   assert(empty !== null && empty.valid_types.length === 0 && empty.valid_locations.length === 0,
     "empty catalogs yield empty lists, never a crash");
+});
+
+Deno.test("widget tokens: the registry IS the whitelist — real controls pass, plumbing is vetoed", () => {
+  // Concrete instances of every registered control render (this is the exact set the
+  // pre-filter, the judge, and the studio all read from — one source of truth).
+  const renderable = [
+    "{{action:signin}}", "{{action:commission}}", "{{action:snooze}}",
+    "{{form:appointment}}", "{{form:appointment:3}}",
+    "{{reply:Tell me about the wool}}", "{{nps}}",
+    "{{img:selvedge_number}}", "{{video:mending}}",
+  ];
+  renderable.forEach((t) => assert(RENDERABLE_TOKEN_RE.test(t), t + " must be recognized as renderable UI"));
+
+  // True plumbing / tool-meta tokens are NOT renderable — the reach-out gate must veto these.
+  ["{{tool:search}}", "{{action:recall_context}}", "{{action:tool}}", "{{npsx}}", "{{signin}}", "{{action:}}"]
+    .forEach((t) => assert(!RENDERABLE_TOKEN_RE.test(t), t + " must NOT be treated as renderable"));
+
+  // Every registry example, once concrete, is covered by the union regex — guards a
+  // future token being added to WIDGET_TOKENS without a matching pattern.
+  assert(WIDGET_TOKENS.length >= 8, "registry lists every known control");
+  assert(WIDGET_TOKENS.every((t) => t.label && t.renders && t.usage), "each token documents label/renders/usage");
+});
+
+Deno.test("widget tokens: the judge sees a described control, never the raw {{…}} syntax", () => {
+  // The exact false-veto line: a real sign-in CTA on its own line. The judge must be
+  // handed a plain-English control, so it can't misfire the 'tools/plumbing' rule.
+  const line = "The blanket carries a number on the selvedge — yours goes into the Webbuch, the mill's register since 1897, and stays there. Built to be inherited, not replaced.\n\n{{action:signin}}";
+  const seen = describeTokensForJudge(line);
+  assert(!/\{\{action:signin\}\}/.test(seen), "the raw token is gone from what the judge reads");
+  assert(/\[Sign-in button\]/.test(seen), "it becomes a plain-English control the judge understands");
+  assert(/Webbuch/.test(seen) && /inherited, not replaced/.test(seen), "the prose is untouched");
+
+  // A true plumbing token would never reach the judge (pre-filter vetoes first), but if
+  // one did, describe leaves it visible rather than laundering it into a friendly label.
+  assertEq(describeTokensForJudge("hold on {{tool:search}}"), "hold on {{tool:search}}",
+    "an unrecognized token is left as-is, never disguised");
+
+  // The judge's WIDGET-CONTROLS note is generated from the registry, so it can never
+  // omit a control the way the old hand-written list dropped snooze/img/video.
+  const note = widgetTokensJudgeNote();
+  ["Sign-in button", "Commission button", "Snooze control", "Inline form", "Quick-reply chip", "Rating scale", "Image", "Video"]
+    .forEach((label) => assert(note.includes(label), "the judge note names the " + label));
 });

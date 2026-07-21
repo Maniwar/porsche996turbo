@@ -54,6 +54,10 @@ import {
   renderCustomerNps,
   renderLearningDigest,
   type SalesLedger,
+  WIDGET_TOKENS,
+  RENDERABLE_TOKEN_RE,
+  describeTokensForJudge,
+  widgetTokensJudgeNote,
 } from "./beats.ts";
 
 // Editable built-in bases. The admin can override each via a concierge_config key
@@ -3796,15 +3800,13 @@ async function judgeBeatLine(
   // pre-filter from the model judge.
   // Widget-renderable tokens are PRODUCT, not plumbing: the client draws
   // {{action:signin}} / {{action:commission}} as buttons, {{form:…}} as a
-  // form, {{reply:…}} as tap-to-answer chips, {{nps}} as the survey scale,
-  // and strips any stray mid-line token harmlessly (same whitelist as
-  // stripPlumbing). Veto only what the widget does NOT render — true
-  // plumbing like {{tool:…}} or {{action:recall_context}} — or a
-  // half-formed token.
-  const renderable =
-    /^\{\{(action:(commission|signin|snooze)|form:[a-z0-9-]{2,40}(:\d{1,6})?|reply:[^{}]{1,200}|nps|img:[A-Za-z0-9_-]+|video:[A-Za-z0-9_-]+)\}\}$/i;
+  // form, {{reply:…}} as tap-to-answer chips, {{nps}} as the survey scale, etc.,
+  // and strips any stray mid-line token harmlessly. Veto only what the widget
+  // does NOT render — true plumbing like {{tool:…}} or {{action:recall_context}}
+  // — or a half-formed token. The whitelist is the canonical WIDGET_TOKENS
+  // registry (beats.ts) so this gate, the judge, and the studio never drift.
   const toks = line.match(/\{\{[^{}]*\}\}/g) || [];
-  const plumbingTok = toks.find((t) => !renderable.test(t));
+  const plumbingTok = toks.find((t) => !RENDERABLE_TOKEN_RE.test(t));
   if (plumbingTok || /\{\{(?![^{}]*\}\})/.test(line)) {
     return {
       veto: true,
@@ -3875,11 +3877,8 @@ async function judgeBeatLine(
               ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
                 recentUser.slice(0, 400)
               : "") +
-            "\n\nWIDGET TOKENS (configured UI, not plumbing): {{action:signin}} renders a " +
-            "sign-in button, {{action:commission}} a commission button, {{form:…}} a form, " +
-            "{{reply:…}} tap-to-answer chips, {{nps}} the survey scale. A line carrying one of " +
-            "these is offering a real affordance — never a defect by itself." +
-            "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + line,
+            "\n\n" + widgetTokensJudgeNote() +
+            "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + describeTokensForJudge(line),
         }],
       }),
     });
@@ -5216,6 +5215,20 @@ async function handleDefaultsGet(req: Request): Promise<Response> {
     // The toggleable sections, so the admin UI can render the on/off switches without
     // hardcoding the list (kept in sync with PROMPT_SECTIONS here on the server).
     sections: PROMPT_SECTIONS.map((s) => ({ key: s.key, label: s.label, signedInOnly: !!s.signedInOnly })),
+  });
+}
+
+// ── GET ?tokens=1 — the canonical widget-token registry ──────────────────────
+// So the studio's "message controls" reference DISCOVERS the live list from the
+// engine instead of hardcoding it: single source of truth = WIDGET_TOKENS.
+async function handleTokensGet(req: Request): Promise<Response> {
+  if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
+  return jsonResponse(req, 200, {
+    tokens: WIDGET_TOKENS.map((t) => ({ example: t.example, label: t.label, renders: t.renders, usage: t.usage })),
+    blocked_examples: ["{{tool:…}}", "{{action:recall_context}}", "{{action:tool}}"],
+    note: "These are the only {{…}} controls the visitor's app renders inline. Anything else — tool or meta " +
+      "tokens — is treated as plumbing and blocked from a reach-out. Put an action/form/nps token on its own line " +
+      "so the control renders; a token buried mid-sentence is stripped.",
   });
 }
 
@@ -8427,6 +8440,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("defaults")) {
     return await handleDefaultsGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("tokens")) {
+    return await handleTokensGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("insights")) {
     return await handleInsightsGet(req);
