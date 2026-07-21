@@ -132,6 +132,26 @@ alter table public.orders drop constraint if exists orders_variant_check;
 alter table public.orders add constraint orders_variant_check
   check (variant is null or variant in ('as-listed','unused-2','unused-3'));
 
+-- Add-on line items — cross-sell / upsell companion pieces bought ALONGSIDE
+-- (pre-order) or AFTER (post-order) the primary order. One row per piece per
+-- order; the catalog is the engine's single source of truth (?catalog=1), so
+-- only a price/name SNAPSHOT is kept here. added_by is the attribution the AOV
+-- dashboard reports on: 'concierge' (causal upsell) | 'customer' | 'page'.
+-- (This listing ships an empty catalog — the surface exists for engine parity.)
+create table if not exists public.order_addons (
+  id bigint generated always as identity primary key,
+  order_id uuid not null references public.orders(id) on delete cascade,
+  addon_slug text not null,
+  name text not null,
+  price_cents int not null check (price_cents >= 0),
+  variant text,
+  qty int not null default 1 check (qty >= 1 and qty <= 20),
+  added_by text not null default 'customer' check (added_by in ('concierge','customer','page')),
+  added_at timestamptz not null default now());
+create index if not exists order_addons_order_id_idx on public.order_addons (order_id);
+create index if not exists order_addons_slug_idx on public.order_addons (addon_slug);
+create index if not exists order_addons_added_at_idx on public.order_addons (added_at desc);
+
 create table if not exists public.allocation_counter (
   id int primary key default 1 check (id = 1), next_serial int not null);
 -- the edition's total run size, admin-settable (see set_edition below)
@@ -372,7 +392,7 @@ begin
     'concierge_messages','concierge_feedback','customers','orders','allocation_counter',
     'serial_holds','concierge_sops','concierge_actions','concierge_cache','concierge_flags',
     'concierge_forms','customer_notes','customer_addresses','order_events','concierge_goals','site_content',
-    'concierge_tools','concierge_evals','concierge_edit_history','site_events'
+    'concierge_tools','concierge_evals','concierge_edit_history','site_events','order_addons'
   ] loop
     execute format('alter table public.%I enable row level security', t);
   end loop;
@@ -402,6 +422,13 @@ drop policy if exists "admin read" on public.concierge_edit_history;
 create policy "admin read" on public.concierge_edit_history for select to authenticated using (public.is_concierge_admin());
 drop policy if exists "admin read" on public.site_events;
 create policy "admin read" on public.site_events for select to authenticated using (public.is_concierge_admin());
+-- order_addons: dashboard reads (AOV / attach-rate); writes are service-role only.
+drop policy if exists "admin read" on public.order_addons;
+create policy "admin read" on public.order_addons for select to authenticated using (public.is_concierge_admin());
+drop policy if exists "owner read own addons" on public.order_addons;
+create policy "owner read own addons" on public.order_addons for select to authenticated
+  using (exists (select 1 from public.orders o where o.id = order_addons.order_id
+    and (o.user_id = auth.uid() or o.email = coalesce(auth.jwt()->>'email',''))));
 
 -- concierge_admins roster, from the admin panel:
 --   • any admin may LIST the roster and ADD a (non-super) admin;
@@ -488,15 +515,20 @@ end; $$;
 revoke execute on function public.hold_serial(text) from public, anon, authenticated;
 
 -- Record a commission, consuming the visit's hold; -1 when the run is full.
+-- p_addons (optional): a JSON array of companion pieces to enter as order_addons
+-- line items in the SAME transaction — [{slug,name,price_cents,variant,qty,
+-- added_by}, …], each snapshotted + attributed for the AOV dashboard.
 drop function if exists public.commission_order(text,text,text,text,text,text,text,text,uuid);
 drop function if exists public.commission_order(text,text,text,text,text,text,text,text,uuid,text);
 drop function if exists public.commission_order(text,text,text,text,text,text,text,text,uuid,text,text,boolean);
+drop function if exists public.commission_order(text,text,text,text,text,text,text,text,uuid,text,text,boolean,jsonb);
 create or replace function public.commission_order(
   p_email text, p_name text, p_address text, p_address2 text, p_city text, p_state text,
   p_zip text, p_variant text, p_user_id uuid, p_session text default null,
-  p_recipient text default null, p_is_gift boolean default false, p_billing jsonb default null
+  p_recipient text default null, p_is_gift boolean default false, p_billing jsonb default null,
+  p_addons jsonb default null
 ) returns int language plpgsql security definer set search_path = '' as $$
-declare v_serial int; v_run int; v_tries int := 0;
+declare v_serial int; v_run int; v_tries int := 0; v_order_id uuid;
 begin
   if p_session is not null and length(p_session) > 0 then
     delete from public.serial_holds h where h.serial = (
@@ -531,7 +563,23 @@ begin
       insert into public.orders (user_id, email, name, address, address2, city, state, zip, variant,
           serial, status, recipient_name, is_gift, billing)
         values (p_user_id, p_email, p_name, p_address, nullif(p_address2,''), p_city, p_state, p_zip,
-          p_variant, v_serial, 'placed', nullif(p_recipient,''), coalesce(p_is_gift,false), p_billing);
+          p_variant, v_serial, 'placed', nullif(p_recipient,''), coalesce(p_is_gift,false), p_billing)
+        returning id into v_order_id;
+      -- Companion pieces ride along in the same transaction, snapshotted +
+      -- attributed. Guarded casts so a malformed line never fails the placement.
+      if p_addons is not null and jsonb_typeof(p_addons) = 'array' then
+        insert into public.order_addons (order_id, addon_slug, name, price_cents, variant, qty, added_by)
+        select v_order_id,
+               left(e->>'slug', 40),
+               left(e->>'name', 120),
+               case when e->>'price_cents' ~ '^[0-9]{1,9}$' then (e->>'price_cents')::int else 0 end,
+               nullif(e->>'variant', ''),
+               least(20, greatest(1, case when e->>'qty' ~ '^[0-9]{1,3}$' then (e->>'qty')::int else 1 end)),
+               case when coalesce(e->>'added_by','customer') in ('concierge','customer','page')
+                    then e->>'added_by' else 'customer' end
+        from jsonb_array_elements(p_addons) as e
+        where coalesce(e->>'slug','') <> '' and coalesce(e->>'name','') <> '';
+      end if;
       return v_serial;
     exception when unique_violation then
       v_tries := v_tries + 1;
@@ -546,7 +594,30 @@ begin
     end;
   end loop;
 end; $$;
-revoke execute on function public.commission_order(text,text,text,text,text,text,text,text,uuid,text,text,boolean,jsonb) from public, anon, authenticated;
+revoke execute on function public.commission_order(text,text,text,text,text,text,text,text,uuid,text,text,boolean,jsonb,jsonb) from public, anon, authenticated;
+
+-- Add ONE companion piece to an existing, still-open order — the post-order path.
+-- Returns the new line id, or -1 when no matching open order is on the register.
+create or replace function public.add_order_addon(
+  p_serial int, p_user_id uuid, p_email text, p_slug text, p_name text,
+  p_price_cents int, p_variant text default null, p_added_by text default 'customer'
+) returns bigint language plpgsql security definer set search_path = '' as $$
+declare v_order_id uuid; v_id bigint;
+begin
+  if coalesce(p_slug,'') = '' or coalesce(p_name,'') = '' then return -1; end if;
+  select o.id into v_order_id from public.orders o
+   where o.serial = p_serial and o.status <> 'cancelled'
+     and (o.user_id = p_user_id or (p_email is not null and o.email = p_email))
+   limit 1;
+  if v_order_id is null then return -1; end if;
+  insert into public.order_addons (order_id, addon_slug, name, price_cents, variant, qty, added_by)
+    values (v_order_id, left(p_slug, 40), left(p_name, 120), greatest(0, coalesce(p_price_cents, 0)),
+      nullif(p_variant, ''), 1,
+      case when coalesce(p_added_by,'customer') in ('concierge','customer','page') then p_added_by else 'customer' end)
+    returning id into v_id;
+  return v_id;
+end; $$;
+revoke execute on function public.add_order_addon(int,uuid,text,text,text,int,text,text) from public, anon, authenticated;
 
 -- Read / set the edition run (admin only; the counter itself stays private).
 create or replace function public.get_edition()

@@ -3057,6 +3057,55 @@ function registerBlock(data: ConciergeData): string {
     "- Orders marked as gifts carry the recipient's name on the card; the buyer remains the owner of record.\n";
 }
 
+// ── ADD-ONS — the cross-sell / upsell catalog (the single source of truth) ────
+// Parallel to the reference engine so shared logic vendors cleanly. This listing
+// sells ONE car through the offer / viewing forms — it has no orderable register —
+// so the catalog ships EMPTY here; a brand with a checkout populates ADDONS_DEFAULT
+// (or config.commerce.addons). addonCatalog()/?catalog=1 stay so the surface exists.
+interface AddOn {
+  slug: string; // stable id — the attribution + line-item key
+  name: string; // shown in the register, spoken by the concierge
+  price_cents: number; // demo price; snapshotted onto the order line at purchase
+  variants: boolean; // true → the piece is finished to match the item's chosen variant
+  phase: string; // "pre" | "post" | "both" — when the offer makes sense
+  blurb: string; // one true line the concierge can lean on
+}
+const ADDONS_DEFAULT: AddOn[] = [];
+
+// A slug is the attribution key across the widget, the RPC and the dashboard —
+// keep it URL/DB-safe so it never needs escaping or a second lookup table.
+const RENDERABLE_ADDON_SLUG = /^[a-z0-9][a-z0-9-]{0,38}$/;
+
+// The LIVE catalog: a brand may override ADDONS_DEFAULT via config.commerce.addons
+// (same shape, validated) without a redeploy; otherwise the built-in default stands.
+function addonCatalog(data: ConciergeData): AddOn[] {
+  const raw = (data.config?.commerce as Record<string, unknown> | undefined)?.addons;
+  if (Array.isArray(raw)) {
+    const clean: AddOn[] = raw
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
+      .map((x) => ({
+        slug: String(x.slug ?? "").trim().toLowerCase(),
+        name: String(x.name ?? "").trim(),
+        price_cents: Math.max(0, Math.round(Number(x.price_cents) || 0)),
+        variants: x.variants === true,
+        phase: ["pre", "post", "both"].includes(String(x.phase)) ? String(x.phase) : "both",
+        blurb: String(x.blurb ?? "").trim(),
+      }))
+      .filter((a) => a.name && RENDERABLE_ADDON_SLUG.test(a.slug));
+    if (clean.length) return clean;
+  }
+  return ADDONS_DEFAULT;
+}
+function addonBySlug(data: ConciergeData, slug: string): AddOn | null {
+  const s = String(slug || "").trim().toLowerCase();
+  return addonCatalog(data).find((a) => a.slug === s) || null;
+}
+// Money as the register speaks it: whole dollars when even, cents when not.
+function fmtMoney(cents: number): string {
+  const n = Math.max(0, Math.round(cents || 0));
+  return "$" + (n / 100).toFixed(n % 100 === 0 ? 0 : 2);
+}
+
 // SELLING — the single owner of how you move the sale: discovery, the six moves, the
 // ladder, the commission trigger, the how-hard-to-sell dial, and the admin's angles &
 // objections. The rule text is an editable BASE (config.selling_base, versioned;
@@ -4336,6 +4385,23 @@ async function handleConfigGet(req: Request): Promise<Response> {
     auth: true,
     forms: forms.map((f) => ({ slug: f.slug, title: f.title, fields: f.fields })),
   });
+}
+
+// ── GET ?catalog=1 — the add-on catalog (public) ─────────────────────────────
+// The single source of truth for cross-sell / upsell companion pieces. Empty on
+// this listing (no orderable register), but the surface stays for engine parity.
+async function handleCatalogGet(req: Request): Promise<Response> {
+  const data = await loadConciergeData();
+  const addons = addonCatalog(data).map((a) => ({
+    slug: a.slug,
+    name: a.name,
+    price_cents: a.price_cents,
+    price: fmtMoney(a.price_cents),
+    variants: a.variants,
+    phase: a.phase,
+    blurb: a.blurb,
+  }));
+  return jsonResponse(req, 200, { addons });
 }
 
 // ── GET ?tools=1 — the built-in tools manifest for the admin Tools tab ────────
@@ -8479,6 +8545,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("config")) {
     return await handleConfigGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("catalog")) {
+    return await handleCatalogGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("site")) {
     return await handleSiteGet(req);
