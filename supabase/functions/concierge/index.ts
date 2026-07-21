@@ -3152,6 +3152,33 @@ function sellingBlock(data: ConciergeData): string {
         "then re-open the door):\n" + lines.join("\n") + "\n";
     }
   }
+  // COMPANION PIECES — the cross-sell / upsell surface. Present ONLY when a catalog
+  // exists (config.commerce.addons or the built-in default), so a brand with no
+  // add-ons never sees it (this listing ships an empty catalog). Kept for parity with
+  // the reference engine's upsell method.
+  const addons = addonCatalog(data);
+  if (addons.length > 0) {
+    const hasPost = addons.some((a) => a.phase === "post" || a.phase === "both");
+    const line = (a: AddOn) =>
+      `  · {{addon:${a.slug}}} — ${a.name}, ${fmtMoney(a.price_cents)}` +
+      `${a.variants ? " (matched to your order)" : ""}: ${a.blurb}`;
+    s += "\nCOMPANION PIECES (cross-sell / upsell — raise the order's worth with a REAL, fitting add, never a pile-on)\n" +
+      "- The house also makes small companion pieces the buyer can add in ONE tap. Offer them TRUTHFULLY from " +
+      "this list — never invent an item, a price, or a claim:\n" +
+      addons.map(line).join("\n") + "\n" +
+      "- HOW to offer one: put {{addon:<slug>}} on its OWN line (like a reply pill). It renders a '＋ add it to " +
+      "your order' button at the piece's price, and a tap marks it YOUR recommendation and pre-selects it in the " +
+      "register. Name the piece and give ONE reason it fits THIS person before the pill; let the tap do the rest.\n" +
+      "- WHEN, pre-order: after they've chosen the main piece and are warm (evaluating / ready) — one companion " +
+      "that genuinely suits what they told you. Weave it into the ADVANCE; at most ONE add per turn, and NEVER " +
+      "instead of the primary close — the main piece is the sale, the companion rides with it.\n" +
+      (hasPost
+        ? "- WHEN, post-order: once the order is signed, a single well-chosen companion is a natural close, not a " +
+          "fresh pitch. Offer once.\n"
+        : "") +
+      "- Never stack companions, never discount, never manufacture urgency. If they decline, drop it and return " +
+      "to the main piece. The measure is a bigger order they're GLAD they made, not a longer receipt.\n";
+  }
   // INQUIRY FORMS — when a shopper can hand the house a lead through a form, the
   // form IS the path. Present only when such a form is enabled, and as a HARD rule
   // for every audience — so it does not depend on a soft SOP being followed, which

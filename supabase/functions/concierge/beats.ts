@@ -861,6 +861,15 @@ export const WIDGET_TOKENS: WidgetToken[] = [
     renders: "an inline video by id",
     usage: "Show a saved clip — e.g. {{video:mending}}.",
   },
+  {
+    example: "{{addon:<slug>}}",
+    pattern: "addon:[a-z0-9][a-z0-9-]{0,38}",
+    label: "Add-on offer",
+    renders: "a “＋ add it to your order” pill for a companion piece, at its price",
+    usage: "Offer ONE fitting companion piece the visitor can add in a tap — e.g. " +
+      "{{addon:care-kit}} — on its OWN line. A tap marks the add as the concierge's own " +
+      "recommendation (the register shows it pre-selected).",
+  },
 ];
 
 // A whole line that IS one of these tokens (trimmed) is renderable UI, not plumbing.
