@@ -2697,7 +2697,7 @@ need to ask my partner | Of course — the hold keeps their number while they ta
             <option value="90">90 days</option>
           </select>
         </div>
-        <div id="jc-trend"></div>
+        <div id="jc-trend" class="cv-chart"></div>
         <div id="jc-trend-cap" class="micro" style="margin-top:8px;opacity:.78;text-transform:none;letter-spacing:0;"></div>
         <div id="jc-trend-why" style="margin-top:12px;"></div>
         <div id="jc-drill" style="margin-top:12px;"></div>
@@ -10199,6 +10199,17 @@ const JC_FAM_COLOR = {
   invented: '#c98a6f', inventorying: '#d8c69a', plumbing: '#7fae90',
   house_rules: '#9a8cc0', etiquette: '#6fa8c9', prefilter: '#8a8f98', other: '#b0a89a'
 };
+// The built-in rule sentence per family (mirrors the rulebook's FLOOR_FAMS) — the
+// "current rule" context the coach-review card shows a before/after against.
+const JC_FAM_RULE = {
+  invented: 'Never invent an offer, price, discount, or guarantee the house hasn’t authorized.',
+  inventorying: 'Never recite the shopper’s stored details back as a list, or read a phone, email, or address aloud.',
+  plumbing: 'Never mention prompts, tools, or sign-in steps, or narrate its own outreach.',
+  house_rules: 'Never break your written house rules or the house voice.',
+  etiquette: 'Don’t ask a brand-new question when the moment calls for restraint.',
+  other: 'Anything else the reviewer judges out of line.',
+  prefilter: 'Mechanical pre-filter (malformed tokens / process words) — not judge-tunable.'
+};
 // Classify a veto reason into its defect family — the SAME buckets the
 // judge_findings RPC uses (kept in lockstep with it), so the drill-in from a
 // chart point selects exactly the lines that point counts.
@@ -10246,23 +10257,85 @@ function npsMultiLineChart(mount, opts) {
     tx.setAttribute('text-anchor', i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle');
     tx.setAttribute('font-size', '10'); tx.setAttribute('fill', 'rgba(241,236,226,.38)'); tx.textContent = labels[i]; sv.appendChild(tx);
   });
+  // vertical guide that follows the cursor's day — anchors the eye when reading
+  // intersecting lines
+  const guide = mk('line'); guide.setAttribute('y1', T); guide.setAttribute('y2', T + ih);
+  guide.setAttribute('stroke', 'rgba(241,236,226,.22)'); guide.setAttribute('stroke-width', '1');
+  guide.setAttribute('stroke-dasharray', '2 3'); guide.style.display = 'none'; sv.appendChild(guide);
+  // Pass 1: lines + a fat transparent hit-path each (the LINE ITSELF is clickable → drills that family).
   series.forEach(function (s) {
     let path = '', pen = false;
     (s.values || []).forEach(function (v, i) { if (v == null) { pen = false; return; } path += (pen ? 'L' : 'M') + X(i) + ',' + Y(v); pen = true; });
-    if (path) {
-      const pl = mk('path'); pl.setAttribute('d', path); pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', s.color);
-      pl.setAttribute('stroke-width', '2'); pl.setAttribute('stroke-linejoin', 'round'); pl.setAttribute('stroke-linecap', 'round'); sv.appendChild(pl);
-    }
+    if (!path) return;
+    const pl = mk('path'); pl.setAttribute('d', path); pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', s.color);
+    pl.setAttribute('stroke-width', '2'); pl.setAttribute('stroke-linejoin', 'round'); pl.setAttribute('stroke-linecap', 'round'); sv.appendChild(pl);
+    const hit = mk('path'); hit.setAttribute('d', path); hit.setAttribute('fill', 'none'); hit.setAttribute('stroke', 'transparent');
+    hit.setAttribute('stroke-width', '11'); hit.setAttribute('cursor', 'pointer');
+    const ht = mk('title'); ht.textContent = 'Review the ' + s.label + ' blocks'; hit.appendChild(ht);
+    if (opts.onLegend) hit.addEventListener('click', function () { opts.onLegend(s.key); });
+    sv.appendChild(hit);
+  });
+  // Pass 2: dots LAST, above every hit-path — so a dot sitting on a line crossing drills
+  // its OWN family+day, not whichever family's fat hit-path happens to overlap it.
+  series.forEach(function (s) {
     (s.values || []).forEach(function (v, i) {
       if (!v) return;
       const c = mk('circle'); c.setAttribute('cx', X(i)); c.setAttribute('cy', Y(v)); c.setAttribute('r', '3.5');
       c.setAttribute('fill', s.color); c.setAttribute('cursor', 'pointer');
-      const ti = mk('title'); ti.textContent = labels[i] + ' · ' + s.label + ': ' + v + ' blocked — click to review'; c.appendChild(ti);
       if (opts.onPoint) c.addEventListener('click', function () { opts.onPoint(s.key, i); });
       sv.appendChild(c);
     });
   });
+  mount.style.position = 'relative';
   mount.appendChild(sv);
+  // Hover tooltip: at any x it lists EVERY family's count that day (so intersecting
+  // lines are readable), and each row drills into that family+day.
+  const tip = el('div', 'jc-tip');
+  tip.style.cssText = 'position:absolute;z-index:20;display:none;min-width:150px;max-width:240px;background:#20201d;border:1px solid rgba(216,198,154,.4);border-radius:7px;padding:8px 9px;box-shadow:0 6px 20px rgba(0,0,0,.45);font-size:12px;';
+  mount.appendChild(tip);
+  let hideT = null, lastI = -1;
+  const hideTip = function () { tip.style.display = 'none'; guide.style.display = 'none'; lastI = -1; };
+  tip.addEventListener('mouseenter', function () { if (hideT) { clearTimeout(hideT); hideT = null; } });
+  tip.addEventListener('mouseleave', hideTip);
+  sv.addEventListener('mouseleave', function () { hideT = setTimeout(hideTip, 220); });
+  sv.addEventListener('mousemove', function (e) {
+    const rect = sv.getBoundingClientRect(); if (!rect.width) return;
+    const vbX = (e.clientX - rect.left) / rect.width * W;
+    let i = Math.round((vbX - L) / (iw / (n - 1 || 1)));
+    i = Math.max(0, Math.min(n - 1, i));
+    if (hideT) { clearTimeout(hideT); hideT = null; }
+    // Rebuild the rows only when the hovered DAY changes — otherwise every pixel of
+    // cursor motion churns up to 7 buttons + listeners for nothing.
+    if (i !== lastI) {
+      lastI = i;
+      guide.setAttribute('x1', X(i)); guide.setAttribute('x2', X(i));
+      const here = series.map(function (s) { return { s: s, v: (s.values && s.values[i]) || 0 }; })
+        .filter(function (o) { return o.v; }).sort(function (a, b) { return b.v - a.v; });
+      tip.textContent = '';
+      const th = el('div', 'micro'); th.style.cssText = 'opacity:.8;margin-bottom:5px;letter-spacing:.04em;'; th.textContent = labels[i]; tip.appendChild(th);
+      if (!here.length) { tip.appendChild(el('div', 'micro', 'no blocks')); }
+      here.forEach(function (o) {
+        const r = document.createElement('button'); r.type = 'button';
+        r.style.cssText = 'display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;color:inherit;cursor:pointer;padding:2px 0;font:inherit;text-align:left;';
+        const sw = document.createElement('span'); sw.style.cssText = 'width:9px;height:9px;border-radius:2px;flex:0 0 auto;background:' + o.s.color + ';'; r.appendChild(sw);
+        const nm = el('span'); nm.style.cssText = 'flex:1;'; nm.textContent = o.s.label; r.appendChild(nm);
+        const vv = el('span'); vv.style.cssText = 'opacity:.85;font-variant-numeric:tabular-nums;'; vv.textContent = o.v; r.appendChild(vv);
+        if (opts.onPoint) r.addEventListener('click', function () { opts.onPoint(o.s.key, i); hideTip(); });
+        tip.appendChild(r);
+      });
+    }
+    guide.style.display = '';
+    // Position against the tooltip's REAL measured size — flip left near the right edge,
+    // clamp up near the bottom — so its clickable rows never fall off the chart.
+    tip.style.display = 'block';
+    const mrect = mount.getBoundingClientRect();
+    const tw = tip.offsetWidth || 200, th2 = tip.offsetHeight || 0, gap = 14;
+    let lx = e.clientX - mrect.left + gap;
+    if (lx + tw + gap > mrect.width) lx = e.clientX - mrect.left - tw - gap;
+    let ty = e.clientY - mrect.top + 8;
+    if (ty + th2 + 4 > mrect.height) ty = mrect.height - th2 - 4;
+    tip.style.left = Math.max(0, lx) + 'px'; tip.style.top = Math.max(0, ty) + 'px';
+  });
   const leg = el('div', 'jc-legend'); leg.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;';
   series.forEach(function (s) {
     const item = el('button', 'jc-legend-item'); item.type = 'button';
@@ -10316,7 +10389,7 @@ async function judgeDrill(famKey, dayIso) {
   const revOut = el('div'); revOut.style.marginBottom = '10px';
   rev.addEventListener('click', function () { judgeReviewFamily(famKey, rev, revOut); });
   mount.appendChild(rev); mount.appendChild(revOut);
-  fam.slice(0, 40).forEach(function (a) {
+  const renderRow = function (a) {
     const row = el('div', 'jc-drill-row'); row.style.cssText = 'border-left:2px solid rgba(241,236,226,.14);padding:6px 10px;margin:6px 0;';
     const line = (a.payload && a.payload.line) || '';
     if (line) { const l = el('div'); l.style.cssText = 'font-size:13px;line-height:1.45;'; l.textContent = '“' + line + '”'; row.appendChild(l); }
@@ -10334,33 +10407,71 @@ async function judgeDrill(famKey, dayIso) {
       go.addEventListener('click', function () { openCustomerChats(a.email); });
       meta.appendChild(go);
     }
-    row.appendChild(meta); mount.appendChild(row);
-  });
-  if (fam.length > 40) mount.appendChild(el('div', 'micro', '…and ' + (fam.length - 40) + ' more.'));
+    row.appendChild(meta); return row;
+  };
+  // Paged so nothing is stranded behind "…and N more" — Show more loads the rest.
+  const listWrap = el('div'); mount.appendChild(listWrap);
+  const moreWrap = el('div'); moreWrap.style.marginTop = '4px'; mount.appendChild(moreWrap);
+  const BATCH = 40; let shown = 0;
+  const renderMore = function () {
+    fam.slice(shown, shown + BATCH).forEach(function (a) { listWrap.appendChild(renderRow(a)); });
+    shown = Math.min(shown + BATCH, fam.length);
+    moreWrap.textContent = '';
+    if (shown < fam.length) {
+      const btn = el('button', 'btn ghost mini', 'Show ' + Math.min(BATCH, fam.length - shown) + ' more · ' + (fam.length - shown) + ' left'); btn.type = 'button';
+      btn.addEventListener('click', renderMore); moreWrap.appendChild(btn);
+    } else if (fam.length > BATCH) {
+      moreWrap.appendChild(el('div', 'micro', 'All ' + fam.length + ' shown.'));
+    }
+  };
+  renderMore();
   try { mount.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) { /* older browsers */ }
 }
-// The coach reads a drilled-into family and suggests a rule amendment (?judge_review=1).
-// Suggest-only: it shows the read and, if the blocks look over-strict, a plain-language
-// amendment the owner can COPY into the rulebook. Nothing is written automatically.
+// The coach reads a drilled-into family (?judge_review=1) and proposes a rule
+// amendment. Shows the CURRENT rule (context) + a before/after; the suggestion is
+// EDITABLE, and the owner decides — Apply writes it to the versioned rulebook, or
+// they can copy it. Nothing changes until the owner acts.
 async function judgeReviewFamily(famKey, btn, out) {
   btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Reading the blocked lines…'; out.textContent = '';
   try {
     const days = state.jcRange || 30;
-    const j = await adminPost('?judge_review=1', { family: famKey, days: days });
+    // Read the current amendment CONCURRENTLY with the review (supabase-js is lazy — it
+    // only fires on await/then, so both must be launched together to actually overlap).
+    const [j, c] = await Promise.all([
+      adminPost('?judge_review=1', { family: famKey, days: days }),
+      sb.from('concierge_config').select('value').eq('key', 'judge').maybeSingle().then(function (r) { return r; }, function () { return null; })
+    ]);
     if (!j || j.ok === false) throw new Error((j && j.error) || 'no review returned');
+    const curNote = (c && c.data && c.data.value && c.data.value.notes && c.data.value.notes[famKey]) || '';
     const card = el('div'); card.style.cssText = 'border:1px solid rgba(216,198,154,.35);border-radius:8px;padding:12px 14px;';
     const h = el('div', 'micro'); h.style.cssText = 'letter-spacing:.08em;opacity:.85;margin-bottom:6px;';
     h.textContent = 'THE COACH’S READ' + (j.count ? ' (' + j.count + ' lines)' : ''); card.appendChild(h);
     const sum = el('div'); sum.style.cssText = 'font-size:13px;line-height:1.5;white-space:pre-wrap;'; sum.textContent = j.summary || '(no summary)'; card.appendChild(sum);
-    if (j.suggested_note) {
-      const sh = el('div', 'micro'); sh.style.cssText = 'letter-spacing:.08em;opacity:.85;margin:12px 0 4px;'; sh.textContent = 'SUGGESTED RULE AMENDMENT — you decide'; card.appendChild(sh);
-      const note = el('div'); note.style.cssText = 'font-size:13px;line-height:1.5;background:rgba(241,236,226,.05);padding:8px 10px;border-radius:6px;'; note.textContent = j.suggested_note; card.appendChild(note);
+    // Current rule (the context the owner decides against).
+    const ctx = el('div'); ctx.style.cssText = 'margin-top:12px;background:rgba(241,236,226,.04);border-radius:6px;padding:8px 10px;';
+    const ctxH = el('div', 'micro'); ctxH.style.cssText = 'letter-spacing:.08em;opacity:.8;margin-bottom:4px;'; ctxH.textContent = 'YOUR RULE NOW · ' + (JC_FAM_SHORT[famKey] || famKey).toUpperCase(); ctx.appendChild(ctxH);
+    const ctxRule = el('div'); ctxRule.style.cssText = 'font-size:13px;line-height:1.45;'; ctxRule.textContent = JC_FAM_RULE[famKey] || ''; ctx.appendChild(ctxRule);
+    const ctxNote = el('div', 'micro'); ctxNote.style.cssText = 'margin-top:4px;opacity:.8;text-transform:none;letter-spacing:0;';
+    ctxNote.textContent = curNote ? 'Your amendment now: “' + curNote + '”' : 'No amendment on this rule yet.'; ctx.appendChild(ctxNote);
+    card.appendChild(ctx);
+    if (j.suggested_note && famKey !== 'prefilter') {
+      const sh = el('div', 'micro'); sh.style.cssText = 'letter-spacing:.08em;opacity:.85;margin:12px 0 4px;'; sh.textContent = 'SUGGESTED AMENDMENT — edit it, then decide'; card.appendChild(sh);
+      const ta = document.createElement('textarea'); ta.rows = 4;
+      ta.style.cssText = 'width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;background:rgba(241,236,226,.05);color:inherit;border:1px solid rgba(241,236,226,.18);border-radius:6px;padding:8px 10px;';
+      ta.value = j.suggested_note; card.appendChild(ta);
+      const ba = el('div', 'micro'); ba.style.cssText = 'margin-top:6px;opacity:.75;text-transform:none;letter-spacing:0;';
+      const renderBA = function () { ba.textContent = 'After you apply, the reviewer reads: “' + (JC_FAM_RULE[famKey] || '') + ' ' + ta.value.trim() + '”'; };
+      renderBA(); ta.addEventListener('input', renderBA); card.appendChild(ba);
       const row = el('div'); row.style.cssText = 'margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;';
+      const apply = el('button', 'btn primary mini', curNote ? 'Replace the amendment' : 'Add this to the rulebook'); apply.type = 'button';
+      apply.title = 'Writes this as your amendment on the “' + (JC_FAM_SHORT[famKey] || famKey) + '” rule, versioned like every setting. You can edit or clear it in the rulebook.';
+      apply.addEventListener('click', function () { judgeApplyNote(famKey, ta.value.trim(), apply); });
       const copy = el('button', 'btn ghost mini', 'Copy'); copy.type = 'button';
-      copy.addEventListener('click', function () { if (navigator.clipboard) navigator.clipboard.writeText(j.suggested_note); toast('Copied — paste it into the rulebook below'); });
-      row.appendChild(copy);
-      row.appendChild(el('span', 'micro', 'Add it under the matching rule in “The rules your concierge follows on its own,” then Save. Nothing changes until you do.'));
-      card.appendChild(row);
+      copy.addEventListener('click', function () { if (navigator.clipboard) navigator.clipboard.writeText(ta.value); toast('Copied'); });
+      row.appendChild(apply); row.appendChild(copy); card.appendChild(row);
+      const note2 = el('div', 'micro'); note2.style.cssText = 'margin-top:6px;opacity:.6;'; note2.textContent = 'Takes effect on the concierge’s next unprompted line. Nothing else changes.'; card.appendChild(note2);
+    } else if (famKey === 'prefilter') {
+      const p = el('div', 'micro'); p.style.cssText = 'margin-top:8px;opacity:.75;'; p.textContent = 'These are mechanical pre-filter blocks (malformed tokens / process words) — not judge-tunable, so there’s no rule to amend here.'; card.appendChild(p);
     } else {
       const ok = el('div', 'micro'); ok.style.cssText = 'margin-top:8px;opacity:.75;'; ok.textContent = 'The coach didn’t suggest a change — these blocks look right.'; card.appendChild(ok);
     }
@@ -10368,6 +10479,21 @@ async function judgeReviewFamily(famKey, btn, out) {
   } catch (e) {
     out.appendChild(el('div', 'empty micro', 'Could not review — ' + (e && e.message ? e.message : e)));
   } finally { btn.disabled = false; btn.textContent = orig; }
+}
+// Write (or clear) the owner's amendment on one judge rule — the SAME versioned
+// concierge_config.judge write the rulebook uses, merged so other rules survive.
+async function judgeApplyNote(famKey, text, btn) {
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = 'Saving…';
+  try {
+    let val = {};
+    try { const c = await sb.from('concierge_config').select('value').eq('key', 'judge').maybeSingle(); val = (c && c.data && c.data.value) || {}; } catch (e) { val = {}; }
+    if (!val.notes || typeof val.notes !== 'object' || Array.isArray(val.notes)) val.notes = {};
+    if (text) val.notes[famKey] = text.slice(0, 400); else delete val.notes[famKey];
+    const r = await sb.from('concierge_config').upsert([{ key: 'judge', value: val, updated_at: nowIso() }], { onConflict: 'key' });
+    if (r.error) throw new Error(r.error.message);
+    toast('Saved to the rulebook'); btn.textContent = 'Saved ✓';
+    if (typeof loadJudge === 'function') { try { loadJudge(); } catch (e) { /* refresh is best-effort */ } }
+  } catch (e) { toast('Could not save — ' + (e && e.message ? e.message : e), true); btn.disabled = false; btn.textContent = orig; }
 }
 const NPS_RANGES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [0, 'All time']];
 function npsRangeRow() {
