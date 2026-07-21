@@ -870,3 +870,21 @@ export function widgetTokensJudgeNote(): string {
     " — that is a genuine affordance the app renders for the visitor: customer-facing PRODUCT, never a " +
     "tool/meta/plumbing token. Never veto a line for offering one.";
 }
+
+// Recognition on return is a REAL capability (signing in / leaving an email lets the
+// house know the visitor next time), and it is NOT the same as unsolicited outreach.
+// The judge kept conflating the two — vetoing legitimate sign-in offers as defect 1
+// (meta/plumbing), defect 9 (invented capability), or defect 10 (invented outbound
+// contact). This note draws the line so it stops silencing good CTAs while STILL
+// catching a fabricated "we'll call/email you" or a completed-callback claim with no
+// record behind it.
+export const RECOGNITION_JUDGE_NOTE =
+  "RECOGNITION IS A REAL CAPABILITY — NOT outreach, NOT meta. Signing in, or leaving an email, lets the house " +
+  "RECOGNIZE this visitor when THEY come back and remember their preferences. Offering that is legitimate SERVICE " +
+  "describing a real feature — e.g. \"sign in and the house will know you next time\", \"leave your email and I'll " +
+  "remember you\", \"so I can serve you as yourself\". NEVER veto these as defect 1 (meta/plumbing narration), " +
+  "defect 9 (invented capability), or defect 10 (invented outbound contact): recognition-on-return is exactly what " +
+  "signing in does. Separately, the house MAY reference a callback the visitor REQUESTED when the grounding/CALLBACKS " +
+  "record shows one — \"the house called you about the tour\" is grounded if a completed callback is on file. What " +
+  "REMAINS a defect-10 fabrication: claiming the house will, or did, reach out UNPROMPTED (marketing calls or emails), " +
+  "or asserting a specific call/appointment time with no basis in the grounding.";

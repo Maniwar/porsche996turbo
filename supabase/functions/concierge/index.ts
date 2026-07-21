@@ -58,6 +58,7 @@ import {
   RENDERABLE_TOKEN_RE,
   describeTokensForJudge,
   widgetTokensJudgeNote,
+  RECOGNITION_JUDGE_NOTE,
 } from "./beats.ts";
 
 // Editable built-in bases. The admin can override each via a concierge_config key
@@ -3878,6 +3879,7 @@ async function judgeBeatLine(
                 recentUser.slice(0, 400)
               : "") +
             "\n\n" + widgetTokensJudgeNote() +
+            "\n\n" + RECOGNITION_JUDGE_NOTE +
             "\n\nBEAT KIND: " + kind + "\n\nTHE LINE:\n" + describeTokensForJudge(line),
         }],
       }),

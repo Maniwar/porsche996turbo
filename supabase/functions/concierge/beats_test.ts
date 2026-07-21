@@ -37,6 +37,7 @@ import {
   RENDERABLE_TOKEN_RE,
   describeTokensForJudge,
   widgetTokensJudgeNote,
+  RECOGNITION_JUDGE_NOTE,
 } from "./beats.ts";
 
 function assert(cond: unknown, msg: string) {
@@ -682,4 +683,17 @@ Deno.test("widget tokens: the judge sees a described control, never the raw {{â€
   const note = widgetTokensJudgeNote();
   ["Sign-in button", "Commission button", "Snooze control", "Inline form", "Quick-reply chip", "Rating scale", "Image", "Video"]
     .forEach((label) => assert(note.includes(label), "the judge note names the " + label));
+});
+
+Deno.test("recognition note: allows sign-in recognition, still bans unprompted outreach", () => {
+  // Root cause of a live false-veto cluster: the judge vetoed legitimate sign-in offers
+  // ("the house will know you when you come back") as defect 1 / defect 10. The note must
+  // (a) name recognition as legitimate under those exact defects, and (b) KEEP the real
+  // defect-10 boundary so a fabricated "we'll call/email you" is still caught.
+  const n = RECOGNITION_JUDGE_NOTE;
+  assert(/recognition/i.test(n) && /come back|next time/i.test(n), "names recognition-on-return");
+  ["defect 1", "defect 9", "defect 10"].forEach((d) => assert(n.toLowerCase().includes(d), "clears the false-veto defect: " + d));
+  assert(/NEVER veto/i.test(n), "instructs the judge to pass recognition offers");
+  assert(/UNPROMPTED|unprompted/.test(n) && /defect-10 fabrication/i.test(n), "keeps the unsolicited-outreach boundary");
+  assert(/callback/i.test(n), "permits referencing a requested callback that the record shows");
 });
