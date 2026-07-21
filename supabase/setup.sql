@@ -1363,6 +1363,49 @@ end $$;
 grant execute on function public.llm_cost_metrics(int) to authenticated;
 revoke execute on function public.llm_cost_metrics(int) from public, anon;
 
+-- Upsell / cross-sell performance over the window: attach rate, add-on revenue by
+-- attribution, per-item and per-customer breakdowns. Brand-neutral aggregates over
+-- order_addons (empty on this listing, but the surface exists for parity). Admin-only.
+create or replace function public.addon_metrics(p_days int default 30)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_from timestamptz; v_days int; v_orders int; v_with int;
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  v_days := greatest(1, least(coalesce(p_days, 30), 3650));
+  v_from := now() - make_interval(days => v_days);
+  select count(*) into v_orders from public.orders o
+   where o.placed_at >= v_from and o.status <> 'cancelled';
+  select count(distinct oa.order_id) into v_with
+   from public.order_addons oa join public.orders o on o.id = oa.order_id
+   where o.placed_at >= v_from and o.status <> 'cancelled';
+  return jsonb_build_object(
+    'days', v_days, 'orders_total', v_orders, 'orders_with_addons', v_with,
+    'attach_rate', case when v_orders > 0 then round(v_with::numeric / v_orders, 4) else 0 end,
+    'addon_units', coalesce((select sum(oa.qty) from public.order_addons oa
+       join public.orders o on o.id = oa.order_id where o.placed_at >= v_from and o.status <> 'cancelled'), 0),
+    'addon_revenue_cents', coalesce((select sum(oa.price_cents * oa.qty) from public.order_addons oa
+       join public.orders o on o.id = oa.order_id where o.placed_at >= v_from and o.status <> 'cancelled'), 0),
+    'by_attr', coalesce((select jsonb_agg(x) from (
+        select oa.added_by, sum(oa.qty)::int as units, sum(oa.price_cents * oa.qty)::bigint as revenue_cents
+        from public.order_addons oa join public.orders o on o.id = oa.order_id
+        where o.placed_at >= v_from and o.status <> 'cancelled' group by oa.added_by order by 3 desc) x), '[]'::jsonb),
+    'per_item', coalesce((select jsonb_agg(x) from (
+        select oa.addon_slug as slug, max(oa.name) as name, sum(oa.qty)::int as units,
+               sum(oa.price_cents * oa.qty)::bigint as revenue_cents, count(distinct oa.order_id)::int as orders,
+               sum(case when oa.added_by = 'concierge' then oa.price_cents * oa.qty else 0 end)::bigint as concierge_revenue_cents
+        from public.order_addons oa join public.orders o on o.id = oa.order_id
+        where o.placed_at >= v_from and o.status <> 'cancelled' group by oa.addon_slug order by 4 desc) x), '[]'::jsonb),
+    'per_customer', coalesce((select jsonb_agg(x) from (
+        select o.email, count(distinct o.id)::int as orders, sum(oa.qty)::int as addon_units,
+               sum(oa.price_cents * oa.qty)::bigint as addon_revenue_cents,
+               sum(case when oa.added_by = 'concierge' then oa.price_cents * oa.qty else 0 end)::bigint as concierge_revenue_cents
+        from public.order_addons oa join public.orders o on o.id = oa.order_id
+        where o.placed_at >= v_from and o.status <> 'cancelled' group by o.email order by 4 desc limit 25) x), '[]'::jsonb)
+  );
+end; $$;
+grant execute on function public.addon_metrics(int) to authenticated;
+revoke execute on function public.addon_metrics(int) from public, anon;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Appointments & callbacks (APPOINTMENTS.md) — the calendar the concierge can
 -- book against. Slots are COMPUTED, never stored until booked; the model only
