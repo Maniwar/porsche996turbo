@@ -3632,14 +3632,19 @@ const BEAT_JUDGE_CRITERION =
   "if the house rules permit offers or negotiation, INVITING one is legitimate, not invented); " +
   "(4) pressure or desperation — begging, 'last chance', manufactured countdowns; " +
   "(5) broken output — cut off mid-sentence, raw JSON or code, gibberish, visibly duplicated text; " +
-  "(6) inventorying the shopper — stringing TWO OR MORE of their stored personal details into a tally " +
-  "('you're furnishing five rooms across two cities, and your wife…'): a tally of their life is " +
-  "surveillance. But USING what the house remembers to serve the sale is the concierge's JOB, not a " +
-  "defect: naming ONE remembered detail to tailor a recommendation, point to the right product, or ask " +
-  "a fitting question is grounded SERVICE and PASSES — ESPECIALLY a detail the HOUSE NOTES or RECENT " +
-  "CONVERSATION below already contain. Veto ONLY a multi-detail tally recited to prove the house knows " +
-  "them, or a detail the shopper never shared. (Reading the ACTUAL digits of a stored phone, email, or " +
-  "address is defect 7, not this.) PASS a single grounded callback and never label it a 'tally'; " +
+  "(6) inventorying the shopper — stringing THREE OR MORE of their stored personal details into a tally " +
+  "('you're furnishing five rooms across two cities, your wife travels for work, and your last order " +
+  "shipped to…'): a tally of their life is surveillance. But USING what the house remembers to serve the " +
+  "sale is the concierge's JOB, not a defect. Re-engaging a returning shopper through ONE or TWO known " +
+  "details — a project, a room, a context, a relationship they shared — to tailor a recommendation or ask " +
+  "a fitting question is grounded SERVICE and ALWAYS PASSES, even when it restarts the conversation: 'still " +
+  "furnishing the van?', 'is this for the office or the van?', 'is your wife in on this one?' are exactly " +
+  "the warm callbacks the house wants. This is ESPECIALLY true for a detail the HOUSE NOTES or RECENT " +
+  "CONVERSATION below already contain — a fact you were HANDED is grounded, never invented. Veto ONLY a " +
+  "THREE-OR-MORE-detail tally recited to show off memory, or a detail the shopper never shared. NEVER call " +
+  "one or two grounded details a 'tally'. (Reading the ACTUAL digits of a stored phone, email, or address " +
+  "is defect 7, not this. Requiring a partner's sign-off before the house will sell is invented commerce, " +
+  "defect 3 — but simply ASKING whether a partner is aligned is a fair, grounded question.) " +
   "(7) reading records aloud — it recites the ACTUAL digits or text of a phone number, email " +
   "address, or street address from the house's records (the shopper's own or anyone else's); " +
   "published channels the house rules name are fine, stored contact details never are. Merely " +
@@ -3728,7 +3733,7 @@ async function judgeGroundingFacts(customer: Customer | null | undefined): Promi
     if (!keep.length) return "";
     return "HOUSE NOTES ON THIS SHOPPER (things the house already knows — a warm callback to any of " +
       "these, worn lightly, is grounded service, NOT inventorying): " +
-      maskContacts(keep.map((n) => n.note).join(" | ")).slice(0, 1100);
+      maskContacts(keep.map((n) => n.note).join(" | ")).slice(0, 1600);
   } catch {
     return "";
   }
@@ -3867,12 +3872,13 @@ async function judgeBeatLine(
             (factsOnFile
               ? "\n\nGROUNDING (what the concierge legitimately knows THIS TURN — register facts, house " +
                 "notes on the shopper, and the recent conversation). A line consistent with any of this " +
-                "is GROUNDED, not invented; a warm callback to ONE detail here — a project, a preference, " +
-                "something the shopper themselves raised — is service, NOT defect 6 inventorying. Defect 6 " +
-                "is a TALLY of several stored details listed together, or a detail the shopper never " +
-                "surfaced that serves only to show off memory. Acknowledging something is on file is " +
-                "service; only quoting stored digits or addresses aloud remains defect 7:\n" +
-                factsOnFile.slice(0, 2400)
+                "is GROUNDED, not invented; a warm callback to ONE OR TWO details here — a project, a room, " +
+                "a preference, a relationship, something the shopper themselves raised — is service, NOT " +
+                "defect 6 inventorying, even when it re-opens the conversation. Defect 6 is a TALLY of THREE " +
+                "OR MORE stored details listed together, or a detail the shopper never surfaced that serves " +
+                "only to show off memory. Acknowledging something is on file is service; only quoting stored " +
+                "digits or addresses aloud remains defect 7:\n" +
+                factsOnFile.slice(0, 3200)
               : "") +
             (recentUser
               ? "\n\nTHE SHOPPER'S LATEST MESSAGE (for defect 8 — does the line serve or sell past it?):\n" +
