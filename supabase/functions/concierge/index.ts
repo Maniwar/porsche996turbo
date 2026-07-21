@@ -3078,20 +3078,28 @@ const RENDERABLE_ADDON_SLUG = /^[a-z0-9][a-z0-9-]{0,38}$/;
 
 // The LIVE catalog: a brand may override ADDONS_DEFAULT via config.commerce.addons
 // (same shape, validated) without a redeploy; otherwise the built-in default stands.
+const ADDON_CATALOG_MAX = 24; // a config override can't bloat the prompt / payloads
 function addonCatalog(data: ConciergeData): AddOn[] {
   const raw = (data.config?.commerce as Record<string, unknown> | undefined)?.addons;
   if (Array.isArray(raw)) {
+    const seen = new Set<string>();
     const clean: AddOn[] = raw
+      .slice(0, 200)
       .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x))
       .map((x) => ({
         slug: String(x.slug ?? "").trim().toLowerCase(),
-        name: String(x.name ?? "").trim(),
-        price_cents: Math.max(0, Math.round(Number(x.price_cents) || 0)),
+        name: String(x.name ?? "").trim().slice(0, 120),
+        price_cents: Math.max(0, Math.min(100_000_00, Math.round(Number(x.price_cents) || 0))),
         variants: x.variants === true,
         phase: ["pre", "post", "both"].includes(String(x.phase)) ? String(x.phase) : "both",
-        blurb: String(x.blurb ?? "").trim(),
+        blurb: String(x.blurb ?? "").trim().slice(0, 240),
       }))
-      .filter((a) => a.name && RENDERABLE_ADDON_SLUG.test(a.slug));
+      .filter((a) => {
+        if (!a.name || !RENDERABLE_ADDON_SLUG.test(a.slug) || seen.has(a.slug)) return false;
+        seen.add(a.slug);
+        return true;
+      })
+      .slice(0, ADDON_CATALOG_MAX);
     if (clean.length) return clean;
   }
   return ADDONS_DEFAULT;
@@ -4411,6 +4419,13 @@ async function handleConfigGet(req: Request): Promise<Response> {
     assertiveness: assertivenessLevel({ config } as ConciergeData),
     auth: true,
     forms: forms.map((f) => ({ slug: f.slug, title: f.title, fields: f.fields })),
+    // Add-on catalog + base price ride the bootstrap for parity (empty catalog here).
+    addons: addonCatalog({ config } as ConciergeData).map((a) => ({
+      slug: a.slug, name: a.name, price_cents: a.price_cents, price: fmtMoney(a.price_cents),
+      variants: a.variants, phase: a.phase, blurb: a.blurb,
+    })),
+    unit_price_cents: (typeof config?.unit_price === "number" && config.unit_price > 0)
+      ? Math.round(config.unit_price * 100) : null,
   });
 }
 

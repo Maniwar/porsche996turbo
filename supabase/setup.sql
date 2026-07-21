@@ -151,6 +151,9 @@ create table if not exists public.order_addons (
 create index if not exists order_addons_order_id_idx on public.order_addons (order_id);
 create index if not exists order_addons_slug_idx on public.order_addons (addon_slug);
 create index if not exists order_addons_added_at_idx on public.order_addons (added_at desc);
+-- One row per piece per order: a double-tap or retried request accumulates or no-ops
+-- instead of duplicating a line (which would inflate attach rate + revenue).
+create unique index if not exists order_addons_order_slug_ux on public.order_addons (order_id, addon_slug);
 
 create table if not exists public.allocation_counter (
   id int primary key default 1 check (id = 1), next_serial int not null);
@@ -568,17 +571,23 @@ begin
       -- Companion pieces ride along in the same transaction, snapshotted +
       -- attributed. Guarded casts so a malformed line never fails the placement.
       if p_addons is not null and jsonb_typeof(p_addons) = 'array' then
+        -- Deduplicate by slug (qty summed) so the unique (order_id, addon_slug) index
+        -- never fails placement; 'concierge' wins attribution if any line claims it.
         insert into public.order_addons (order_id, addon_slug, name, price_cents, variant, qty, added_by)
-        select v_order_id,
-               left(e->>'slug', 40),
-               left(e->>'name', 120),
-               case when e->>'price_cents' ~ '^[0-9]{1,9}$' then (e->>'price_cents')::int else 0 end,
-               nullif(e->>'variant', ''),
-               least(20, greatest(1, case when e->>'qty' ~ '^[0-9]{1,3}$' then (e->>'qty')::int else 1 end)),
-               case when coalesce(e->>'added_by','customer') in ('concierge','customer','page')
-                    then e->>'added_by' else 'customer' end
-        from jsonb_array_elements(p_addons) as e
-        where coalesce(e->>'slug','') <> '' and coalesce(e->>'name','') <> '';
+        select v_order_id, g.slug, g.name, g.price_cents, g.variant, g.qty, g.added_by from (
+          select left(e->>'slug', 40) as slug,
+                 max(left(e->>'name', 120)) as name,
+                 max(case when e->>'price_cents' ~ '^[0-9]{1,9}$' then (e->>'price_cents')::int else 0 end) as price_cents,
+                 max(nullif(e->>'variant', '')) as variant,
+                 least(20, sum(least(20, greatest(1, case when e->>'qty' ~ '^[0-9]{1,3}$' then (e->>'qty')::int else 1 end)))) as qty,
+                 min(case when coalesce(e->>'added_by','customer') in ('concierge','customer','page')
+                          then e->>'added_by' else 'customer' end) as added_by
+          from jsonb_array_elements(p_addons) as e
+          where coalesce(e->>'slug','') <> '' and coalesce(e->>'name','') <> ''
+          group by left(e->>'slug', 40)
+        ) g
+        on conflict (order_id, addon_slug)
+          do update set qty = least(20, public.order_addons.qty + excluded.qty);
       end if;
       return v_serial;
     exception when unique_violation then
@@ -610,10 +619,14 @@ begin
      and (o.user_id = p_user_id or (p_email is not null and o.email = p_email))
    limit 1;
   if v_order_id is null then return -1; end if;
+  -- Idempotent: a repeat add of a piece already on the order is a no-op returning the
+  -- existing line — never a duplicate or an inflated qty. Price/name refresh to catalog.
   insert into public.order_addons (order_id, addon_slug, name, price_cents, variant, qty, added_by)
     values (v_order_id, left(p_slug, 40), left(p_name, 120), greatest(0, coalesce(p_price_cents, 0)),
       nullif(p_variant, ''), 1,
       case when coalesce(p_added_by,'customer') in ('concierge','customer','page') then p_added_by else 'customer' end)
+    on conflict (order_id, addon_slug)
+      do update set name = excluded.name, price_cents = excluded.price_cents
     returning id into v_id;
   return v_id;
 end; $$;
