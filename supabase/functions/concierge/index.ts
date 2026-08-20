@@ -2222,6 +2222,13 @@ async function runRegisterTool(
     if (!res || typeof res.ref !== "number") return "ERROR: the ticket could not be opened just now.";
     await logAction(cid, customer, "open_ticket", null,
       { ref: res.ref, type: res.type, area: res.area, priority: res.priority }, `ticket #${res.ref} opened`);
+    // Event-driven rules (urgent, spike, an area lighting up) should not wait for
+    // the next scheduled sweep — the whole point is speed. Fire-and-forget: the
+    // scan is dedupe-guarded and capped, so this can never storm, and the
+    // customer's reply never waits on it.
+    bg(pgRpc("support_alert_scan", {}).then(async (fired) => {
+      if (Array.isArray(fired) && fired.length) await notifySupportAlerts(fired);
+    }).catch(() => {/* alerting must never break the chat */}));
     // The reply the model must ground its confirmation in — it may say a ticket
     // exists ONLY because this returned a reference.
     return JSON.stringify({
@@ -8755,6 +8762,75 @@ async function handleTrackPost(req: Request): Promise<Response> {
 // conversations/actions/site_events/email logs older than the horizon; orders
 // and their attribution stamps survive. Nothing is scheduled by default —
 // this is the merchant's explicit act from Edition & access → Data retention.
+/** Mail the alerts a scan just recorded, and mark each attempt. Shared by the
+ *  endpoint and the inline post-ticket path so there is ONE mailing behaviour.
+ *  With no recipients configured there is nobody to tell: the alerts stay
+ *  recorded (and visible in the studio), and the reason is written to the log
+ *  rather than silently dropped. Returns how many were mailed. */
+async function notifySupportAlerts(alerts: Array<Record<string, unknown>>): Promise<number> {
+  const { config } = await loadConciergeData();
+  const sup = (config?.support ?? null) as Record<string, unknown> | null;
+  const ac = (sup?.alerts ?? null) as Record<string, unknown> | null;
+  const to = Array.isArray(ac?.to)
+    ? (ac!.to as unknown[])
+      .filter((x) => typeof x === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x as string))
+      .map((x) => (x as string).trim()).slice(0, 10)
+    : [];
+  let sent = 0;
+  for (const a of alerts) {
+    const id = typeof a.id === "number" ? a.id : null;
+    if (!to.length) {
+      if (id) await pgRpc("support_alert_mark", { p_id: id, p_error: "no recipients configured" });
+      continue;
+    }
+    const subject = String(a.subject ?? "Support alert");
+    const sev = String(a.severity ?? "warn").toUpperCase();
+    const ref = a.ticket_ref == null ? "" : `Ticket #${a.ticket_ref}`;
+    try {
+      await sendEmail(
+        to.join(", "),
+        `[${sev}] ${subject}`,
+        emailShell(subject, [
+          String(a.body ?? ""),
+          ref,
+          "You are receiving this because it matched an enabled support alert rule. " +
+            "Thresholds, cooldowns and the hourly ceiling are set in the studio's Support tab.",
+        ].filter(Boolean)),
+        { kind: "support_alert", serial: null },
+      );
+      if (id) await pgRpc("support_alert_mark", { p_id: id, p_error: null });
+      sent++;
+    } catch (e) {
+      if (id) {
+        await pgRpc("support_alert_mark", {
+          p_id: id, p_error: (e instanceof Error ? e.message : String(e)).slice(0, 300),
+        });
+      }
+    }
+  }
+  return sent;
+}
+
+// ── POST ?support_alerts=1 — evaluate the alert rules and mail what fired ────
+// Two callers: the studio ("run a scan now" / after a config change) with an
+// admin JWT, and a scheduled job with the service key — time-based rules like an
+// SLA breach have no triggering event, so something must ask periodically.
+// The scan RECORDS before we mail, so a crash between the two can never
+// double-alert; each send is then marked so the log shows what truly went out.
+async function handleSupportAlertsPost(req: Request): Promise<Response> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const bearer = auth.replace(/^Bearer\s+/i, "").trim();
+  const isService = !!SERVICE_KEY && bearer === SERVICE_KEY;
+  if (!isService && !(await requireAdmin(req))) {
+    return jsonError(req, 403, "Administrators only.");
+  }
+  const alerts = await pgRpc<Array<Record<string, unknown>>>("support_alert_scan", {});
+  if (alerts === null) return jsonError(req, 502, "The alert scan did not run.");
+  if (!alerts.length) return jsonResponse(req, 200, { fired: 0, sent: 0, alerts: [] });
+  const sent = await notifySupportAlerts(alerts);
+  return jsonResponse(req, 200, { fired: alerts.length, sent, alerts });
+}
+
 async function handlePrunePost(req: Request): Promise<Response> {
   if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
   let body: Record<string, unknown>;
@@ -8772,6 +8848,9 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(req) });
   if (req.method === "POST" && new URL(req.url).searchParams.get("track")) {
     return await handleTrackPost(req);
+  }
+  if (req.method === "POST" && new URL(req.url).searchParams.get("support_alerts")) {
+    return await handleSupportAlertsPost(req);
   }
   if (req.method === "POST" && new URL(req.url).searchParams.get("prune")) {
     return await handlePrunePost(req);

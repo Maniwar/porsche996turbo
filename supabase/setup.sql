@@ -4372,6 +4372,192 @@ end; $$;
 grant execute on function public.support_metrics(int) to authenticated;
 revoke execute on function public.support_metrics(int) from public, anon;
 
+-- ── Alerting — the few things worth interrupting a human for ─────────────────
+-- Deliberately NOT "email on every ticket": an alert that always fires is an
+-- alert nobody reads. Every rule answers "is something going wrong?", and four
+-- independent guards keep the volume honest:
+--   1. each rule is individually switchable, with its own threshold/window;
+--   2. a DEDUPE KEY per alert (a ticket, an area, the condition) — cooldown 0
+--      means "once for this key, ever", so a per-ticket alert never repeats;
+--   3. a per-rule cooldown for recurring conditions, so a still-true condition
+--      does not re-fire on every scan;
+--   4. a GLOBAL max_per_hour ceiling that outranks every rule — the backstop
+--      against an alert storm during exactly the incident you need to think in.
+-- Every alert is logged whether or not the mail leaves, so the log is both the
+-- dedupe ledger and the audit trail.
+create table if not exists public.support_alerts (
+  id bigint generated always as identity primary key,
+  rule text not null,
+  dedupe_key text not null,
+  severity text not null default 'warn' check (severity in ('info','warn','critical')),
+  subject text not null,
+  body text not null,
+  ticket_ref bigint,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  send_error text);
+create index if not exists support_alerts_rule_key_idx
+  on public.support_alerts (rule, dedupe_key, created_at desc);
+create index if not exists support_alerts_created_idx on public.support_alerts (created_at desc);
+alter table public.support_alerts enable row level security;
+drop policy if exists "admin all" on public.support_alerts;
+create policy "admin all" on public.support_alerts for all to authenticated
+  using (public.is_concierge_admin()) with check (public.is_concierge_admin());
+
+-- Record one alert if its dedupe key is clear, else return null. Cooldown 0 is
+-- "once per key, ever" — the right semantic for per-ticket alerts, which must
+-- never repeat no matter how many times the scan runs.
+create or replace function public.support_alert_fire(
+  p_rule text, p_key text, p_severity text, p_subject text, p_body text,
+  p_cooldown_mins int, p_ticket_ref bigint default null
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  if exists (select 1 from public.support_alerts x
+              where x.rule = p_rule and x.dedupe_key = p_key
+                and (coalesce(p_cooldown_mins,0) <= 0
+                     or x.created_at > now() - make_interval(mins => p_cooldown_mins)))
+  then return null; end if;
+  insert into public.support_alerts (rule, dedupe_key, severity, subject, body, ticket_ref)
+    values (p_rule, p_key, p_severity, left(p_subject,200), left(p_body,4000), p_ticket_ref)
+    returning jsonb_build_object('id', id, 'rule', rule, 'severity', severity,
+      'subject', subject, 'body', body, 'ticket_ref', ticket_ref) into v;
+  return v;
+end; $$;
+revoke execute on function public.support_alert_fire(text,text,text,text,text,int,bigint)
+  from public, anon, authenticated;
+
+-- Evaluate every enabled rule and return the alerts that should be MAILED now
+-- (already recorded, so a crash between scan and send cannot double-alert).
+create or replace function public.support_alert_scan()
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  a jsonb; rules jsonb; r jsonb; one jsonb; out_j jsonb := '[]'::jsonb;
+  v_max int; v_recent int; v_thr int; v_win int; v_cd int; v_n int; rec record;
+begin
+  a := public.support_config() -> 'alerts';
+  if a is null or coalesce((a->>'enabled')::boolean, false) is not true then return '[]'::jsonb; end if;
+  rules := coalesce(a -> 'rules', '{}'::jsonb);
+  v_max := greatest(1, coalesce(nullif(a->>'max_per_hour','')::int, 6));
+  select count(*) into v_recent from public.support_alerts where created_at > now() - interval '1 hour';
+  if v_recent >= v_max then return '[]'::jsonb; end if;
+
+  -- 1. urgent ticket opened — someone is blocked with no workaround
+  r := rules -> 'urgent_ticket';
+  if coalesce((r->>'enabled')::boolean, true) then
+    v_cd := coalesce(nullif(r->>'cooldown_mins','')::int, 0);
+    for rec in select t.ref, t.subject, t.area from public.support_tickets t
+       where t.priority = 'urgent' and t.status in ('open','pending')
+         and t.created_at > now() - interval '24 hours' order by t.created_at desc limit 10
+    loop
+      exit when v_recent >= v_max;
+      one := public.support_alert_fire('urgent_ticket', 'ticket:' || rec.ref, 'critical',
+        'Urgent ticket #' || rec.ref || ' — ' || rec.subject,
+        'A customer is blocked with no workaround.' ||
+        coalesce(' Area: ' || rec.area, ' No area tagged — needs triage.'), v_cd, rec.ref);
+      if one is not null then out_j := out_j || jsonb_build_array(one); v_recent := v_recent + 1; end if;
+    end loop;
+  end if;
+
+  -- 2. first-response SLA breached — the promise we made is already broken
+  r := rules -> 'sla_breach';
+  if coalesce((r->>'enabled')::boolean, true) then
+    v_cd := coalesce(nullif(r->>'cooldown_mins','')::int, 0);
+    for rec in select t.ref, t.subject, t.priority, t.due_at from public.support_tickets t
+       where t.status in ('open','pending') and t.first_response_at is null
+         and t.due_at is not null and now() > t.due_at order by t.due_at limit 10
+    loop
+      exit when v_recent >= v_max;
+      one := public.support_alert_fire('sla_breach', 'breach:' || rec.ref, 'critical',
+        'SLA breached on #' || rec.ref || ' — ' || rec.subject,
+        'No first response, and the ' || rec.priority || ' deadline passed ' ||
+        to_char(rec.due_at, 'YYYY-MM-DD HH24:MI') || ' UTC.', v_cd, rec.ref);
+      if one is not null then out_j := out_j || jsonb_build_array(one); v_recent := v_recent + 1; end if;
+    end loop;
+  end if;
+
+  -- 3. spike — the "something is going very wrong" signal
+  r := rules -> 'spike';
+  if coalesce((r->>'enabled')::boolean, true) and v_recent < v_max then
+    v_thr := greatest(2, coalesce(nullif(r->>'threshold','')::int, 5));
+    v_win := greatest(1, coalesce(nullif(r->>'window_mins','')::int, 15));
+    v_cd  := coalesce(nullif(r->>'cooldown_mins','')::int, 60);
+    select count(*) into v_n from public.support_tickets t
+     where t.created_at > now() - make_interval(mins => v_win);
+    if v_n >= v_thr then
+      one := public.support_alert_fire('spike', 'spike', 'critical',
+        'Ticket spike: ' || v_n || ' in ' || v_win || ' minutes',
+        v_n || ' tickets opened in the last ' || v_win || ' minutes (threshold ' || v_thr ||
+        '). Something may be broken for everyone.', v_cd, null);
+      if one is not null then out_j := out_j || jsonb_build_array(one); v_recent := v_recent + 1; end if;
+    end if;
+  end if;
+
+  -- 4. one AREA lighting up — the same signal, but it names the surface
+  r := rules -> 'area_cluster';
+  if coalesce((r->>'enabled')::boolean, true) then
+    v_thr := greatest(2, coalesce(nullif(r->>'threshold','')::int, 3));
+    v_win := greatest(1, coalesce(nullif(r->>'window_mins','')::int, 30));
+    v_cd  := coalesce(nullif(r->>'cooldown_mins','')::int, 60);
+    for rec in select t.area, count(*)::int as n from public.support_tickets t
+       where t.area is not null and t.created_at > now() - make_interval(mins => v_win)
+       group by t.area having count(*) >= v_thr order by 2 desc limit 5
+    loop
+      exit when v_recent >= v_max;
+      one := public.support_alert_fire('area_cluster', 'cluster:' || rec.area, 'critical',
+        rec.n || ' tickets on "' || rec.area || '" in ' || v_win || ' minutes',
+        'That surface is generating tickets far above normal (threshold ' || v_thr ||
+        '). Likely a live incident there.', v_cd, null);
+      if one is not null then out_j := out_j || jsonb_build_array(one); v_recent := v_recent + 1; end if;
+    end loop;
+  end if;
+
+  -- 5. a customer rated the resolution at the floor
+  r := rules -> 'csat_floor';
+  if coalesce((r->>'enabled')::boolean, true) then
+    v_thr := greatest(1, coalesce(nullif(r->>'threshold','')::int, 2));
+    v_cd  := coalesce(nullif(r->>'cooldown_mins','')::int, 0);
+    for rec in select t.ref, t.subject, t.csat_score from public.support_tickets t
+       where t.csat_score is not null and t.csat_score <= v_thr
+         and t.csat_at > now() - interval '24 hours' order by t.csat_at desc limit 10
+    loop
+      exit when v_recent >= v_max;
+      one := public.support_alert_fire('csat_floor', 'csat:' || rec.ref, 'warn',
+        'Poor rating (' || rec.csat_score || '/5) on #' || rec.ref,
+        'The customer rated the resolution of "' || rec.subject || '" at ' || rec.csat_score ||
+        '/5. Worth a look before it becomes a pattern.', v_cd, rec.ref);
+      if one is not null then out_j := out_j || jsonb_build_array(one); v_recent := v_recent + 1; end if;
+    end loop;
+  end if;
+
+  -- 6. the queue is drowning (off by default — it is a staffing signal, not an incident)
+  r := rules -> 'backlog';
+  if coalesce((r->>'enabled')::boolean, false) and v_recent < v_max then
+    v_thr := greatest(1, coalesce(nullif(r->>'threshold','')::int, 25));
+    v_cd  := coalesce(nullif(r->>'cooldown_mins','')::int, 360);
+    select count(*) into v_n from public.support_tickets t where t.status in ('open','pending');
+    if v_n >= v_thr then
+      one := public.support_alert_fire('backlog', 'backlog', 'warn',
+        'Support backlog at ' || v_n || ' open tickets',
+        'The open + pending queue has reached ' || v_n || ' (threshold ' || v_thr || ').', v_cd, null);
+      if one is not null then out_j := out_j || jsonb_build_array(one); end if;
+    end if;
+  end if;
+
+  return out_j;
+end; $$;
+revoke execute on function public.support_alert_scan() from public, anon, authenticated;
+
+-- Mark an alert's mail attempt, so the log tells you what actually went out.
+create or replace function public.support_alert_mark(p_id bigint, p_error text default null)
+returns void language sql security definer set search_path = '' as $$
+  update public.support_alerts
+     set sent_at = case when p_error is null then now() else sent_at end,
+         send_error = p_error
+   where id = p_id;
+$$;
+revoke execute on function public.support_alert_mark(bigint,text) from public, anon, authenticated;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- PostgREST schema-cache reload — new tables/functions (e.g. nps_metrics) are
 -- callable over REST immediately, even if the DDL event trigger missed a beat.
