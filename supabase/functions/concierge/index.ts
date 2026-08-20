@@ -1312,6 +1312,64 @@ const REGISTER_TOOLS: any[] = [
       required: ["serial", "note"],
     },
   },
+  {
+    name: "open_ticket",
+    description:
+      "Open a support ticket for this customer and hand them its reference number. Use it ONLY " +
+      "after you have genuinely tried to answer from KNOWLEDGE and cannot — or when they ask for a " +
+      "human, report something BROKEN, or offer product FEEDBACK. Never open a ticket for something " +
+      "you can answer; answering is always better than escalating. Choose `type` honestly: 'bug' " +
+      "when something does not work (capture what they did, what they expected, and what happened " +
+      "instead), 'feedback' when they want something the product does not do (capture the underlying " +
+      "NEED, not merely the feature they named), 'question' when it genuinely needs a human. Set " +
+      "`area` to the part of the product involved, chosen ONLY from the areas named in your support " +
+      "brief — never invent one; omit it if you are unsure and let a human triage. Set `priority` by " +
+      "real impact: 'urgent' only when they are blocked with no workaround. Take an email so the team " +
+      "can reply. NEVER tell them a ticket exists unless this tool returned a reference, and never " +
+      "promise a fix, a timeline, or that a suggestion will be built.",
+    input_schema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "A short one-line summary of the issue." },
+        body: {
+          type: "string",
+          description: "The full detail. For a bug: the steps they took, what they expected, and what " +
+            "happened instead. For feedback: the underlying need and how they work around it today. " +
+            "For a question: exactly what they need answered.",
+        },
+        type: {
+          type: "string", enum: ["question", "bug", "feedback"],
+          description: "What this is: a question needing a human, a bug, or product feedback.",
+        },
+        area: {
+          type: "string",
+          description: "The part of the product involved — ONLY a value from your support brief's area list. Omit if unsure.",
+        },
+        priority: {
+          type: "string", enum: ["low", "normal", "high", "urgent"],
+          description: "Real impact. 'urgent' ONLY when they are blocked with no workaround.",
+        },
+        email: { type: "string", description: "Their email, so the team can reply — OMIT for a signed-in customer." },
+        name: { type: "string", description: "Their name — OMIT for a signed-in customer." },
+      },
+      required: ["subject", "body", "type"],
+    },
+  },
+  {
+    name: "check_ticket",
+    description:
+      "Read back the status of this customer's OWN support tickets. Call it whenever they ask about " +
+      "a ticket, quote a reference number, or ask whether anyone has looked at their issue. With no " +
+      "reference it lists their recent tickets; with one it returns that ticket and the conversation " +
+      "so far. Report what it returns verbatim in substance — never invent progress, an owner, or an ETA.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ref: { type: "integer", description: "The ticket reference number, when they quoted one." },
+        email: { type: "string", description: "Their email — OMIT for a signed-in customer." },
+      },
+    },
+  },
 ];
 
 // Core tools the concierge leans on for basic competence. They can still be
@@ -1333,6 +1391,14 @@ function callbacksEnabled(config: unknown): boolean {
   // deno-lint-ignore no-explicit-any
   const b = (config as any)?.bookings;
   return bookingsEnabled(config) && (b.callbacks === undefined || b.callbacks?.enabled !== false);
+}
+/** Support mode (SUPPORT.md) — the ticket desk. Absent = OFF, like bookings: a
+ *  house that runs no support queue must never be able to promise one. */
+const SUPPORT_TOOL_NAMES = new Set(["open_ticket", "check_ticket"]);
+function supportEnabled(config: unknown): boolean {
+  // deno-lint-ignore no-explicit-any
+  const s = (config as any)?.support;
+  return !!(s && typeof s === "object" && s.enabled === true);
 }
 /** RFC 5545 minimal event. UID stays stable across reschedules (the original
  *  booking's id), so calendar apps UPDATE the event instead of duplicating. */
@@ -1475,6 +1541,9 @@ function buildToolsForModel(data: ConciergeData): any[] {
     if (BOOKING_TOOL_NAMES.has(tool.name) && !bookingsEnabled(data.config)) continue;
     if ((tool.name === "request_callback" || tool.name === "change_callback") &&
         !callbacksEnabled(data.config)) continue;
+    // same cascade for support mode: with the desk off, the model never sees the
+    // ticket tools, so it can't offer an escalation the house cannot service.
+    if (SUPPORT_TOOL_NAMES.has(tool.name) && !supportEnabled(data.config)) continue;
     if (o && typeof o.description === "string" && o.description.trim().length > 0) {
       out.push({ ...tool, description: o.description });
     } else {
@@ -2109,6 +2178,78 @@ async function runRegisterTool(
     const nice = { offer: "offer", viewing: "viewing request", question: "question", callback: "callback request" }[kind];
     const via = emailOk ? " by email" : phone ? " by phone" : "";
     return `Thank you — your ${nice} is with the house, and the owner will follow up${via} shortly.`;
+  }
+
+  // ── Support mode: escalation to a human, as a durable ticket ────────────────
+  if (name === "open_ticket") {
+    const subject = typeof input.subject === "string" ? input.subject.trim().slice(0, 200) : "";
+    const body = typeof input.body === "string" ? input.body.trim().slice(0, 8000) : "";
+    if (subject.length < 3) return "ERROR: a one-line subject is needed before a ticket can be opened.";
+    if (body.length < 3) return "ERROR: a description is needed before a ticket can be opened.";
+    const ttype = typeof input.type === "string" ? input.type.trim().toLowerCase() : "question";
+    // A signed-in customer's contact comes from the account, never re-asked.
+    const email = customer.email
+      || (typeof input.email === "string" ? input.email.trim().toLowerCase().slice(0, 200) : "");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return "ERROR: an email is needed so the team can reply — ask for one, then call this again.";
+    }
+    // Customer carries id/email only; the display name (when known) rides the
+    // model's argument, and the ticket is happy without one.
+    const who = typeof input.name === "string" ? input.name.trim().slice(0, 120) : "";
+    // App context travels WITH the ticket so an agent does not have to ask for it.
+    const meta: Record<string, unknown> = {
+      page_url: typeof input.page_url === "string" ? input.page_url.slice(0, 400) : undefined,
+      section: typeof input.section === "string" ? input.section.slice(0, 80) : undefined,
+      user_agent: typeof input.user_agent === "string" ? input.user_agent.slice(0, 300) : undefined,
+      app_version: typeof input.app_version === "string" ? input.app_version.slice(0, 40) : undefined,
+      captured_at: new Date().toISOString(),
+    };
+    for (const k of Object.keys(meta)) if (meta[k] === undefined) delete meta[k];
+    const res = await pgRpc<Record<string, unknown>>("open_support_ticket", {
+      p_subject: subject,
+      p_body: body,
+      p_requester_email: email,
+      p_requester_name: who || null,
+      p_user_id: customer.id ?? null,
+      p_type: ttype,
+      p_area: typeof input.area === "string" ? input.area.trim().toLowerCase() : null,
+      p_priority: typeof input.priority === "string" ? input.priority.trim().toLowerCase() : "normal",
+      p_conversation_id: cid,
+      p_session_key: typeof input.session_key === "string" ? input.session_key.slice(0, 64) : null,
+      p_origin: "concierge",
+      p_meta: meta,
+    });
+    if (!res || typeof res.ref !== "number") return "ERROR: the ticket could not be opened just now.";
+    await logAction(cid, customer, "open_ticket", null,
+      { ref: res.ref, type: res.type, area: res.area, priority: res.priority }, `ticket #${res.ref} opened`);
+    // The reply the model must ground its confirmation in — it may say a ticket
+    // exists ONLY because this returned a reference.
+    return JSON.stringify({
+      ok: true, ref: res.ref, type: res.type, area: res.area, priority: res.priority,
+      say: `Ticket #${res.ref} is open and with the support team; they will reply to ${email}. ` +
+        `Give them the reference #${res.ref}. Do NOT promise a fix, a build, or a timeline.`,
+    });
+  }
+
+  if (name === "check_ticket") {
+    const email = customer.email
+      || (typeof input.email === "string" ? input.email.trim().toLowerCase().slice(0, 200) : "");
+    if (!email && !customer.id) {
+      return "ERROR: an email is needed to look up their tickets — ask for the one the ticket was opened with.";
+    }
+    const refRaw = typeof input.ref === "number" ? input.ref : parseInt(String(input.ref ?? ""), 10);
+    if (Number.isInteger(refRaw) && refRaw > 0) {
+      const one = await pgRpc<Record<string, unknown>>("get_support_ticket", {
+        p_ref: refRaw, p_email: email || null, p_user_id: customer.id ?? null,
+      });
+      if (!one) return "ERROR: the ticket desk is unreachable right now.";
+      return JSON.stringify(one);
+    }
+    const list = await pgRpc<unknown>("my_support_tickets", {
+      p_email: email || null, p_user_id: customer.id ?? null, p_limit: 10,
+    });
+    if (list === null) return "ERROR: the ticket desk is unreachable right now.";
+    return JSON.stringify({ tickets: list });
   }
 
   if (name === "remember_customer") {
@@ -2978,6 +3119,7 @@ const PROMPT_SECTIONS: { key: string; label: string; signedInOnly?: boolean }[] 
   { key: "recognition", label: "Recognition & client book" },
   { key: "register", label: "Register desk — tools & discipline", signedInOnly: true },
   { key: "selling", label: "Selling — moves, how-hard dial, angles, objections" },
+  { key: "support", label: "Support — answer first, then escalate as a ticket" },
   { key: "exemplars", label: "Worked examples — how a good turn reads" },
   { key: "engagement", label: "Engagement & pacing" },
   { key: "procedures", label: "Standard operating procedures" },
@@ -3209,6 +3351,54 @@ function sellingBlock(data: ConciergeData): string {
       "shows its own confirmation the moment they do. Until then nothing has reached the owner: do not invent a " +
       "confirmation, a callback, or a phone number the owner never received. Present the form and let them send it.\n";
   }
+  return s;
+}
+
+// SUPPORT — the escalation discipline. Renders ONLY when support mode is on
+// (config.support.enabled) and the open_ticket tool is actually available, so a
+// house that does not run a support desk never sees it. The rule it exists to
+// enforce: ANSWERING IS ALWAYS BETTER THAN ESCALATING — a ticket is what happens
+// when the knowledge genuinely is not there, not a way to end a hard conversation.
+// The intake differs by type, because a bug, a feature request, and a question
+// need different things captured to be actionable.
+function supportBlock(data: ConciergeData): string {
+  const cfg = (data.config?.support ?? null) as Record<string, unknown> | null;
+  if (!cfg || typeof cfg !== "object" || cfg.enabled !== true) return "";
+  const areas = Array.isArray(cfg.areas)
+    ? (cfg.areas as unknown[]).filter((a) => typeof a === "string" && (a as string).trim())
+      .map((a) => (a as string).trim().toLowerCase()).slice(0, 40)
+    : [];
+  let s = "\nSUPPORT (when you cannot answer — the ticket is the handoff, never the escape)\n" +
+    "- ANSWER FIRST. A ticket is for what the KNOWLEDGE genuinely does not cover, what is BROKEN, " +
+    "or what the customer explicitly wants a human for. If the answer is in KNOWLEDGE, give it — " +
+    "opening a ticket for something you could have answered is a failure, not a courtesy.\n" +
+    "- Never guess to avoid a ticket, and never invent a cause, a fix, an owner, or a timeline. " +
+    "'I don't know, and here is how I'll get you a real answer' is a good turn.\n" +
+    "- CAPTURE BEFORE YOU OPEN. Ask only what you still need — never re-ask what they already told " +
+    "you, and never ask a signed-in customer for their name or email. What each kind needs:\n" +
+    "  · BUG (something is not working) — what they DID, what they EXPECTED, what HAPPENED instead, " +
+    "and where in the product. One round of questions, not an interrogation; if they are plainly " +
+    "blocked, open it with what you have rather than holding the ticket hostage to detail.\n" +
+    "  · FEEDBACK (they want something the product does not do) — the underlying NEED and how they " +
+    "handle it today, not merely the feature they named. Thank them plainly. Never say it will be " +
+    "built, prioritised, or 'passed to the roadmap'.\n" +
+    "  · QUESTION (needs a human answer) — the exact question in their words, and anything you " +
+    "already ruled out, so nobody repeats your work.\n" +
+    "- PRIORITY is impact, not tone: 'urgent' only when they are blocked with no workaround. An " +
+    "annoyed customer with a workaround is not urgent — say what you are setting and why if it helps.\n";
+  if (areas.length) {
+    s += "- AREA — tag where it is happening, using EXACTLY one of these and nothing else: " +
+      areas.join(", ") + ". If none fits, omit it and let a human triage; a wrong tag sends the " +
+      "ticket to the wrong queue, which is worse than no tag.\n";
+  } else {
+    s += "- AREA — no areas are configured, so omit it and let a human triage.\n";
+  }
+  s += "- AFTER opening: give them the reference number, say who will follow up and by which email, " +
+    "and stop selling. A person with a broken thing is not a prospect.\n" +
+    "- NEVER say a ticket exists, was filed, escalated, or 'sent to the team' unless open_ticket " +
+    "actually returned a reference. Until then nothing has reached anyone.\n" +
+    "- If they ask about an existing ticket or quote a reference, call check_ticket and report what " +
+    "it returns — never a status you assumed.\n";
   return s;
 }
 
@@ -3479,6 +3669,7 @@ function assemblePromptSections(
     recognition: () => recognitionBlock(),
     register: () => registerBlock(data),
     selling: () => sellingBlock(data),
+    support: () => supportBlock(data),
     exemplars: () => exemplarsBlock(data),
     engagement: () => engagementBlock(data),
     procedures: () => {

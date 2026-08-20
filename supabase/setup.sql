@@ -3883,6 +3883,496 @@ insert into public.concierge_evals (slug, name, description, signed_in, context,
 on conflict (slug) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- SUPPORT — tickets, threads, macros, SLA & CSAT (see SUPPORT.md)
+--
+-- The escalation artifact: when the concierge cannot answer (or the customer
+-- asks for a human), it opens a TICKET — a durable, threaded, owned work item an
+-- agent resolves from the studio's Support queue.
+--
+-- PORTABILITY (this is load-bearing): support here depends on NOTHING from the
+-- commerce schema. A ticket links only to things every install has — a
+-- conversation, an email/user, and a free-form `meta` for app context. There is
+-- no foreign key to the order tables, no product variant, no serial. That is
+-- what lets this same schema drop into a different Supabase app (a CRM, a SaaS
+-- web app) as a config exercise rather than a rewrite.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create table if not exists public.support_tickets (
+  id uuid primary key default gen_random_uuid(),
+  -- Human-readable reference the customer quotes back ("#1042"). Starts at 1000
+  -- so a fresh install never shows a bare "#1".
+  ref bigint generated always as identity (start with 1000) unique,
+  subject text not null,
+  body text not null,
+  status text not null default 'open'
+    check (status in ('open','pending','resolved','closed')),
+  priority text not null default 'normal'
+    check (priority in ('low','normal','high','urgent')),
+  -- Three independent axes, and they do different jobs:
+  --   type     WHAT it is  → drives the concierge's INTAKE script (a bug needs
+  --                          repro steps; feedback needs the underlying need; a
+  --                          question should be answered before it's escalated).
+  --   area     WHERE it is → drives the QUEUE (routing to the owning team).
+  --   priority HOW urgent  → drives the SLA clock.
+  type text not null default 'question'
+    check (type in ('question','bug','feedback')),
+  area text,
+  requester_name text,
+  requester_email text,
+  user_id uuid references auth.users(id) on delete set null,
+  assignee_email text,
+  -- The chat this escalated from (universal in the engine), never an order.
+  conversation_id uuid references public.concierge_conversations(id) on delete set null,
+  session_key text,
+  origin text not null default 'concierge'
+    check (origin in ('concierge','customer','agent','form')),
+  first_response_at timestamptz,   -- first PUBLIC agent reply (the SLA clock stop)
+  resolved_at timestamptz,
+  closed_at timestamptz,
+  due_at timestamptz,              -- SLA: first-response deadline
+  resolve_due_at timestamptz,      -- SLA: resolution deadline
+  csat_score smallint check (csat_score is null or csat_score between 1 and 5),
+  csat_comment text,
+  csat_at timestamptz,
+  meta jsonb not null default '{}'::jsonb,  -- app context: {page_url, app_version, …}
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now());
+create index if not exists support_tickets_status_idx on public.support_tickets (status, created_at desc);
+create index if not exists support_tickets_queue_idx on public.support_tickets (type, area);
+create index if not exists support_tickets_assignee_idx on public.support_tickets (assignee_email);
+create index if not exists support_tickets_requester_idx on public.support_tickets (lower(requester_email));
+create index if not exists support_tickets_conversation_idx on public.support_tickets (conversation_id);
+create index if not exists support_tickets_created_idx on public.support_tickets (created_at desc);
+
+-- The thread. `visibility='internal'` is an AGENT-ONLY note: it must never reach
+-- the customer, which the owner-read policy below enforces structurally.
+create table if not exists public.support_ticket_messages (
+  id bigint generated always as identity primary key,
+  ticket_id uuid not null references public.support_tickets(id) on delete cascade,
+  author_kind text not null check (author_kind in ('customer','agent','concierge','system')),
+  author_email text,
+  body text not null,
+  visibility text not null default 'public' check (visibility in ('public','internal')),
+  created_at timestamptz not null default now());
+create index if not exists support_ticket_messages_ticket_idx
+  on public.support_ticket_messages (ticket_id, created_at);
+
+-- Canned replies an agent inserts into a reply.
+create table if not exists public.support_macros (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null,
+  title text not null,
+  body text not null,
+  category text,
+  enabled boolean not null default true,
+  sort_order int not null default 0,
+  updated_at timestamptz not null default now());
+
+alter table public.support_tickets enable row level security;
+alter table public.support_ticket_messages enable row level security;
+alter table public.support_macros enable row level security;
+
+drop policy if exists "admin all" on public.support_tickets;
+create policy "admin all" on public.support_tickets for all to authenticated
+  using (public.is_concierge_admin()) with check (public.is_concierge_admin());
+drop policy if exists "owner read own tickets" on public.support_tickets;
+create policy "owner read own tickets" on public.support_tickets for select to authenticated
+  using (user_id = auth.uid()
+         or (requester_email is not null
+             and lower(requester_email) = lower(coalesce(auth.jwt()->>'email',''))));
+
+drop policy if exists "admin all" on public.support_ticket_messages;
+create policy "admin all" on public.support_ticket_messages for all to authenticated
+  using (public.is_concierge_admin()) with check (public.is_concierge_admin());
+-- Owners see their own thread MINUS internal notes. The visibility filter lives in
+-- the policy (not the query) so an internal note can never leak through a client.
+drop policy if exists "owner read own public messages" on public.support_ticket_messages;
+create policy "owner read own public messages" on public.support_ticket_messages for select to authenticated
+  using (visibility = 'public' and exists (
+    select 1 from public.support_tickets t
+     where t.id = support_ticket_messages.ticket_id
+       and (t.user_id = auth.uid()
+            or (t.requester_email is not null
+                and lower(t.requester_email) = lower(coalesce(auth.jwt()->>'email',''))))));
+
+drop policy if exists "admin all" on public.support_macros;
+create policy "admin all" on public.support_macros for all to authenticated
+  using (public.is_concierge_admin()) with check (public.is_concierge_admin());
+
+-- The support settings block (concierge_config key 'support') — categories,
+-- category→assignee routing, and the per-priority SLA. Config-over-code like every
+-- other tunable; a missing/partial block falls back to the built-in defaults below.
+create or replace function public.support_config()
+returns jsonb language sql stable security definer set search_path = '' as $$
+  select coalesce((select c.value from public.concierge_config c where c.key = 'support' limit 1),
+                  '{}'::jsonb);
+$$;
+revoke execute on function public.support_config() from public, anon, authenticated;
+
+-- Minutes allowed for first response / resolution at a given priority.
+create or replace function public.support_sla_mins(p_priority text, p_which text)
+returns int language plpgsql stable security definer set search_path = '' as $$
+declare v jsonb; v_n int; v_def int;
+begin
+  v_def := case
+    when p_which = 'first_response' then
+      case p_priority when 'urgent' then 30 when 'high' then 120 when 'low' then 1440 else 480 end
+    else
+      case p_priority when 'urgent' then 240 when 'high' then 480 when 'low' then 10080 else 2880 end
+  end;
+  v := public.support_config() -> 'sla' -> p_priority -> (p_which || '_mins');
+  if v is null or jsonb_typeof(v) <> 'number' then return v_def; end if;
+  v_n := (v #>> '{}')::int;
+  if v_n is null or v_n < 1 then return v_def; end if;
+  return least(v_n, 525600);   -- a year, so a typo can't push a deadline to the heat death
+end; $$;
+revoke execute on function public.support_sla_mins(text, text) from public, anon, authenticated;
+
+-- Open a ticket. Returns {id, ref, status, type, area, priority, assignee_email,
+-- due_at, resolve_due_at}. Routes to a queue and stamps the SLA deadlines.
+-- Service-role only: the edge function authenticates and rate-limits the caller.
+drop function if exists public.open_support_ticket(text,text,text,text,uuid,text,text,uuid,text,text,jsonb);
+create or replace function public.open_support_ticket(
+  p_subject text, p_body text, p_requester_email text default null,
+  p_requester_name text default null, p_user_id uuid default null,
+  p_type text default 'question', p_area text default null, p_priority text default 'normal',
+  p_conversation_id uuid default null, p_session_key text default null,
+  p_origin text default 'concierge', p_meta jsonb default '{}'::jsonb
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_id uuid; v_ref bigint; v_pri text; v_type text; v_area text; v_assignee text;
+        v_due timestamptz; v_rdue timestamptz; v_areas jsonb; v_routing jsonb;
+begin
+  if coalesce(btrim(p_subject),'') = '' or coalesce(btrim(p_body),'') = '' then
+    return jsonb_build_object('error', 'a subject and a description are required');
+  end if;
+  v_pri := lower(coalesce(nullif(btrim(p_priority),''), 'normal'));
+  if v_pri not in ('low','normal','high','urgent') then v_pri := 'normal'; end if;
+  v_type := lower(coalesce(nullif(btrim(p_type),''), 'question'));
+  if v_type not in ('question','bug','feedback') then v_type := 'question'; end if;
+  -- The area is honoured only when the house configured it, so a hallucinated
+  -- surface never becomes a routing key (it lands unrouted for triage instead).
+  v_area := nullif(lower(btrim(coalesce(p_area,''))), '');
+  if v_area is not null then
+    v_areas := public.support_config() -> 'areas';
+    -- jsonb_exists(), not the `?` operator: `?` is a bind placeholder to several
+    -- drivers, and this file is shipped through them.
+    if v_areas is not null and jsonb_typeof(v_areas) = 'array'
+       and not jsonb_exists(v_areas, v_area) then v_area := null; end if;
+  end if;
+  -- Queue routing, most specific wins: "type:area" → "area" → "type" → unassigned.
+  -- So a house can send every bug in billing to one team, all of billing to
+  -- another, and all feedback to product, without enumerating the cross product.
+  v_routing := public.support_config() -> 'routing';
+  if v_routing is not null and jsonb_typeof(v_routing) = 'object' then
+    v_assignee := nullif(btrim(coalesce(
+      coalesce(
+        case when v_area is not null then v_routing ->> (v_type || ':' || v_area) end,
+        case when v_area is not null then v_routing ->> v_area end,
+        v_routing ->> v_type
+      ), '')), '');
+  end if;
+  v_due  := now() + make_interval(mins => public.support_sla_mins(v_pri, 'first_response'));
+  v_rdue := now() + make_interval(mins => public.support_sla_mins(v_pri, 'resolve'));
+  insert into public.support_tickets (
+      subject, body, status, type, area, priority, requester_name, requester_email,
+      user_id, assignee_email, conversation_id, session_key, origin, due_at,
+      resolve_due_at, meta)
+    values (
+      left(btrim(p_subject), 200), left(btrim(p_body), 8000), 'open', v_type, v_area, v_pri,
+      nullif(left(btrim(coalesce(p_requester_name,'')), 120), ''),
+      nullif(lower(left(btrim(coalesce(p_requester_email,'')), 200)), ''),
+      p_user_id, v_assignee, p_conversation_id,
+      nullif(left(btrim(coalesce(p_session_key,'')), 64), ''),
+      case when coalesce(p_origin,'') in ('concierge','customer','agent','form')
+           then p_origin else 'concierge' end,
+      v_due, v_rdue,
+      case when p_meta is null or jsonb_typeof(p_meta) <> 'object' then '{}'::jsonb else p_meta end)
+    returning id, ref into v_id, v_ref;
+  -- The opening message IS the customer's description, so the thread reads whole.
+  insert into public.support_ticket_messages (ticket_id, author_kind, author_email, body, visibility)
+    values (v_id, 'customer', nullif(lower(btrim(coalesce(p_requester_email,''))), ''),
+            left(btrim(p_body), 8000), 'public');
+  return jsonb_build_object(
+    'id', v_id, 'ref', v_ref, 'status', 'open', 'type', v_type, 'area', v_area,
+    'priority', v_pri, 'assignee_email', v_assignee, 'due_at', v_due, 'resolve_due_at', v_rdue);
+end; $$;
+revoke execute on function public.open_support_ticket(text,text,text,text,uuid,text,text,text,uuid,text,text,jsonb)
+  from public, anon, authenticated;
+
+-- ── The lifecycle rules live in TRIGGERS, not in one code path ───────────────
+-- Two clients write tickets: the concierge (service role, through the RPCs below)
+-- and the studio's Support queue (an admin, writing the tables directly under
+-- RLS). If the status handshake lived only in an RPC, the studio would silently
+-- skip it — an agent's reply would never stop the SLA clock. As triggers these
+-- are invariants of the DATA, true no matter who writes.
+
+-- 1. A new message drives the status handshake, the way a helpdesk does: an
+--    agent's first PUBLIC reply stops the first-response clock and moves the
+--    ticket to 'pending' (waiting on the customer); a customer reply re-opens it.
+--    An INTERNAL note deliberately does neither — a private note to your team is
+--    not a response to the customer, and must not stop their clock.
+create or replace function public.support_message_sync() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.author_kind = 'agent' and new.visibility = 'public' then
+    update public.support_tickets t
+       set first_response_at = coalesce(t.first_response_at, new.created_at),
+           status = case when t.status = 'open' then 'pending' else t.status end,
+           updated_at = now()
+     where t.id = new.ticket_id;
+  elsif new.author_kind = 'customer' then
+    update public.support_tickets t
+       set status = case when t.status in ('pending','resolved') then 'open' else t.status end,
+           resolved_at = case when t.status = 'resolved' then null else t.resolved_at end,
+           updated_at = now()
+     where t.id = new.ticket_id;
+  else
+    update public.support_tickets t set updated_at = now() where t.id = new.ticket_id;
+  end if;
+  return new;
+end; $$;
+drop trigger if exists support_message_sync on public.support_ticket_messages;
+create trigger support_message_sync after insert on public.support_ticket_messages
+  for each row execute function public.support_message_sync();
+
+-- 2. A status or assignment change stamps its lifecycle timestamps and writes its
+--    own internal audit line, so the thread reads as the whole history whichever
+--    client made the change. (The note it inserts re-enters trigger 1 as a
+--    'system' author, which only touches updated_at — so this terminates.)
+create or replace function public.support_ticket_audit() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.status is distinct from old.status then
+    insert into public.support_ticket_messages (ticket_id, author_kind, body, visibility)
+      values (new.id, 'system', 'Status ' || old.status || ' -> ' || new.status, 'internal');
+  end if;
+  if new.assignee_email is distinct from old.assignee_email then
+    insert into public.support_ticket_messages (ticket_id, author_kind, body, visibility)
+      values (new.id, 'system',
+        case when new.assignee_email is null then 'Unassigned'
+             else 'Assigned to ' || new.assignee_email end, 'internal');
+  end if;
+  return new;
+end; $$;
+drop trigger if exists support_ticket_audit on public.support_tickets;
+create trigger support_ticket_audit after update on public.support_tickets
+  for each row execute function public.support_ticket_audit();
+
+-- Lifecycle timestamps belong to the row, not the caller: set them BEFORE the
+-- write lands so a direct table update from the studio stamps them too.
+create or replace function public.support_ticket_stamp() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.status is distinct from old.status then
+    new.resolved_at := case when new.status = 'resolved' then now()
+                            when new.status in ('open','pending') then null
+                            else old.resolved_at end;
+    new.closed_at   := case when new.status = 'closed' then now()
+                            when new.status in ('open','pending') then null
+                            else old.closed_at end;
+  end if;
+  new.updated_at := now();
+  return new;
+end; $$;
+drop trigger if exists support_ticket_stamp on public.support_tickets;
+create trigger support_ticket_stamp before update on public.support_tickets
+  for each row execute function public.support_ticket_stamp();
+
+-- Append to a ticket thread. The handshake is the trigger's job; this validates,
+-- refuses to let a customer author an internal note, and inserts.
+create or replace function public.add_ticket_message(
+  p_ref bigint, p_author_kind text, p_body text,
+  p_author_email text default null, p_visibility text default 'public'
+) returns bigint language plpgsql security definer set search_path = '' as $$
+declare v_id uuid; v_kind text; v_vis text; v_msg bigint;
+begin
+  if coalesce(btrim(p_body),'') = '' then return -1; end if;
+  v_kind := lower(coalesce(p_author_kind,''));
+  if v_kind not in ('customer','agent','concierge','system') then return -1; end if;
+  v_vis := case when lower(coalesce(p_visibility,'public')) = 'internal' then 'internal' else 'public' end;
+  -- A customer can never write an internal note.
+  if v_kind = 'customer' then v_vis := 'public'; end if;
+  select t.id into v_id from public.support_tickets t where t.ref = p_ref;
+  if v_id is null then return -1; end if;
+  insert into public.support_ticket_messages (ticket_id, author_kind, author_email, body, visibility)
+    values (v_id, v_kind, nullif(lower(btrim(coalesce(p_author_email,''))), ''),
+            left(btrim(p_body), 8000), v_vis)
+    returning id into v_msg;
+  return v_msg;
+end; $$;
+revoke execute on function public.add_ticket_message(bigint,text,text,text,text)
+  from public, anon, authenticated;
+
+-- Move a ticket's status. Timestamps and the audit line are the triggers' job.
+create or replace function public.set_ticket_status(
+  p_ref bigint, p_status text, p_actor_email text default null
+) returns text language plpgsql security definer set search_path = '' as $$
+declare v_id uuid; v_old text; v_new text;
+begin
+  v_new := lower(coalesce(p_status,''));
+  if v_new not in ('open','pending','resolved','closed') then return 'invalid status'; end if;
+  select t.id, t.status into v_id, v_old from public.support_tickets t where t.ref = p_ref;
+  if v_id is null then return 'no such ticket'; end if;
+  if v_old = v_new then return 'ok'; end if;
+  update public.support_tickets t set status = v_new where t.id = v_id;
+  return 'ok';
+end; $$;
+revoke execute on function public.set_ticket_status(bigint,text,text) from public, anon, authenticated;
+
+create or replace function public.assign_ticket(
+  p_ref bigint, p_assignee_email text, p_actor_email text default null
+) returns text language plpgsql security definer set search_path = '' as $$
+declare v_id uuid;
+begin
+  select t.id into v_id from public.support_tickets t where t.ref = p_ref;
+  if v_id is null then return 'no such ticket'; end if;
+  update public.support_tickets t
+     set assignee_email = nullif(lower(btrim(coalesce(p_assignee_email,''))), '')
+   where t.id = v_id;
+  return 'ok';
+end; $$;
+revoke execute on function public.assign_ticket(bigint,text,text) from public, anon, authenticated;
+
+-- Customer-facing read: ONE ticket with its PUBLIC thread only, scoped to the
+-- owner. Internal notes are excluded here as well as by RLS (defence in depth).
+create or replace function public.get_support_ticket(
+  p_ref bigint, p_email text default null, p_user_id uuid default null
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  select jsonb_build_object(
+    'ref', t.ref, 'subject', t.subject, 'status', t.status, 'priority', t.priority,
+    'type', t.type, 'area', t.area, 'created_at', t.created_at, 'updated_at', t.updated_at,
+    'resolved_at', t.resolved_at,
+    'messages', coalesce((select jsonb_agg(m order by m.created_at) from (
+        select mm.author_kind, mm.body, mm.created_at
+          from public.support_ticket_messages mm
+         where mm.ticket_id = t.id and mm.visibility = 'public'
+         order by mm.created_at limit 50) m), '[]'::jsonb))
+    into v
+    from public.support_tickets t
+   where t.ref = p_ref
+     and ((p_user_id is not null and t.user_id = p_user_id)
+          or (p_email is not null and t.requester_email is not null
+              and lower(t.requester_email) = lower(p_email)));
+  return coalesce(v, jsonb_build_object('error', 'no such ticket on this account'));
+end; $$;
+revoke execute on function public.get_support_ticket(bigint,text,uuid) from public, anon, authenticated;
+
+-- The caller's own open tickets — what the concierge reads back in chat.
+create or replace function public.my_support_tickets(
+  p_email text default null, p_user_id uuid default null, p_limit int default 10
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v jsonb;
+begin
+  if p_email is null and p_user_id is null then return '[]'::jsonb; end if;
+  select coalesce(jsonb_agg(x order by x.created_at desc), '[]'::jsonb) into v from (
+    select t.ref, t.subject, t.status, t.priority, t.type, t.area, t.created_at, t.updated_at
+      from public.support_tickets t
+     where ((p_user_id is not null and t.user_id = p_user_id)
+            or (p_email is not null and t.requester_email is not null
+                and lower(t.requester_email) = lower(p_email)))
+     order by t.created_at desc
+     limit greatest(1, least(coalesce(p_limit, 10), 50))) x;
+  return v;
+end; $$;
+revoke execute on function public.my_support_tickets(text,uuid,int) from public, anon, authenticated;
+
+-- CSAT on a resolved/closed ticket, owner-scoped by the email that raised it.
+create or replace function public.submit_ticket_csat(
+  p_ref bigint, p_score int, p_comment text default null, p_email text default null
+) returns text language plpgsql security definer set search_path = '' as $$
+declare v_id uuid;
+begin
+  if p_score is null or p_score < 1 or p_score > 5 then return 'score must be 1-5'; end if;
+  select t.id into v_id from public.support_tickets t
+   where t.ref = p_ref
+     and t.status in ('resolved','closed')
+     and (t.requester_email is null or p_email is null
+          or lower(t.requester_email) = lower(p_email));
+  if v_id is null then return 'no rateable ticket on this account'; end if;
+  update public.support_tickets t
+     set csat_score = p_score,
+         csat_comment = nullif(left(btrim(coalesce(p_comment,'')), 2000), ''),
+         csat_at = now(), updated_at = now()
+   where t.id = v_id;
+  return 'ok';
+end; $$;
+revoke execute on function public.submit_ticket_csat(bigint,int,text,text) from public, anon, authenticated;
+
+-- The Support dashboard's numbers: volume and mix, the SLA breach counts, response
+-- and resolution speed, CSAT, per-agent load, a daily series, and the DEFLECTION
+-- read (how many conversations ended up needing a human). Admin-only.
+create or replace function public.support_metrics(p_days int default 30)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_from timestamptz; v_days int; v_convos int; v_total int;
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  v_days := greatest(1, least(coalesce(p_days, 30), 3650));
+  v_from := now() - make_interval(days => v_days);
+  select count(*) into v_total from public.support_tickets t where t.created_at >= v_from;
+  select count(*) into v_convos from public.concierge_conversations c where c.created_at >= v_from;
+  return jsonb_build_object(
+    'days', v_days,
+    'total', v_total,
+    'conversations', v_convos,
+    -- Escalation rate: tickets ÷ conversations. Its complement is deflection —
+    -- the share of conversations the concierge handled without a human.
+    'escalation_rate', case when v_convos > 0 then round(v_total::numeric / v_convos, 4) else 0 end,
+    'open_now', (select count(*) from public.support_tickets t where t.status in ('open','pending')),
+    'by_status', coalesce((select jsonb_object_agg(s.status, s.n) from (
+        select t.status, count(*)::int as n from public.support_tickets t
+         where t.created_at >= v_from group by t.status) s), '{}'::jsonb),
+    'by_priority', coalesce((select jsonb_object_agg(s.priority, s.n) from (
+        select t.priority, count(*)::int as n from public.support_tickets t
+         where t.created_at >= v_from group by t.priority) s), '{}'::jsonb),
+    'by_type', coalesce((select jsonb_object_agg(s.type, s.n) from (
+        select t.type, count(*)::int as n from public.support_tickets t
+         where t.created_at >= v_from group by t.type) s), '{}'::jsonb),
+    -- The queue view: which product surface is generating the work, split by what
+    -- kind of work it is. This is the "where is it hurting" read.
+    'by_area', coalesce((select jsonb_agg(x) from (
+        select coalesce(t.area,'(untriaged)') as area, count(*)::int as n,
+               count(*) filter (where t.type = 'bug')::int as bugs,
+               count(*) filter (where t.type = 'feedback')::int as feedback,
+               count(*) filter (where t.type = 'question')::int as questions
+          from public.support_tickets t where t.created_at >= v_from
+         group by 1 order by 2 desc) x), '[]'::jsonb),
+    -- SLA: a breach is an unmet deadline, counted on tickets still owing the work.
+    'breach_first_response', (select count(*) from public.support_tickets t
+       where t.created_at >= v_from and t.first_response_at is null
+         and t.status in ('open','pending') and t.due_at is not null and now() > t.due_at),
+    'breach_resolution', (select count(*) from public.support_tickets t
+       where t.created_at >= v_from and t.resolved_at is null
+         and t.status in ('open','pending') and t.resolve_due_at is not null and now() > t.resolve_due_at),
+    'first_response_mins_avg', (select round(avg(extract(epoch from (t.first_response_at - t.created_at)) / 60)::numeric, 1)
+       from public.support_tickets t where t.created_at >= v_from and t.first_response_at is not null),
+    'first_response_mins_p50', (select round(percentile_cont(0.5) within group (
+         order by extract(epoch from (t.first_response_at - t.created_at)) / 60)::numeric, 1)
+       from public.support_tickets t where t.created_at >= v_from and t.first_response_at is not null),
+    'resolution_mins_avg', (select round(avg(extract(epoch from (t.resolved_at - t.created_at)) / 60)::numeric, 1)
+       from public.support_tickets t where t.created_at >= v_from and t.resolved_at is not null),
+    'csat_avg', (select round(avg(t.csat_score)::numeric, 2) from public.support_tickets t
+       where t.created_at >= v_from and t.csat_score is not null),
+    'csat_count', (select count(*) from public.support_tickets t
+       where t.created_at >= v_from and t.csat_score is not null),
+    'per_agent', coalesce((select jsonb_agg(x) from (
+        select coalesce(t.assignee_email,'(unassigned)') as assignee,
+               count(*)::int as assigned,
+               count(*) filter (where t.status = 'resolved')::int as resolved,
+               round(avg(extract(epoch from (t.first_response_at - t.created_at)) / 60)
+                 filter (where t.first_response_at is not null)::numeric, 1) as first_response_mins_avg
+          from public.support_tickets t where t.created_at >= v_from
+         group by 1 order by 2 desc limit 25) x), '[]'::jsonb),
+    'series', coalesce((select jsonb_agg(x order by x.day) from (
+        select to_char(date_trunc('day', t.created_at), 'YYYY-MM-DD') as day, count(*)::int as n
+          from public.support_tickets t where t.created_at >= v_from
+         group by 1) x), '[]'::jsonb));
+end; $$;
+grant execute on function public.support_metrics(int) to authenticated;
+revoke execute on function public.support_metrics(int) from public, anon;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- PostgREST schema-cache reload — new tables/functions (e.g. nps_metrics) are
 -- callable over REST immediately, even if the DDL event trigger missed a beat.
 -- (idempotent — a NOTIFY is always safe.)
