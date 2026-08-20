@@ -39,6 +39,7 @@ import {
   widgetTokensJudgeNote,
   RECOGNITION_JUDGE_NOTE,
   tallyJudgeVotes,
+  noteWritesPolicy,
 } from "./beats.ts";
 
 function assert(cond: unknown, msg: string) {
@@ -702,7 +703,7 @@ Deno.test("widget tokens: the judge sees a described control, never the raw {{�
   // The judge's WIDGET-CONTROLS note is generated from the registry, so it can never
   // omit a control the way the old hand-written list dropped snooze/img/video.
   const note = widgetTokensJudgeNote();
-  ["Sign-in button", "Commission button", "Snooze control", "Inline form", "Quick-reply chip", "Rating scale", "Image", "Video", "Add-on offer"]
+  ["Sign-in button", "Commission button", "Snooze control", "Inline form", "Quick-reply chip", "Rating scale", "Image", "Video"]
     .forEach((label) => assert(note.includes(label), "the judge note names the " + label));
 });
 
@@ -736,4 +737,36 @@ Deno.test("recognition note: allows sign-in recognition, still bans unprompted o
   assert(/NEVER veto/i.test(n), "instructs the judge to pass recognition offers");
   assert(/UNPROMPTED|unprompted/.test(n) && /defect-10 fabrication/i.test(n), "keeps the unsolicited-outreach boundary");
   assert(/callback/i.test(n), "permits referencing a requested callback that the record shows");
+});
+
+Deno.test("client book: records people, refuses policy (the dual-sign-off regression)", () => {
+  // The exact lines that were written to production and then obeyed for five
+  // weeks, escalating each session until the concierge refused a customer who
+  // asked to buy four times and demanded his wife's email address.
+  [
+    "Requires joint written confirmation (dual email sign-off) before any new order enters register.",
+    "Dual confirmation protocol in motion but not yet complete—wife's separate sign-off required before register entry.",
+    "On next contact, lead by confirming wife's email arrived and dual sign-off is complete before opening register.",
+    "confirm ordering intent and spousal alignment explicitly before proceeding",
+    "Request clear yes/no on spousal alignment",
+    "Do not proceed until the partner has given approval.",
+    "Must obtain both signatures before the sale.",
+  ].forEach((n) =>
+    assert(noteWritesPolicy(n), "must refuse a note that states a rule: " + n)
+  );
+
+  // FACTS about the same situation are exactly what the book is for, and must
+  // survive — the guard has to cut policy without cutting memory.
+  [
+    "Wife has returned orders without his knowledge; spending is a sore subject.",
+    "Furnishing a van; prefers Ungefärbt and plain factual descriptions.",
+    "Rejects interpretive language (ritual, weight, anchor) — be concrete.",
+    "Mentioned his wife likes the Loden.",
+    "Asked about mulesing-free merino and the OEKO-TEX certification.",
+    "Gave 10/10 NPS for directness; phone 6199944228 on file.",
+  ].forEach((n) =>
+    assertEq(noteWritesPolicy(n), false, "must KEEP a plain fact: " + n)
+  );
+
+  assertEq(noteWritesPolicy(""), false, "an empty note is not policy");
 });

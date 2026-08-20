@@ -53,6 +53,44 @@ export interface BeatDecision {
   trace: string[];
 }
 
+/** The client book records WHAT IS TRUE ABOUT A PERSON. It must never record
+ *  POLICY — a rule, a gate, a precondition on selling. The distinction is not
+ *  pedantic: a note is durable and is re-read as fact next session, so a policy
+ *  written once is enforced forever, and each session that reads it tends to
+ *  write a firmer version. That is not hypothetical. A single note reading
+ *  "requires joint written confirmation (dual email sign-off) before any new
+ *  order enters register" escalated over five weeks into the concierge refusing
+ *  a customer who asked to buy four times, and demanding his wife's email
+ *  address — a house policy that never existed, invented and then obeyed.
+ *
+ *  So: a note that asserts a REQUIREMENT is rejected at the point of writing.
+ *  Facts survive ("wife has returned orders before"); rules do not ("requires
+ *  her sign-off"). Deterministic and unit-tested, because the failure it guards
+ *  is silent, compounding, and invisible until a sale is lost. */
+export const NOTE_POLICY_RE = new RegExp(
+  [
+    // a stated precondition on the sale
+    "\\b(require[sd]?|must|mandatory|do not proceed|cannot proceed|not permitted|prohibited)\\b" +
+      "[^.]{0,80}\\b(before|until|unless|prior to)\\b",
+    "\\b(before|until|unless)\\b[^.]{0,60}\\b(sign-?off|confirmation|approval|permission|consent|authoris|authoriz)\\w*",
+    // third-party gatekeeping, however phrased
+    "\\b(dual|joint|both)\\b[^.]{0,30}\\b(sign-?off|confirmation|approval|email)\\b",
+    "\\b(spousal|spouse'?s?|wife'?s?|husband'?s?|partner'?s?)\\b[^.]{0,30}" +
+      "\\b(sign-?off|approval|permission|confirmation|alignment|email)\\b",
+    // a protocol invented and then named
+    "\\b(protocol|policy|procedure)\\b[^.]{0,40}\\b(before|required|in motion)\\b",
+  ].join("|"),
+  "i",
+);
+
+/** True when a client-book note is trying to write policy rather than record a
+ *  person. Callers must refuse the note and keep the conversation moving — a
+ *  rejected note is never worth telling the customer about. */
+export function noteWritesPolicy(note: string): boolean {
+  if (typeof note !== "string" || !note.trim()) return false;
+  return NOTE_POLICY_RE.test(note);
+}
+
 export const PLACEHOLDER_ADDR = /\b(fake|test|placeholder|sample|asdf|xxx)\b/i;
 
 /** Escalating rest for a REPEATED proposal: after the 1st unanswered proposal
