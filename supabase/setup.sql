@@ -4372,6 +4372,144 @@ end; $$;
 grant execute on function public.support_metrics(int) to authenticated;
 revoke execute on function public.support_metrics(int) from public, anon;
 
+-- ── Close attribution, handoff, and the reopen truth-serum ───────────────────
+-- WHO closed a ticket is the load-bearing question. A bot that can close tickets
+-- will close tickets, because every close looks like success — so the close is
+-- attributed, and a reopen AFTER a bot close is flagged permanently on the row.
+-- That flag is what stops the bot-close rate from being self-congratulatory.
+alter table public.support_tickets
+  add column if not exists closed_by text
+    check (closed_by is null or closed_by in ('bot','customer','agent')),
+  add column if not exists handoff_at timestamptz,
+  add column if not exists handoff_reason text,
+  add column if not exists reopened_count int not null default 0,
+  add column if not exists reopened_after_bot_close boolean not null default false,
+  add column if not exists intent text
+    check (intent is null or intent in ('support','feedback','handoff'));
+create index if not exists support_tickets_handoff_idx on public.support_tickets (handoff_at desc)
+  where handoff_at is not null;
+
+-- A customer may ALWAYS demand a human: never gated, never discouraged, never
+-- rate-limited. Being stuck with a bot that is not helping is the worst
+-- experience this system can produce. The reason is recorded because "why do
+-- people give up on the bot" is the most useful question in the data.
+create or replace function public.request_human_handoff(
+  p_ref bigint, p_user_id uuid, p_email text, p_reason text default null
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare t record;
+begin
+  select * into t from public.support_tickets x
+   where x.ref = p_ref
+     and (x.user_id = p_user_id or (p_email is not null and lower(x.requester_email) = lower(p_email)))
+   limit 1;
+  if t.id is null then return jsonb_build_object('ok', false, 'error', 'no such ticket on this requester'); end if;
+  if t.handoff_at is not null then
+    return jsonb_build_object('ok', true, 'ref', t.ref, 'already', true, 'status', t.status);
+  end if;
+  update public.support_tickets s
+     set handoff_at = now(),
+         handoff_reason = left(coalesce(nullif(p_reason,''), 'customer asked for a person'), 300),
+         status = case when s.status in ('resolved','closed') then 'open' else s.status end,
+         resolved_at = case when s.status in ('resolved','closed') then null else s.resolved_at end,
+         closed_by = case when s.status in ('resolved','closed') then null else s.closed_by end,
+         reopened_after_bot_close = s.reopened_after_bot_close
+           or (s.status in ('resolved','closed') and s.closed_by = 'bot'),
+         -- A person now waits on a person: the first-response clock restarts, so
+         -- an agent cannot inherit an SLA the bot already "satisfied".
+         first_response_at = null,
+         due_at = now() + make_interval(mins => coalesce(
+           nullif(public.support_config()->'sla'->s.priority->>'first_response_mins','')::int,
+           case s.priority when 'urgent' then 30 when 'high' then 120 when 'low' then 1440 else 480 end)),
+         updated_at = now()
+   where s.id = t.id;
+  insert into public.support_ticket_messages (ticket_id, author_kind, body, visibility)
+    values (t.id, 'system', 'Handed off to a human at the customer''s request'
+      || coalesce(' — ' || nullif(p_reason,''), ''), 'internal');
+  return jsonb_build_object('ok', true, 'ref', t.ref, 'handed_off', true);
+end; $$;
+revoke execute on function public.request_human_handoff(bigint,uuid,text,text) from public, anon, authenticated;
+
+-- The customer closing their OWN ticket is the only close that is unambiguously
+-- true, so closed_by='customer' is the standard the bot rate is measured against.
+create or replace function public.close_ticket_by_requester(
+  p_ref bigint, p_user_id uuid, p_email text, p_by text default 'customer', p_note text default null
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare t record; v_by text;
+begin
+  v_by := case when p_by in ('bot','customer','agent') then p_by else 'customer' end;
+  select * into t from public.support_tickets x
+   where x.ref = p_ref
+     and (x.user_id = p_user_id or (p_email is not null and lower(x.requester_email) = lower(p_email)))
+   limit 1;
+  if t.id is null then return jsonb_build_object('ok', false, 'error', 'no such ticket on this requester'); end if;
+  if t.status in ('resolved','closed') then
+    return jsonb_build_object('ok', true, 'ref', t.ref, 'already', true, 'status', t.status);
+  end if;
+  update public.support_tickets s
+     set status = 'resolved', resolved_at = now(), closed_by = v_by, updated_at = now()
+   where s.id = t.id;
+  if nullif(p_note,'') is not null then
+    insert into public.support_ticket_messages (ticket_id, author_kind, body, visibility)
+      values (t.id, 'customer', left(p_note, 2000), 'public');
+  end if;
+  return jsonb_build_object('ok', true, 'ref', t.ref, 'status', 'resolved', 'closed_by', v_by);
+end; $$;
+revoke execute on function public.close_ticket_by_requester(bigint,uuid,text,text,text) from public, anon, authenticated;
+
+-- Close attribution, handoff volume and reasons, and the reopen check that keeps
+-- the bot-close rate honest. Admin-only.
+create or replace function public.support_close_metrics(p_days int default 30)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_from timestamptz; v_days int; v_total int; v_closed int; v_bot int; v_bot_ever int; v_reop int;
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  v_days := greatest(1, least(coalesce(p_days,30), 3650));
+  v_from := now() - make_interval(days => v_days);
+  select count(*),
+         count(*) filter (where t.status in ('resolved','closed')),
+         count(*) filter (where t.status in ('resolved','closed') and t.closed_by = 'bot'),
+         -- "Ever bot-closed" is the honest denominator for the reopen rate: a
+         -- reopened ticket has LEFT the closed set, so measuring against only
+         -- still-closed would shrink the denominator every time the bot got it
+         -- wrong — flattering the exact number being policed.
+         count(*) filter (where (t.status in ('resolved','closed') and t.closed_by = 'bot')
+                             or t.reopened_after_bot_close),
+         count(*) filter (where t.reopened_after_bot_close)
+    into v_total, v_closed, v_bot, v_bot_ever, v_reop
+    from public.support_tickets t where t.created_at >= v_from;
+  return jsonb_build_object(
+    'days', v_days, 'tickets_total', v_total, 'closed_total', v_closed,
+    'by_actor', coalesce((select jsonb_object_agg(coalesce(c.closed_by,'unattributed'), c.n) from (
+        select t.closed_by, count(*)::int as n from public.support_tickets t
+         where t.created_at >= v_from and t.status in ('resolved','closed')
+         group by t.closed_by) c), '{}'::jsonb),
+    'bot_close_rate', case when v_closed > 0 then round(v_bot::numeric / v_closed, 4) else 0 end,
+    'bot_closed', v_bot, 'bot_closed_ever', v_bot_ever, 'reopened_after_bot_close', v_reop,
+    'bot_close_reopen_rate', case when v_bot_ever > 0 then round(v_reop::numeric / v_bot_ever, 4) else 0 end,
+    'handoffs', (select count(*)::int from public.support_tickets t
+                  where t.created_at >= v_from and t.handoff_at is not null),
+    'handoff_rate', case when v_total > 0 then round((select count(*) from public.support_tickets t
+        where t.created_at >= v_from and t.handoff_at is not null)::numeric / v_total, 4) else 0 end,
+    'handoff_reasons', coalesce((select jsonb_agg(x) from (
+        select coalesce(nullif(t.handoff_reason,''),'unstated') as reason, count(*)::int as n
+        from public.support_tickets t
+        where t.created_at >= v_from and t.handoff_at is not null
+        group by 1 order by 2 desc limit 12) x), '[]'::jsonb),
+    'by_intent', coalesce((select jsonb_object_agg(coalesce(i.intent,'unset'), i.n) from (
+        select t.intent, count(*)::int as n from public.support_tickets t
+         where t.created_at >= v_from group by t.intent) i), '{}'::jsonb));
+end; $$;
+grant execute on function public.support_close_metrics(int) to authenticated;
+revoke execute on function public.support_close_metrics(int) from public, anon;
+
+create or replace function public.support_set_intent(p_id uuid, p_intent text)
+returns void language sql security definer set search_path = '' as $$
+  update public.support_tickets
+     set intent = case when p_intent in ('support','feedback','handoff') then p_intent else intent end
+   where id = p_id;
+$$;
+revoke execute on function public.support_set_intent(uuid,text) from public, anon, authenticated;
+
 -- ── Alerting — the few things worth interrupting a human for ─────────────────
 -- Deliberately NOT "email on every ticket": an alert that always fires is an
 -- alert nobody reads. Every rule answers "is something going wrong?", and four

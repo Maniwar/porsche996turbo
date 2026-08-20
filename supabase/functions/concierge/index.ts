@@ -1345,6 +1345,14 @@ const REGISTER_TOOLS: any[] = [
     input_schema: {
       type: "object",
       properties: {
+
+        intent: {
+          type: "string",
+          enum: ["support", "feedback", "handoff"],
+          description:
+            "Which door they came through: 'support' if they came for help, 'feedback' if they came to " +
+            "tell the house something, 'handoff' if they came straight asking for a person.",
+        },
         subject: { type: "string", description: "A short one-line summary of the issue." },
         body: {
           type: "string",
@@ -1385,6 +1393,46 @@ const REGISTER_TOOLS: any[] = [
       },
     },
   },
+  {
+    name: "request_handoff",
+    description:
+      "Hand this customer's ticket to a human, and say so plainly. Call it THE MOMENT they ask for a " +
+      "person, or show they are going in circles with you — 'this isn't helping', 'you already said " +
+      "that', repeating themselves, or plain frustration. Never argue, never ask them to try one more " +
+      "thing first, never require a reason. Being stuck with a bot that is not helping is the worst " +
+      "experience the house can give. Pass a short, honest reason IN YOUR OWN WORDS describing what " +
+      "you could not do — that reason is read later to find out where you keep failing people. " +
+      "If they have no ticket yet, open one first, then hand it off.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ref: { type: "integer", description: "The ticket reference to hand off." },
+        reason: {
+          type: "string",
+          description: "One honest line on why a person is needed — what you could not resolve. Never blame the customer.",
+        },
+      },
+      required: ["ref"],
+    },
+  },
+  {
+    name: "close_my_ticket",
+    description:
+      "Close a ticket ONLY when the customer has just told you, in this conversation, that their " +
+      "problem is solved. Their confirmation is the whole authorisation: you may ASK 'does that sort " +
+      "it?' but you may NEVER close on your own judgement, on silence, or because the conversation " +
+      "went quiet. A ticket closed while the customer still has the problem is worse than one left " +
+      "open — they come back angrier and the house has lied to itself in its own numbers. If they " +
+      "have not clearly said it is fixed, leave it open.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ref: { type: "integer", description: "The ticket reference the customer just confirmed is resolved." },
+        note: { type: "string", description: "Optional closing note in the customer's own words." },
+      },
+      required: ["ref"],
+    },
+  },
 ];
 
 // Core tools the concierge leans on for basic competence. They can still be
@@ -1409,7 +1457,7 @@ function callbacksEnabled(config: unknown): boolean {
 }
 /** Support mode (SUPPORT.md) — the ticket desk. Absent = OFF, like bookings: a
  *  house that runs no support queue must never be able to promise one. */
-const SUPPORT_TOOL_NAMES = new Set(["open_ticket", "check_ticket"]);
+const SUPPORT_TOOL_NAMES = new Set(["open_ticket", "check_ticket", "request_handoff", "close_my_ticket"]);
 function supportEnabled(config: unknown): boolean {
   // deno-lint-ignore no-explicit-any
   const s = (config as any)?.support;
@@ -2237,6 +2285,13 @@ async function runRegisterTool(
     if (!res || typeof res.ref !== "number") return "ERROR: the ticket could not be opened just now.";
     await logAction(cid, customer, "open_ticket", null,
       { ref: res.ref, type: res.type, area: res.area, priority: res.priority }, `ticket #${res.ref} opened`);
+    // Which door they came through — set separately so the ticket RPC's
+    // signature stays stable for the kit and the other engines.
+    const intentIn = typeof input.intent === "string" ? input.intent.trim().toLowerCase() : "";
+    if (["support", "feedback", "handoff"].includes(intentIn) && res.id) {
+      bg(pgRpc("support_set_intent", { p_id: res.id, p_intent: intentIn })
+        .catch(() => {/* classification is analytics, never the sale */}));
+    }
     // Event-driven rules (urgent, spike, an area lighting up) should not wait for
     // the next scheduled sweep — the whole point is speed. Fire-and-forget: the
     // scan is dedupe-guarded and capped, so this can never storm, and the
@@ -2272,6 +2327,46 @@ async function runRegisterTool(
     });
     if (list === null) return "ERROR: the ticket desk is unreachable right now.";
     return JSON.stringify({ tickets: list });
+  }
+
+  if (name === "request_handoff") {
+    const email = customer.email
+      || (typeof input.email === "string" ? input.email.trim().toLowerCase().slice(0, 200) : "");
+    const refRaw = typeof input.ref === "number" ? input.ref : parseInt(String(input.ref ?? ""), 10);
+    if (!Number.isInteger(refRaw) || refRaw <= 0) {
+      return "ERROR: a ticket reference is needed — open a ticket first, then hand it off.";
+    }
+    if (!email && !customer.id) return "ERROR: an email is needed to find their ticket.";
+    const reason = typeof input.reason === "string" ? input.reason.trim().slice(0, 300) : "";
+    const r = await pgRpc<Record<string, unknown>>("request_human_handoff", {
+      p_ref: refRaw, p_user_id: customer.id ?? null, p_email: email || null,
+      p_reason: reason || null,
+    });
+    if (!r) return "ERROR: the ticket desk is unreachable right now.";
+    if (r.ok === false) return "ERROR: " + String(r.error ?? "that ticket is not on this requester.");
+    await logAction(cid, customer, "support_handoff", null,
+      { ref: refRaw, reason: reason || null }, `ticket #${refRaw} handed to a human`);
+    return JSON.stringify({ ...r, tell_customer: "A person now owns this and will follow up." });
+  }
+
+  if (name === "close_my_ticket") {
+    const email = customer.email
+      || (typeof input.email === "string" ? input.email.trim().toLowerCase().slice(0, 200) : "");
+    const refRaw = typeof input.ref === "number" ? input.ref : parseInt(String(input.ref ?? ""), 10);
+    if (!Number.isInteger(refRaw) || refRaw <= 0) return "ERROR: a ticket reference is needed.";
+    if (!email && !customer.id) return "ERROR: an email is needed to find their ticket.";
+    // Attributed to the BOT, always. The model is closing on the customer's say-so,
+    // but it is still the bot doing it — and that rate is deliberately policed, so
+    // it must never be able to dress its own close up as the customer's.
+    const r = await pgRpc<Record<string, unknown>>("close_ticket_by_requester", {
+      p_ref: refRaw, p_user_id: customer.id ?? null, p_email: email || null,
+      p_by: "bot", p_note: typeof input.note === "string" ? input.note.slice(0, 2000) : null,
+    });
+    if (!r) return "ERROR: the ticket desk is unreachable right now.";
+    if (r.ok === false) return "ERROR: " + String(r.error ?? "that ticket is not on this requester.");
+    await logAction(cid, customer, "support_close", null, { ref: refRaw, by: "bot" },
+      `ticket #${refRaw} closed on the customer's confirmation`);
+    return JSON.stringify(r);
   }
 
   if (name === "remember_customer") {
@@ -3521,6 +3616,19 @@ function supportBlock(data: ConciergeData): string {
     "opening a ticket for something you could have answered is a failure, not a courtesy.\n" +
     "- Never guess to avoid a ticket, and never invent a cause, a fix, an owner, or a timeline. " +
     "'I don't know, and here is how I'll get you a real answer' is a good turn.\n" +
+    // The two rules that keep the bot from marking its own homework. Both are
+    // enforced in data as well (closed_by attribution, the reopen flag, and an
+    // ungated handoff RPC) — this is the half the model has to understand.
+    "- A PERSON IS ALWAYS ONE ASK AWAY. The moment they ask for a human — or show they are going in " +
+    "circles with you ('this isn't helping', 'you already said that', the same question twice, plain " +
+    "frustration) — call request_handoff and say plainly that a person now has it. Never argue, never " +
+    "ask them to try one more thing first, never make them justify it, never imply it is a nuisance. " +
+    "Give an honest reason in your own words for what YOU could not do; never blame the customer.\n" +
+    "- YOU MAY NOT DECIDE A TICKET IS SOLVED. Only close with close_my_ticket when the customer has " +
+    "JUST TOLD YOU it is fixed. You may ask 'does that sort it?' — you may not treat silence, a topic " +
+    "change, or your own confidence as a yes. A ticket closed while they still have the problem is " +
+    "worse than one left open: they come back angrier, and the house has lied to itself in its own " +
+    "numbers. When in doubt, leave it open and say you are leaving it open.\n" +
     "- CAPTURE BEFORE YOU OPEN. Ask only what you still need — never re-ask what they already told " +
     "you, and never ask a signed-in customer for their name or email. What each kind needs:\n" +
     "  · BUG (something is not working) — what they DID, what they EXPECTED, what HAPPENED instead, " +
@@ -4863,6 +4971,9 @@ async function handleConfigGet(req: Request): Promise<Response> {
     // tracks the configured price instead of a client-side hardcode.
     unit_price_cents: (typeof config?.unit_price === "number" && config.unit_price > 0)
       ? Math.round(config.unit_price * 100) : null,
+    // So the widget can show its help / feedback / talk-to-a-person buttons only
+    // when the house actually staffs a desk.
+    support_enabled: supportEnabled(config),
   });
 }
 
