@@ -1,0 +1,99 @@
+name: Support Alert Sweep
+
+# Asks the concierge to evaluate the support alert rules (SUPPORT.md → Alerts).
+#
+# WHY THIS EXISTS: most alert rules are event-driven — a ticket opening triggers
+# an inline scan, so urgent/spike/cluster fire immediately. But an SLA BREACH has
+# no triggering event: a deadline passing is the absence of something happening.
+# Nothing in the system notices unless someone asks. This is the asking.
+#
+# It cannot spam you. The scan is dedupe-guarded (one alert per ticket, ever) and
+# capped by the configured hourly ceiling, so running it often is cheap and safe —
+# on a quiet queue every run does nothing at all, which is the normal result.
+#
+# SETUP (one secret, two places — see SUPPORT.md):
+#   1. Invent a long random string, e.g.  openssl rand -hex 32
+#   2. Supabase → Edge Functions → concierge → Secrets: ALERT_CRON_SECRET = <it>
+#   3. GitHub → Settings → Secrets → Actions: ALERT_CRON_SECRET = <the same>
+# Deliberately NOT the service-role key: this job only needs to say "scan now",
+# so it gets a credential that can do only that.
+# Until the secret is set the job SKIPS cleanly rather than failing every run.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 15 minutes. Tighten or loosen freely — the dedupe guards mean the
+    # only cost of a frequent sweep is how quickly a breach is noticed. Note
+    # GitHub can delay scheduled runs under load, so treat this as "about every
+    # 15 minutes"; for hard guarantees drive the same endpoint from pg_cron.
+    - cron: "*/15 * * * *"
+
+# A late sweep is worthless once a newer one has run, and they are idempotent.
+concurrency:
+  group: support-alert-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan the alert rules
+        env:
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          CRON_SECRET: ${{ secrets.ALERT_CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${CRON_SECRET:-}" ] || [ -z "${PROJECT_REF:-}" ]; then
+            echo "### Support alert sweep — skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`ALERT_CRON_SECRET\` or \`SUPABASE_PROJECT_REF\` is not set, so there is nothing to call." >> "$GITHUB_STEP_SUMMARY"
+            echo "Setup instructions are in the header of this workflow file and in SUPPORT.md." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          URL="https://${PROJECT_REF}.supabase.co/functions/v1/concierge?support_alerts=1"
+          # Retry a couple of times: a cold edge function or a blip should not be
+          # reported as an alerting failure.
+          for attempt in 1 2 3; do
+            CODE=$(curl -sS -o /tmp/sweep.json -w '%{http_code}' -X POST "$URL" \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "Content-Type: application/json" \
+              --max-time 45 -d '{}' || echo "000")
+            [ "$CODE" = "200" ] && break
+            echo "attempt ${attempt}: HTTP ${CODE}"
+            sleep $((attempt * 5))
+          done
+
+          BODY=$(cat /tmp/sweep.json 2>/dev/null || echo '{}')
+          {
+            echo "### Support alert sweep"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$CODE" != "200" ]; then
+            {
+              echo "**The sweep did not run** — HTTP \`${CODE}\`."
+              echo ""
+              echo "A 403 almost always means \`ALERT_CRON_SECRET\` differs between GitHub and the"
+              echo "Supabase function's secrets. SLA-breach alerts are NOT firing until this is fixed."
+              echo ""
+              echo '```'
+              echo "${BODY}" | head -c 500
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          FIRED=$(printf '%s' "$BODY" | grep -o '"fired":[0-9]*' | grep -o '[0-9]*' || echo 0)
+          SENT=$(printf '%s' "$BODY" | grep -o '"sent":[0-9]*' | grep -o '[0-9]*' || echo 0)
+          FIRED=${FIRED:-0}; SENT=${SENT:-0}
+
+          if [ "$FIRED" = "0" ]; then
+            echo "Nothing met a rule. (This is the normal result — a quiet queue is a quiet sweep.)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "**${FIRED} alert(s) fired, ${SENT} emailed.**"
+              echo ""
+              echo "Anything not emailed is still recorded — see the studio's Support → Alerts log for the reason."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

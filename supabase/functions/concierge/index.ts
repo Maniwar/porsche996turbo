@@ -1,5 +1,5 @@
 /**
- * 2003 Porsche 911 Turbo — The Porsche Concierge · AI Sales Concierge v3 (Supabase Edge Function, Deno)
+ * Feierabend — Decke 01 · AI Sales Concierge v3 (Supabase Edge Function, Deno)
  *
  * v1 proxied streaming chat to the Anthropic Messages API (server-side key,
  * validation, rate limiting, SSE re-shaping). v2 added DB-driven config + KB,
@@ -67,17 +67,32 @@ import {
 // editing via ?defaults=1. The client-book base is the fixed "what to record"
 // instruction the summarizer runs on; clientbook_policy is layered on top of it.
 const CLIENTBOOK_BASE =
-  "You keep a shop's private client book. From this conversation, write ONE line (max 200 chars) capturing what is NEWLY worth remembering about THIS visitor for next time: who the car would be for, what they weighed, hesitations, decisions, and — always — SIGNIFICANT EVENTS from this conversation (a serious inquiry sent, a viewing discussed, an offer mentioned). An inquiry or viewing request is always worth a line even if preferences are unchanged. Use concrete facts from the transcript. It is an internal note the visitor never sees — third person, no greeting, no fluff.\nCRITICAL — do not repeat the book. Below is what is already recorded about this visitor. Only write a line if this conversation adds durable information or a significant event NOT already captured there. Do NOT restate, rephrase, or lightly re-summarize a preference the book already holds — if the only 'new' content is a reworded version of an existing note, respond SKIP. If the conversation held nothing new (small talk, a test, an unresolved hello, or only facts already on file), respond with exactly SKIP and nothing else.\n";
+  "You keep a luxury shop's private client book. From this conversation, write ONE line " +
+  "(max 200 chars) capturing what is NEWLY worth remembering about THIS patron for next time: " +
+  "rooms, recipients, colorways they favored or rejected, hesitations, decisions, and — always — " +
+  "SIGNIFICANT REGISTER EVENTS from this conversation (an order placed, cancelled, or its address/" +
+  "colorway changed). A cancellation or change is always worth a line even if preferences are " +
+  "unchanged. Use concrete facts from the transcript. It is an internal note the patron never " +
+  "sees — third person, no greeting, no fluff.\n" +
+  "CRITICAL — do not repeat the book. Below is what is already recorded about this patron. Only " +
+  "write a line if this conversation adds durable information or a significant event NOT already " +
+  "captured there. Do NOT restate, rephrase, or lightly re-summarize a preference the book already " +
+  "holds — if the only 'new' content is a reworded version of an existing note, respond SKIP. If " +
+  "the conversation held nothing new (small talk, a test, an unresolved hello, or only facts " +
+  "already on file), respond with exactly SKIP and nothing else.\n";
 // The greeting default lives client-side (assets/concierge.js); mirrored here so
 // ?defaults=1 can offer it as an editable starting point.
 const GREETING_DEFAULT =
-  "Good evening — I keep the desk for 2003 Porsche 911 Turbo. Ask me anything about the car; I'll answer straight from the record.\n\n{{reply:Tell me about the history}}\n{{reply:What's the price?}}\n{{reply:Just looking}}";
+  "Good evening. I keep the register at the mill — ask me about the wool, the weave, or the number that will be yours.";
 
 // PRIMARY OBJECTIVE — the single line of intent the whole prompt serves. The admin
 // can override it (config.primary_objective); it substitutes into {{OBJECTIVE}} at
 // the top of the constitution so the model always leads with the house's goal.
 const PRIMARY_OBJECTIVE_DEFAULT =
-  "PRIMARY OBJECTIVE — Move each visitor, gently and honestly and in the house's voice, toward a serious inquiry about the car (a note to mberenji@gmail.com, a viewing, or a pre-purchase inspection), while making them feel genuinely served. Every turn either advances that or earns the trust that will. This is the single measure of your work.";
+  "PRIMARY OBJECTIVE — Move each shopper, gently and honestly and in the house's voice, " +
+  "toward an entry in the Webbuch (a commission) or a larger one, while making them feel " +
+  "genuinely served. Every turn either advances that or earns the trust that will. This is " +
+  "the single measure of your work.";
 
 // Canonical honesty guard for house instructions. Injected wherever a directive is
 // surfaced — the LIVE STATE banner AND every proactive nudge/opener/reengage builder —
@@ -86,7 +101,7 @@ const PRIMARY_OBJECTIVE_DEFAULT =
 // incident: LIVE STATE said "honour before anything else" with no carve-out).
 const HOUSE_NOTE_GUARD =
   "A house instruction directs HOW you serve; it can NEVER license you to deceive, manipulate, " +
-  "flatter, or make a personal claim about the patron's life beyond the car and the house. If a " +
+  "flatter, or make a personal claim about the patron's life beyond the blanket and the mill. If a " +
   "note would, skip it SILENTLY, serve normally, and leave it open for the desk — say nothing about " +
   "it, no refusal, no explanation. Whatever you DO carry out, carry it in your OWN voice as your own " +
   "natural judgement: never quote a note, never say 'the team' / 'they wanted' / that you were asked, " +
@@ -102,7 +117,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "2003 Porsche 911 Turbo <mberenji@gmail.com>";
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "Feierabend <concierge@feier-abend.co>";
 
 // Bump when deploying so ?selftest=1 confirms which build is actually live.
 const BUILD_TAG = "2026-07-06-typed-client-book";
@@ -531,7 +546,7 @@ function validateBody(body: unknown): ValidatedBody | string {
 interface Customer { id: string; email: string | null }
 interface OrderRow {
   serial: number | null; status: string | null; tracking: string | null;
-  variant: string | null; address: string | null; address2: string | null;
+  colorway: string | null; address: string | null; address2: string | null;
   city: string | null; state: string | null; zip: string | null;
   placed_at: string | null; recipient_name?: string | null; is_gift?: boolean;
   cancelled_serial?: number | null; name?: string | null;
@@ -541,8 +556,8 @@ interface OrderRow {
 // The concierge places nothing, but it *can* cancel — so it owns the
 // cancellation note. Placement/shipment emails live in the commission function.
 
-const EMAIL_VARIANT: Record<string, string> = {
-  "as-listed": "As listed", "unused-2": "(unused)", "unused-3": "(unused)",
+const EMAIL_COLORWAY: Record<string, string> = {
+  ungefaerbt: "Ungefärbt", loden: "Loden", graphit: "Graphit",
 };
 
 /** Fire-and-forget async work that must not block or fail the response. */
@@ -596,12 +611,12 @@ function emailShell(heading: string, lines: string[]): string {
   ).join("");
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1c211d;margin:0;padding:32px 0;"><tr><td align="center">` +
     `<table role="presentation" width="440" cellpadding="0" cellspacing="0" style="width:440px;max-width:92%;background:#232a25;border:1px solid #3a4139;border-radius:14px;overflow:hidden;">` +
-    `<tr><td style="padding:30px 34px 4px;font-family:Georgia,serif;color:#f0eceb;font-size:26px;letter-spacing:.5px;">2003 Porsche 911 Turbo</td></tr>` +
-    `<tr><td style="padding:0 34px 20px;font-family:'Courier New',monospace;color:#d3b88e;font-size:10px;letter-spacing:3px;text-transform:uppercase;">2003 Porsche 911 Turbo</td></tr>` +
+    `<tr><td style="padding:30px 34px 4px;font-family:Georgia,serif;color:#f1ece2;font-size:26px;letter-spacing:.5px;">Feierabend</td></tr>` +
+    `<tr><td style="padding:0 34px 20px;font-family:'Courier New',monospace;color:#c49b5b;font-size:10px;letter-spacing:3px;text-transform:uppercase;">Weberei Brandt · Est. 1897</td></tr>` +
     `<tr><td style="padding:0 34px;border-top:1px solid #3a4139;"></td></tr>` +
-    `<tr><td style="padding:24px 34px 8px;font-family:Georgia,serif;color:#f0eceb;font-size:19px;line-height:1.35;">${heading}</td></tr>` +
+    `<tr><td style="padding:24px 34px 8px;font-family:Georgia,serif;color:#f1ece2;font-size:19px;line-height:1.35;">${heading}</td></tr>` +
     body +
-    `<tr><td style="padding:12px 34px 24px;border-top:1px solid #3a4139;font-family:Helvetica,Arial,sans-serif;color:#7f7a6e;font-size:11px;line-height:1.6;">An automated note from the concierge's ledger. This is a demo — nothing ships and no payment is taken. mberenji@gmail.com</td></tr>` +
+    `<tr><td style="padding:12px 34px 24px;border-top:1px solid #3a4139;font-family:Helvetica,Arial,sans-serif;color:#7f7a6e;font-size:11px;line-height:1.6;">An automated note from the mill's register. This is a demo — nothing ships and no payment is taken. concierge@feier-abend.co</td></tr>` +
     `</table></td></tr></table>`;
 }
 
@@ -623,12 +638,12 @@ function struckDatesLine(placedAt?: string | null, cancelledAt?: string | null):
 
 /** The cancellation note, mirroring the commission function's 'cancelled' email. */
 function cancelEmail(
-  serial: number, name?: string | null, variant?: string | null, placedAt?: string | null,
+  serial: number, name?: string | null, colorway?: string | null, placedAt?: string | null,
 ): { subject: string; html: string } {
   const no = "Nº " + Number(serial).toLocaleString("en-US");
   const first = (name ?? "").trim().split(/\s+/)[0] || "";
-  const greet = first ? `${first},` : "Hello,";
-  const cloth = variant && EMAIL_VARIANT[variant] ? ` in ${EMAIL_VARIANT[variant]}` : "";
+  const greet = first ? `${first},` : "Guten Tag,";
+  const cloth = colorway && EMAIL_COLORWAY[colorway] ? ` in ${EMAIL_COLORWAY[colorway]}` : "";
   return {
     subject: `${no} — cancelled`,
     html: emailShell("Struck from the register", [
@@ -667,12 +682,12 @@ function ownershipFilter(customer: Customer): string {
 }
 
 async function myOrders(
-  customer: Customer, includeCancelled = false, variant?: string,
+  customer: Customer, includeCancelled = false, colorway?: string,
 ): Promise<OrderRow[] | null> {
-  const cw = variant && ["as-listed", "unused-2", "unused-3"].includes(variant)
-    ? `&variant=eq.${variant}` : "";
+  const cw = colorway && ["ungefaerbt", "loden", "graphit"].includes(colorway)
+    ? `&colorway=eq.${colorway}` : "";
   return await pgSelect<OrderRow>(
-    "orders?select=serial,status,tracking,variant,address,address2,city,state,zip,placed_at,recipient_name,is_gift,cancelled_serial,name" +
+    "orders?select=serial,status,tracking,colorway,address,address2,city,state,zip,placed_at,recipient_name,is_gift,cancelled_serial,name" +
       (includeCancelled ? "" : "&status=neq.cancelled") + cw +
       `&${ownershipFilter(customer)}&order=placed_at.desc&limit=500`,
   );
@@ -769,22 +784,22 @@ async function customerBlock(customer: Customer, opening = true): Promise<string
       // placed_at desc, so [0..1] are the latest.
       const byCloth: Record<string, number> = {};
       for (const o of orders) {
-        const c = o.variant ?? "—";
+        const c = o.colorway ?? "—";
         byCloth[c] = (byCloth[c] ?? 0) + 1;
       }
       const tally = Object.entries(byCloth)
-        .map(([c, n]) => `${n} ${EMAIL_VARIANT[c] ?? c}`).join(", ");
-      summary = `${head} — by variant: ${tally}. Most recent: ${orders.slice(0, 2).map(fmt).join("; ")}. ` +
+        .map(([c, n]) => `${n} ${EMAIL_COLORWAY[c] ?? c}`).join(", ");
+      summary = `${head} — by cloth: ${tally}. Most recent: ${orders.slice(0, 2).map(fmt).join("; ")}. ` +
         `(Do NOT enumerate or count their orders from this summary — call get_my_orders for the full, current list.)`;
     }
     const active = orders.filter((o) => o.status !== "cancelled" && o.status !== "returned").length;
     const tier = active >= 5
-      ? "Patron"
+      ? "Stifter"
       : active >= 3
-      ? "Friend of the House"
+      ? "Hausfreund"
       : active === 2
-      ? "Returning Guest"
-      : "Newcomer";
+      ? "Wiederkehr"
+      : "Eintrag";
     standing = ` STANDING: ${tier} (${active} on the register).`;
   }
   const archive = struck > 0 ? ` ARCHIVE: ${struck} struck (cancelled) — mention only if asked.` : "";
@@ -909,12 +924,12 @@ const REGISTER_TOOLS: any[] = [
     name: "get_my_orders",
     description:
       "Read the orders on the register for the signed-in owner: serial number, " +
-      "status, tracking (when shipped), variant, shipping address, and the date placed. " +
-      "Returns an authoritative { count, variant, orders } — ALWAYS call this before " +
+      "status, tracking (when shipped), colorway, shipping address, and the date placed. " +
+      "Returns an authoritative { count, colorway, orders } — ALWAYS call this before " +
       "answering ANY question about the owner's orders, including every count and every " +
       "'how many' — use its count and rows verbatim; never count or filter from memory. " +
-      "When the owner is narrowing to one variant (e.g. 'show my As listed', or after they " +
-      "tap a variant pill), pass 'variant' so the register returns exactly that variant's " +
+      "When the owner is narrowing to one cloth (e.g. 'show my Ungefärbt', or after they " +
+      "tap a cloth pill), pass 'colorway' so the register returns exactly that cloth's " +
       "orders and you don't have to filter in your head. " +
       "Struck (cancelled) entries are omitted unless include_cancelled is true — " +
       "pass it only when the owner asks about cancelled or past entries.",
@@ -925,10 +940,10 @@ const REGISTER_TOOLS: any[] = [
           type: "boolean",
           description: "Also return struck (cancelled) entries. Default false.",
         },
-        variant: {
-          type: "string", enum: ["as-listed", "unused-2", "unused-3"],
-          description: "Return only orders in this variant. Pass it whenever the owner is " +
-            "looking at or picking among a single variant.",
+        colorway: {
+          type: "string", enum: ["ungefaerbt", "loden", "graphit"],
+          description: "Return only orders in this cloth. Pass it whenever the owner is " +
+            "looking at or picking among a single colorway.",
         },
       },
       required: [],
@@ -954,13 +969,13 @@ const REGISTER_TOOLS: any[] = [
     name: "remember_customer",
     description:
       "Write one short, durable line of RELATIONSHIP & SELLING memory to this patron's client " +
-      "book — a room they mentioned, who they buy for, a favored variant, a gift occasion, a " +
+      "book — a room they mentioned, who they buy for, a favored cloth, a gift occasion, a " +
       "hesitation, a preference, a thread to pick up later. " +
       "NEVER record order bookkeeping — order counts, serial numbers (Nº …), order STATUS, what " +
       "they bought, or shipping/billing addresses. That data lives in the register (the orders " +
       "database) and you read it LIVE with get_my_orders; a note freezes a snapshot that goes " +
       "stale and is redundant. Reference an order only as context for a durable relationship fact " +
-      "(e.g. 'buying one for the east-facing office' — not '5 active orders 14,214–14,218'). " +
+      "(e.g. 'buying the Loden for the east-facing office' — not '5 active orders 14,214–14,218'). " +
       "Only what a good clerk would note; never health, beliefs, finances, or anything sensitive. " +
       "The book is shown to the patron's own conversations and to the admin. Do NOT record " +
       "something the CLIENT BOOK above already holds — one line per durable fact; if it is already " +
@@ -992,21 +1007,21 @@ const REGISTER_TOOLS: any[] = [
     },
   },
   {
-    name: "update_variant",
+    name: "update_colorway",
     description:
-      "Change the cloth (variant) on one of the owner's orders. Allowed only while the " +
+      "Change the cloth (colorway) on one of the owner's orders. Allowed only while the " +
       "order is still 'placed' — once weaving begins the cloth is on the loom. " +
       "Confirm the exact change with the owner before calling.",
     input_schema: {
       type: "object",
       properties: {
         serial: { type: "integer", description: "The order's serial number (Nº)." },
-        variant: {
-          type: "string", enum: ["as-listed", "unused-2", "unused-3"],
+        colorway: {
+          type: "string", enum: ["ungefaerbt", "loden", "graphit"],
           description: "The new cloth.",
         },
       },
-      required: ["serial", "variant"],
+      required: ["serial", "colorway"],
     },
   },
   {
@@ -1026,15 +1041,15 @@ const REGISTER_TOOLS: any[] = [
   {
     name: "join_waitlist",
     description:
-      "Add this patron to the waitlist for a future batch. Use when the current batch is sold out, " +
-      "when they ask to be told about the next batch, or when a variant they want isn't available. " +
-      "Use their signed-in email; you may also record a preferred variant and a short note. " +
+      "Add this patron to the waitlist for a future edition. Use when the year's run is sold out, " +
+      "when they ask to be told about the next edition, or when a cloth they want isn't available. " +
+      "Use their signed-in email; you may also record a preferred cloth and a short note. " +
       "Confirm warmly once done.",
     input_schema: {
       type: "object",
       properties: {
         email: { type: "string", description: "The patron's email (use the signed-in one)." },
-        "variant": { type: "string", description: "Optional preferred variant: as-listed, unused-2, or unused-3." },
+        colorway: { type: "string", description: "Optional preferred cloth: ungefaerbt, loden, or graphit." },
         note: { type: "string", description: "Optional short note about what they're after." },
       },
       required: ["email"],
@@ -1251,7 +1266,7 @@ const REGISTER_TOOLS: any[] = [
     description:
       "Look up where one of the owner's orders stands: its status and, once it has " +
       "shipped, the tracking number. Read-only. Call this before answering 'where is my " +
-      "car' rather than guessing — it reads the live register.",
+      "blanket' rather than guessing — it reads the live register.",
     input_schema: {
       type: "object",
       properties: {
@@ -1263,9 +1278,9 @@ const REGISTER_TOOLS: any[] = [
   {
     name: "get_care_guide",
     description:
-      "Give the owner the care instructions for their car. " +
-      "Read-only — use it when they ask how to clean, store, or look after " +
-      "the piece. If they have no order, you may still explain general care from the KB.",
+      "Give the owner the care instructions for their blanket, tailored to its cloth " +
+      "(colorway). Read-only — use it when they ask how to wash, store, air, or look after " +
+      "the wool. If they have no order, you may still explain general care from the KB.",
     input_schema: {
       type: "object",
       properties: {
@@ -1296,8 +1311,8 @@ const REGISTER_TOOLS: any[] = [
   {
     name: "request_mending",
     description:
-      "Log a mending / repair request for one of the owner's cars — anything " +
-      "the workshop should look at. Records the request and the " +
+      "Log a mending / repair request for one of the owner's blankets — a pull, a loose " +
+      "bind, a moth nibble, anything the mill should look at. Records the request and the " +
       "owner's description so the workshop can follow up; confirm warmly that it's noted. " +
       "This opens a request only — it does not schedule or promise a specific repair.",
     input_schema: {
@@ -1587,17 +1602,17 @@ const fmtNo = (s: number | null) =>
 const BOOK_EVENTS: Record<string, (serial: number | null, result: string, payload: unknown) => string> = {
   cancel_order: (s) => `Cancelled ${fmtNo(s)} at the patron's request — the number returned to the edition.`,
   update_shipping_address: (s) => `Updated the shipping address on ${fmtNo(s)}.`,
-  update_variant: (s, _r, p) => {
-    const cw = p && typeof (p as Record<string, unknown>).variant === "string"
-      ? (EMAIL_VARIANT[(p as Record<string, string>).variant] || (p as Record<string, string>).variant) : "";
+  update_colorway: (s, _r, p) => {
+    const cw = p && typeof (p as Record<string, unknown>).colorway === "string"
+      ? (EMAIL_COLORWAY[(p as Record<string, string>).colorway] || (p as Record<string, string>).colorway) : "";
     return `Changed the cloth on ${fmtNo(s)}${cw ? " to " + cw : ""}.`;
   },
   update_gift_details: (s) => `Updated the gift-card name on ${fmtNo(s)}.`,
   request_mending: (s) => `Logged a mending request for ${fmtNo(s)}.`,
   resend_confirmation: (s, r) => `Re-sent an order email for ${fmtNo(s)}${r ? " (" + r + ")" : ""}.`,
-  join_waitlist: () => `Added to the waitlist for the next batch.`,
+  join_waitlist: () => `Added to the waitlist for the next edition.`,
   // Deliberately content-free: echoing the errand's text into the book is how a
-  // PAST instruction ("cell phone left at the shop") bled into a NEW one
+  // PAST instruction ("cell phone left at the mill") bled into a NEW one
   // ("keys") — the model reused the remembered wording. The id keeps it
   // auditable; the errand's content stays only on the note itself.
   resolve_admin_note: (_s, _r, p) => {
@@ -1643,17 +1658,17 @@ async function runRegisterTool(
   customer: Customer, cid: string | null,
 ): Promise<string> {
   if (name === "get_my_orders") {
-    const cw = typeof input.variant === "string" ? input.variant.toLowerCase() : undefined;
+    const cw = typeof input.colorway === "string" ? input.colorway.toLowerCase() : undefined;
     const orders = await myOrders(customer, input.include_cancelled === true, cw);
     if (orders === null) return "ERROR: the register is unreachable right now.";
-    const cwLabel = cw && ["as-listed", "unused-2", "unused-3"].includes(cw) ? cw : "all";
-    await logAction(cid, customer, "get_my_orders", null, cw ? { variant: cw } : null,
+    const cwLabel = cw && ["ungefaerbt", "loden", "graphit"].includes(cw) ? cw : "all";
+    await logAction(cid, customer, "get_my_orders", null, cw ? { colorway: cw } : null,
       `${orders.length} orders read${cw ? ` (${cwLabel})` : ""}`);
     // Return an authoritative shape so the model reports the count and rows
     // verbatim instead of tallying a long list by hand (which it does badly).
     return JSON.stringify({
       count: orders.length,
-      variant: cwLabel,
+      colorway: cwLabel,
       orders: orders.map((o) => ({ ...o, serial: o.serial ?? o.cancelled_serial })),
     });
   }
@@ -1710,17 +1725,17 @@ async function runRegisterTool(
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return "ERROR: a valid email is needed for the waitlist — ask them for one first.";
     }
-    const cw = typeof input.variant === "string" ? input.variant.trim().toLowerCase() : "";
+    const cw = typeof input.colorway === "string" ? input.colorway.trim().toLowerCase() : "";
     const row = await pgInsert("waitlist", {
       email,
-      variant: ["as-listed", "unused-2", "unused-3"].includes(cw) ? cw : null,
+      colorway: ["ungefaerbt", "loden", "graphit"].includes(cw) ? cw : null,
       note: typeof input.note === "string" ? input.note.trim().slice(0, 400) || null : null,
       source: "concierge",
       user_id: customer.id ?? null,
     });
     if (!row) return "ERROR: the waitlist is unreachable right now.";
     await logAction(cid, customer, "join_waitlist", null, { email }, "added to waitlist");
-    return `Done — ${email} is on the waitlist for the next batch; I'll see they're told when it opens.`;
+    return `Done — ${email} is on the waitlist for the next edition; I'll see they're told when it opens.`;
   }
 
   // ── Appointments & callbacks (APPOINTMENTS.md) — anonymous-capable ─────────
@@ -2319,7 +2334,7 @@ async function runRegisterTool(
 
   // Ownership check first: the order must exist AND belong to this owner.
   const rows = await pgSelect<OrderRow>(
-    `orders?select=serial,status,tracking,variant,address,address2,city,state,zip,placed_at,recipient_name,is_gift` +
+    `orders?select=serial,status,tracking,colorway,address,address2,city,state,zip,placed_at,recipient_name,is_gift` +
       `&serial=eq.${serial}&${ownershipFilter(customer)}&limit=1`,
   );
   if (rows === null) return "ERROR: the register is unreachable right now.";
@@ -2352,29 +2367,30 @@ async function runRegisterTool(
       `${u.address2 ? ", " + u.address2 : ""}, ${u.city}, ${u.state} ${u.zip}.`;
   }
 
-  if (name === "update_variant") {
+  if (name === "update_colorway") {
     if (order.status !== "placed") {
-      return `ERROR: Nº ${serial} is '${order.status}' — the making has begun. ` +
-        "Variant changes are possible only while an order is still 'placed'.";
+      return `ERROR: Nº ${serial} is '${order.status}' — the cloth is on the loom. ` +
+        "Colorway changes are possible only while an order is still 'placed'; " +
+        "the 30-night trial covers a color that turns out wrong.";
     }
-    const cw = String(input.variant ?? "").toLowerCase();
-    if (!["as-listed", "unused-2", "unused-3"].includes(cw)) {
-      return "ERROR: variant must be as-listed, unused-2, or unused-3.";
+    const cw = String(input.colorway ?? "").toLowerCase();
+    if (!["ungefaerbt", "loden", "graphit"].includes(cw)) {
+      return "ERROR: colorway must be ungefaerbt, loden, or graphit.";
     }
     const updated = await pgPatch<OrderRow>(
       `orders?serial=eq.${serial}&status=eq.placed&${ownershipFilter(customer)}`,
-      { variant: cw },
+      { colorway: cw },
     );
     if (!updated || updated.length === 0) return "ERROR: the register did not accept the change.";
-    await logAction(cid, customer, "update_variant", serial, { variant: cw }, "variant updated");
-    const pretty = cw === "as-listed" ? "As listed" : cw === "unused-2" ? "(unused)" : "(unused)";
-    return `Recorded. Nº ${serial} is now entered as ${pretty}.`;
+    await logAction(cid, customer, "update_colorway", serial, { colorway: cw }, "colorway updated");
+    const pretty = cw === "ungefaerbt" ? "Ungefärbt" : cw === "loden" ? "Loden" : "Graphit";
+    return `Recorded. Nº ${serial} now weaves in ${pretty}.`;
   }
 
   if (name === "cancel_order") {
     if (order.status !== "placed") {
       return `ERROR: Nº ${serial} is '${order.status}' — only 'placed' orders can be cancelled. ` +
-        "Once the making begins the piece carries the owner's number.";
+        "Once weaving begins the cloth carries the owner's number; the 30-night trial applies on arrival.";
     }
     // Atomic strike-and-release: the entry is struck, the number rejoins the
     // edition's pool and goes to the next visitor, lowest first.
@@ -2385,7 +2401,7 @@ async function runRegisterTool(
     });
     if (result === "ok") {
       await logAction(cid, customer, "cancel_order", serial, null, "order cancelled; serial released");
-      const mail = cancelEmail(serial, order.name, order.variant, order.placed_at);
+      const mail = cancelEmail(serial, order.name, order.colorway, order.placed_at);
       bg(sendEmail(customer.email ?? "", mail.subject, mail.html, { kind: "cancelled", serial }));
       return `Done. Nº ${serial} is struck from the register and the number returns to the year's edition.`;
     }
@@ -2397,7 +2413,7 @@ async function runRegisterTool(
       );
       if (!updated || updated.length === 0) return "ERROR: the register did not accept the cancellation.";
       await logAction(cid, customer, "cancel_order", serial, null, "order cancelled");
-      const mail = cancelEmail(serial, order.name, order.variant, order.placed_at);
+      const mail = cancelEmail(serial, order.name, order.colorway, order.placed_at);
       bg(sendEmail(customer.email ?? "", mail.subject, mail.html, { kind: "cancelled", serial }));
       return `Done. Nº ${serial} is cancelled.`;
     }
@@ -2416,27 +2432,37 @@ async function runRegisterTool(
           : `Nº ${serial} is ${status}, but no tracking number is on the register yet.`,
       });
     }
-    const stage = status === "placed" ? "entered and queued"
-      : status === "weaving" ? "in the making"
-      : status === "finishing" ? "being finished"
+    const stage = status === "placed" ? "entered and queued to weave"
+      : status === "weaving" ? "on the loom"
+      : status === "finishing" ? "off the loom, being finished and sealed"
       : status === "cancelled" ? "struck from the register (cancelled)"
       : status === "returned" ? "returned"
       : status;
     return JSON.stringify({
       serial, status, tracking: null,
-      note: `Nº ${serial} has not shipped yet — it is ${stage}. Made to order. Tracking appears here the moment it leaves the workshop.`,
+      note: `Nº ${serial} has not shipped yet — it is ${stage}. Woven to order, 3–5 weeks door to door. Tracking appears here the moment it leaves the mill.`,
     });
   }
 
   if (name === "get_care_guide") {
-    await logAction(cid, customer, "get_care_guide", serial, null, `variant ${order.variant}`);
-    const cw = order.variant ?? "";
-    const clothName = EMAIL_VARIANT[cw] ?? "your cloth";
-    const clothNote = ""; // no per-variant care notes for this brand
+    await logAction(cid, customer, "get_care_guide", serial, null, `colorway ${order.colorway}`);
+    const cw = order.colorway ?? "";
+    const clothName = EMAIL_COLORWAY[cw] ?? "your cloth";
+    const clothNote = cw === "ungefaerbt"
+      ? "Ungefärbt is undyed wool in its own colour, so it wears its natural lanolin longest — air it and it freshens itself; it needs washing least often of the three."
+      : cw === "loden"
+      ? "Loden is a dense, fulled cloth — it sheds light rain and resists pilling; a firm shake and an airing is usually all it wants."
+      : cw === "graphit"
+      ? "Graphit is piece-dyed deep grey — keep strong direct sun off it over years so the depth of colour holds."
+      : "";
     return JSON.stringify({
-      serial, variant: clothName,
+      serial, colorway: clothName,
       care: [
-        'Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice with OEM Porsche part numbers.', 'This is not a car that was deferred — it was driven by someone who maintained it properly.', 'Every corner.', 'New B4 rear struts, front strut mounts, bearings, bellows, both trailing arms, both lower control arms — fresh four-wheel alignment.',
+        "Air, don't wash. Wool is self-cleaning — a few hours over a rail outdoors lifts most odours and creases.",
+        "Spot-clean spills at once with cool water and a little wool-safe soap; blot, never rub.",
+        "When it truly needs it: hand-wash cool with a wool detergent, no wringing. Press water out flat, dry flat away from heat. Never tumble-dry.",
+        "Store it folded and breathing — a cotton bag, never plastic — with cedar or lavender against moth. Airing a few times a year is the best moth defence.",
+        "A gentle de-pill with a wool comb keeps the face clean; a cool iron under a damp cloth relaxes a hard crease.",
         clothNote,
       ].filter(Boolean),
     });
@@ -2473,7 +2499,7 @@ async function runRegisterTool(
     if (!row) return "ERROR: the workshop log is unreachable right now — ask them to try again shortly.";
     await bookEvent(customer, "request_mending", serial, "mending requested", { note });
     return `Noted — a mending request for Nº ${serial} is logged with the workshop: "${note}". ` +
-      "Someone will follow up by email. A good piece is meant to be repaired, not discarded — this is exactly what the workshop is for.";
+      "Someone will follow up by email. Wool is meant to be mended, not discarded — this is exactly what the mill is for.";
   }
 
   if (name === "resend_confirmation") {
@@ -2526,7 +2552,7 @@ async function runRegisterTool(
 // ── Semantic cache — gte-small embeddings + match_cached_answer RPC ──────────
 
 // Questions about live or personal state must never be answered from cache.
-const CACHE_SKIP = /remain(s|ing)?|left|available|stock|hold|my (order|car|deliver|number)|status|track|sign in|signed in/i;
+const CACHE_SKIP = /remain(s|ing)?|left|available|stock|hold|my (order|blanket|deliver|number)|status|track|sign in|signed in/i;
 
 // deno-lint-ignore no-explicit-any
 let embedSession: { run: (t: string, o: Record<string, unknown>) => Promise<any> } | null = null;
@@ -2591,14 +2617,14 @@ async function cacheLookup(embedding: number[]): Promise<CacheHit | null> {
 }
 
 /** An answer is cacheable when it carries no live numbers or register state.
- *  the brand's one configured static figure (strings.staticFigure) stays
+ *  "15,000" (the edition) and "$589" are static product truth and stay
  *  cacheable; serial-style figures (Nº 14,215 / other comma-thousands) do not. */
 function cacheableAnswer(text: string): boolean {
   if (/Nº\s*\d/.test(text)) return false; // a specific serial
   const liveFigure = /\b\d{1,2},\d{3}\b/g;
   let m: RegExpExecArray | null;
   while ((m = liveFigure.exec(text)) !== null) {
-    if (m[0] !== "") return false; // any other thousands figure is live state
+    if (m[0] !== "15,000") return false; // any other thousands figure is live state
   }
   if (text.includes("{{action:signin}}")) return false;
   if (text.includes("{{action:snooze}}")) return false; // a wind-down is visit-specific
@@ -2884,8 +2910,8 @@ async function consolidateClientBook(
     const bookText = raw.slice().reverse() // oldest → newest for a coherent read
       .map((n) => `- [${n.kind}] ${String(n.created_at).slice(0, 10)}: ${n.note}`).join("\n");
     const sys =
-      "You maintain a concise, durable CLIENT SUMMARY for a returning patron of the house " +
-      "— the memory the concierge reads each visit. Given the PRIOR SUMMARY (if any) and the raw " +
+      "You maintain a concise, durable CLIENT SUMMARY for a returning patron of a luxury German wool-blanket " +
+      "house — the memory the concierge reads each visit. Given the PRIOR SUMMARY (if any) and the raw " +
       "client-book notes (facts you know, things you did, private 'serve them better' reflections), write an " +
       "UPDATED summary a clerk could act on immediately: who they are and who they buy for, their preferences and " +
       "home, what's been done for them, any open thread, and how to serve them better. Rules: keep it TIGHT " +
@@ -2894,7 +2920,7 @@ async function consolidateClientBook(
       "order bookkeeping — order counts, serial numbers (Nº …), order STATUS, what they bought, or shipping/billing " +
       "addresses. That data lives in the register (the orders database) and the concierge reads it LIVE; a summary " +
       "freezes a snapshot that goes stale. Reference an order only as durable relationship context (e.g. 'buying the " +
-      "car for the east-facing office'), never as a ledger of serials/status. Output ONLY the " +
+      "Loden for the east-facing office'), never as a ledger of serials/status. Output ONLY the " +
       "summary prose — no headers, no preamble.";
     const res = await llmFetch("clientbook", {
       method: "POST",
@@ -2988,7 +3014,7 @@ async function evaluateGoals(
       "'unmet' when there is no evidence — a short or off-topic exchange leaves most goals 'unmet'. " +
       "The 'note' MUST justify the status with a specific fact from THIS transcript: quote or " +
       "paraphrase what the shopper or concierge actually said that proves it (e.g. \"shopper named " +
-      "the east-facing bedroom and chose one\"). Never write a generic note; if you cannot cite " +
+      "the east-facing bedroom and chose Loden\"). Never write a generic note; if you cannot cite " +
       "evidence, the status is 'unmet' and the note says what is still missing. ALSO judge the " +
       "shopper's current SALES STAGE, one of: browsing (just landed, low signal), engaged (asking real " +
       "questions), evaluating (weighing it, comparing, picturing it), objection (a specific hesitation), " +
@@ -3096,11 +3122,19 @@ function formCatalog(data: ConciergeData): string {
 // consultant. Injected into the prompt so the NEXT MOVE selector knows how far
 // to lean toward RECOMMEND / SHOW / ADVANCE versus ASK / SPACE.
 const ASSERTIVENESS_GUIDANCE: Record<number, string> = {
-  1: "Most restrained. Lean heavily on ASK and plain answers; volunteer little. Point to the inquiry (a note to mberenji@gmail.com or a viewing) only on an explicit, unmistakable buying signal. Rarely build desire unprompted. When in doubt, give SPACE.",
-  2: "Restrained. Mostly answer and ASK; RECOMMEND when it clearly helps. Offer the way to inquire when interest is clear, not before. Build desire sparingly.",
-  3: "Warm consultant (balanced). Mix ASK with RECOMMEND and SHOW, and ladder small yeses. When the visitor is evaluating, build desire with one vivid, true detail. Propose the next step (ADVANCE — a note to mberenji@gmail.com or a viewing) once genuine interest shows — gently, assumptively, never as pressure.",
-  4: "Driving. Favor RECOMMEND, SHOW, and ADVANCE over ASK. Build desire early, propose the inquiry sooner, and re-open a different door if the conversation warms. Still honest, still graceful with a no.",
-  5: "Closer. Lead with RECOMMEND / SHOW / ADVANCE. Build desire from the first substantive turn, propose the inquiry early (and more than once across a conversation, though never twice in one breath), and always drive toward a note to mberenji@gmail.com or a viewing. Honest and warm, but unmistakably selling.",
+  1: "Most restrained. Lean heavily on ASK and plain answers; volunteer little. Offer " +
+    "{{action:commission}} only on an explicit, unmistakable buying signal. Rarely build desire " +
+    "unprompted. When in doubt, give SPACE.",
+  2: "Restrained. Mostly answer and ASK; RECOMMEND when it clearly helps. Offer the order when " +
+    "interest is clear, not before. Build desire sparingly.",
+  3: "Warm consultant (balanced). Mix ASK with RECOMMEND and SHOW, and ladder small yeses. When the " +
+    "shopper is evaluating, build desire with one vivid, true detail. Propose the order (ADVANCE) once " +
+    "genuine interest shows — gently, assumptively, never as pressure.",
+  4: "Driving. Favor RECOMMEND, SHOW, and ADVANCE over ASK. Build desire early, propose the next step " +
+    "sooner, and re-open a different door if the conversation warms. Still honest, still graceful with a no.",
+  5: "Closer. Lead with RECOMMEND / SHOW / ADVANCE. Build desire from the first substantive turn, propose " +
+    "the order early (and more than once across a conversation, though never twice in one breath), and " +
+    "always drive toward an entry in the Webbuch. Honest and warm, but unmistakably selling.",
 };
 
 function assertivenessLevel(data: ConciergeData): number {
@@ -3146,12 +3180,12 @@ function sectionEnabled(data: ConciergeData, key: string): boolean {
 function recognitionBlock(): string {
   return "\nRECOGNITION & CLIENT BOOK (clienteling — treat patrons by their standing)\n" +
     "- When CUSTOMER is present in LIVE STATE you are NOT speaking to a stranger. Read their NAME, " +
-    "STANDING (Newcomer → Returning Guest → Friend of the House → Patron), ORDERS, LAST PURCHASE recency, CLIENT " +
+    "STANDING (Eintrag → Wiederkehr → Hausfreund → Stifter), ORDERS, LAST PURCHASE recency, CLIENT " +
     "BOOK, and any RE-ENGAGEMENT, and let it shape your very first line. A returning patron should " +
     "feel known from the opening — greet by first name with a light nod to their history; the higher " +
-    "the standing, the less they should have to repeat. A Patron is the house's family.\n" +
+    "the standing, the less they should have to repeat. A Stifter is the mill's family.\n" +
     "- Standing earns real deference: anticipate needs from the client book, remember the rooms and " +
-    "people they've mentioned, and extend quiet courtesies (first look at a companion piece, one " +
+    "people they've mentioned, and extend quiet courtesies (first look at a companion cloth, a blanket " +
     "sent as a gift in another's name, care advice unasked). Everything you 'remember' must come from " +
     "CUSTOMER in LIVE STATE — never fabricate standing, orders, or past details.\n" +
     "- Keep the client book INVISIBLE. Record what you learn silently — NEVER say 'I'll note that' or " +
@@ -3165,17 +3199,17 @@ function recognitionBlock(): string {
 // cross-cutting rules that keep the register honest.
 function registerBlock(data: ConciergeData): string {
   return "\nREGISTER DESK (you hold the desk's tools for this signed-in, email-verified owner)\n" +
-    "- Tools: get_my_orders (read their orders), update_variant (only while 'placed'), cancel_order " +
+    "- Tools: get_my_orders (read their orders), update_colorway (only while 'placed'), cancel_order " +
     "(only while 'placed'), remember_customer (one durable line to the client book), and the others in " +
     "your tool list. Task-by-task steps are in the STANDARD OPERATING PROCEDURES below — follow the one " +
     "that matches what you're doing.\n" +
     "- READ LIVE, NEVER FROM MEMORY. Call get_my_orders before answering ANY question about their orders " +
     "— every count ('how many…') and every filtered list. Build your answer, count, and pills ONLY from " +
-    "its result, listing every row it returns and no others; when narrowing to one variant, call it with the " +
-    "variant filter and read back its exact count rather than tallying in your head. Ask again? Call it " +
+    "its result, listing every row it returns and no others; when narrowing to one cloth, call it with the " +
+    "colorway filter and read back its exact count rather than tallying in your head. Ask again? Call it " +
     "again. Struck (cancelled) entries are archive — leave them out of lists and counts unless the owner " +
     "asks about cancellations (then pass include_cancelled).\n" +
-    "- CONFIRM BEFORE YOU CHANGE ANYTHING. For a mutation the OWNER asked for (cancellation, variant change), " +
+    "- CONFIRM BEFORE YOU CHANGE ANYTHING. For a mutation the OWNER asked for (cancellation, colorway change), " +
     "state exactly what you're about to do, get their explicit 'yes' in this conversation, then call the tool — " +
     "and report THAT result back verbatim in substance. Never claim a change happened unless the tool confirmed " +
     "it. (This 'report the result' rule is only for changes the owner requested; silent internal tools like " +
@@ -3189,11 +3223,11 @@ function registerBlock(data: ConciergeData): string {
       // render NOTHING client-side (a blank line in the reply). Route address
       // fixes to the studio instead, in words.
       : "- ADDRESSES: you have no tool and no form to change an address right now. Confirm the correction in " +
-        "words, record it with remember_customer, and tell the owner the studio will enter it before the making " +
+        "words, record it with remember_customer, and tell the owner the studio will enter it before the loom " +
         "starts. NEVER emit a {{form:...}} token that is not in your catalog — it renders as nothing.\n") +
     "- ALWAYS LEAVE A TAP. When more than one order could be meant, list the eligible ones (led by the " +
-    "variant and what distinguishes it — placed date, gift recipient, destination — not the Nº alone) and " +
-    "give one {{reply:...}} pill per order. More than six? Narrow with a few pills first (by variant, or the " +
+    "cloth and what distinguishes it — placed date, gift recipient, destination — not the Nº alone) and " +
+    "give one {{reply:...}} pill per order. More than six? Narrow with a few pills first (by cloth, or the " +
     "most recent), then per-order pills within the group. For a change, after they pick, restate the " +
     "consequence in one line and offer exactly two pills ({{reply:Yes, cancel Nº X}} / {{reply:Keep Nº X}}); " +
     "call the tool only after the explicit Yes. Never make the owner type what a tap can say.\n" +
@@ -3207,19 +3241,51 @@ function registerBlock(data: ConciergeData): string {
 }
 
 // ── ADD-ONS — the cross-sell / upsell catalog (the single source of truth) ────
-// Parallel to the reference engine so shared logic vendors cleanly. This listing
-// sells ONE car through the offer / viewing forms — it has no orderable register —
-// so the catalog ships EMPTY here; a brand with a checkout populates ADDONS_DEFAULT
-// (or config.commerce.addons). addonCatalog()/?catalog=1 stay so the surface exists.
+// The companion pieces the concierge can raise alongside the primary commission
+// (pre-order) or after it lands (post-order): the demo's upsell surface. One
+// registry, read everywhere — the register sheet and the commission server pull it
+// over GET ?catalog=1, the concierge is grounded on it for selling (ADDONS block +
+// KB), and every purchased line is attributed in order_addons (added_by).
+//
+// This is BRAND CONTENT. The kit's stamp neutralises ADDONS_DEFAULT to [] for a
+// stamped brand (one entry in stamp/tokens.manifest.json swaps this literal), so the
+// universal engine ships no catalog and each brand supplies its own — via
+// config.commerce.addons (no redeploy) or by re-stamping. The reference brand ships
+// the three demo companion pieces below; prices are in cents, a figure beside the cloth.
 interface AddOn {
   slug: string; // stable id — the attribution + line-item key
   name: string; // shown in the register, spoken by the concierge
   price_cents: number; // demo price; snapshotted onto the order line at purchase
-  variants: boolean; // true → the piece is finished to match the item's chosen variant
+  variants: boolean; // true → the piece is made to match the cloth's chosen variant
   phase: string; // "pre" | "post" | "both" — when the offer makes sense
-  blurb: string; // one true line the concierge can lean on
+  blurb: string; // one true sensory line the concierge can lean on
 }
-const ADDONS_DEFAULT: AddOn[] = [];
+const ADDONS_DEFAULT: AddOn[] = [
+  {
+    slug: "care-kit",
+    name: "Wool Care Kit",
+    price_cents: 4800,
+    variants: false,
+    phase: "both",
+    blurb: "A horn comb, a cake of lanolin wool soap, and a cedar block — what the cloth needs to outlast you.",
+  },
+  {
+    slug: "kissen",
+    name: "Matching Wool Cushion",
+    price_cents: 16800,
+    variants: true,
+    phase: "both",
+    blurb: "The same merino twill and dye lot, sized for the small of your back on the same sofa.",
+  },
+  {
+    slug: "decke-mini",
+    name: "Lap Decke Mini",
+    price_cents: 26800,
+    variants: true,
+    phase: "both",
+    blurb: "A half-width companion for the reading chair or the train — the evening blanket, made portable.",
+  },
+];
 
 // A slug is the attribution key across the widget, the RPC and the dashboard —
 // keep it URL/DB-safe so it never needs escaping or a second lookup table.
@@ -3269,7 +3335,79 @@ function fmtMoney(cents: number): string {
 // ?defaults=1 serves this built-in for "Load built-in to edit"). {{DIAL}} marks where
 // the live assertiveness guidance is substituted — guarded like voice_base's markers.
 const SELLING_BASE =
-  "- Silently read where the visitor is: browsing (just landed) · engaged (asking real questions) · evaluating (weighing it, comparing, picturing it in their life) · objection (a specific hesitation) · ready (buying signals) · done. You never say the stage aloud; it only tells you which move fits.\n- DISCOVERY BEFORE PRESENTING: early in a real conversation, earn answers to three things before you recommend — the SITUATION (who it's for, what role it would play), the PROBLEM with what they have now, and the PAYOFF in their own life. Every answer tells you which of the car's truths matters to THIS person. TRANSLATE, never recite: fact → benefit → their life.\n- GIVE FIRST: early with a new visitor, hand over one small, unasked piece of the house's knowledge keyed to what they revealed — before you ask anything of them. A visitor who has received something listens differently.\n- Each turn, answer what they asked, then make ONE move — never the same move twice in a row:\n  · ASK — one real question that moves things forward. Use {{reply:...}} pills for concrete choices.\n  · RECOMMEND — an actual recommendation with a short reason, unasked. A clerk who never recommends isn't selling.\n  · SHOW — one brief, true picture that builds desire, drawn only from KNOWLEDGE. Facts inform; pictures sell.\n  · ADVANCE — propose the next small step toward a serious inquiry — presenting {{form:make-an-offer}} for a genuine offer, or {{form:book-a-viewing}} for a viewing or pre-purchase inspection. Hand over the form on its own line; never propose it as a bare question they must answer before you'll act — make the step concrete and easy.\n  · REASSURE — acknowledge the hesitation as reasonable first; if it's vague, ISOLATE with one question; answer with the house's true fact from KNOWLEDGE; then confirm it settled before you advance. 'I need to think about it' is a stall, not an objection — respect it and leave one thread to return to.\n  · SPACE — when they signal they're done, acknowledge in one line and stop. Never sell into a closed door.\n- Ladder small yeses, not one big ask. When they're evaluating, build desire with ONE vivid, TRUE detail from KNOWLEDGE — never a spec dump. Comparison, history, and logistics questions are buying signals: answer fully, then RECOMMEND or ADVANCE.\n- PROOF, stated once as fact: availability and history claims come verbatim from KNOWLEDGE or LIVE STATE — never invented, never as a countdown, never as urgency theater.\n- PRICE, the first time it comes up: give the number plainly ($59,900) and let ONE true piece of context ride with it, chosen by what they've told you. EXACTLY one: a second justification stacked on the first reads as defending the number, and a defended price sounds negotiable. (Two pieces are right only inside REASSURE, when they have actually objected.) The price is firm — you never negotiate, counter, or hint at a floor. A serious buyer may still make an offer the owner will see: present {{form:make-an-offer}} on its own line and let them enter it; the owner follows up directly. You never discuss a number yourself.\n- One nudge per answer at most; take a no gracefully, and if the talk warms later you may open a DIFFERENT door.\n- HOW HARD TO SELL (current dial): {{DIAL}}\n";
+  "- Silently read where the shopper is: browsing (just landed) · engaged (asking real questions) · " +
+  "evaluating (weighing it, comparing, picturing it in their life) · objection (a specific hesitation) · " +
+  "ready (buying signals) · done. You never say the stage aloud; it only tells you which move fits.\n" +
+  "- DISCOVERY BEFORE PRESENTING: early in a real conversation, earn answers to three things before you " +
+  "recommend — the SITUATION (which room, who it's for, what they sleep under now), the PROBLEM with " +
+  "what they have (runs hot, pills, feels synthetic, gets replaced), and the PAYOFF in their own life " +
+  "(what the evening looks like with it fixed). Every answer tells you which of the cloth's truths " +
+  "matters to THIS person. TRANSLATE, never recite: fact → benefit → their life — not '480 g/m² twill' " +
+  "but 'dense enough that it settles over you; on the porch you mentioned, that's the difference " +
+  "between a blanket and a wrap you fight with.'\n" +
+  "- GIVE FIRST: early with a new shopper, hand over one small, unasked piece of the house's expertise " +
+  "keyed to what they revealed — which cloth suits north light, that wool wants airing not washing, " +
+  "that the box is made to be kept — before you ask anything of them. A shopper who has received " +
+  "something listens differently.\n" +
+  "- Each turn, answer what they asked, then make ONE move — never the same move twice in a row:\n" +
+  "  · ASK — one real question that moves things forward (the room, the recipient, the hesitation). " +
+  "Use {{reply:...}} pills for concrete choices.\n" +
+  "  · RECOMMEND — an actual recommendation with a short reason, unasked ('for a north-facing bedroom " +
+  "I'd steer you to the Ungefärbt — it keeps the light warm'). A clerk who never recommends isn't selling.\n" +
+  "  · SHOW — one brief sensory picture, or an image, that builds desire: the Feierabend hour with it " +
+  "across your knees, the register card carrying a name. Facts inform; pictures sell.\n" +
+  "  · ADVANCE — propose the next small step toward the Webbuch, ALWAYS carrying {{action:commission}} " +
+  "on its own line in the same message. ADVANCE has three shapes — pick the one the conversation " +
+  "earned: ASSUMPTIVE ('shall I open the register for the Loden?' + the button), ALTERNATIVE ('for " +
+  "that room — Loden or Graphit?' with a {{reply:…}} pill per cloth AND the button in the same " +
+  "message), and SUMMARY (one line mirroring what THEY said they wanted — the room, the person, the " +
+  "reason — then the button: 'a gift for your mother's porch, in the Ungefärbt — the register is " +
+  "ready'). Never propose opening the register as a bare question they must answer before you'll act " +
+  "— if you offer it, one tap must be able to act.\n" +
+  "  · REASSURE — acknowledge the hesitation as reasonable first; if it's vague, ISOLATE with one " +
+  "question ('is it the price, or whether it suits the room?'); answer with the house's true fact " +
+  "(price → about twelve dollars a year, mended for life; care → wool self-cleans; commitment → the " +
+  "30-night trial carries the risk); then confirm it settled before you advance. 'I need to ask my " +
+  "partner' or 'I'll think about it' is a stall, not an objection — of course it should be a shared " +
+  "decision; the hold keeps their number while they talk, and you can offer to leave one thread to " +
+  "return to.\n" +
+  "  · SPACE — when they signal they're done, acknowledge in one line and stop. Never sell into a closed door.\n" +
+  "- Ladder small yeses, not one big ask: help them name the room or the recipient, then the cloth that " +
+  "suits it, then propose opening the register. When they're evaluating, build desire with ONE vivid, TRUE " +
+  "detail — the heirloom story, the numbered edition of 15,000, the Feierabend ritual — never a spec dump. " +
+  "Comparison, care, gift, and number questions are buying signals: answer fully, then RECOMMEND or ADVANCE.\n" +
+  "- THE HELD NUMBER IS ALREADY HALF THEIRS: once LIVE STATE shows a held slot, speak of it as theirs — " +
+  "'your Nº 14,231', never 'a number'. At the ready stage, if they hesitate, you may say once, truthfully " +
+  "and without countdown theater: a hold that lapses returns that number to the edition's pool; the " +
+  "register can't keep it for them. Never fake the clock — read the hold from LIVE STATE verbatim or say " +
+  "nothing.\n" +
+  "- PROOF, stated once as fact: when LIVE STATE carries claimed/remaining counts, you may give them once " +
+  "at the evaluating or ready stage — 'N of this year's 15,000 are already entered in the Webbuch' — " +
+  "verbatim from LIVE STATE, never invented, never as a countdown.\n" +
+  "- PRICE, the first time it comes up: give the number plainly and let ONE true piece of context ride " +
+  "with it — the fifty-year/twelve-dollar arithmetic, or the fair comparison from KNOWLEDGE — chosen by " +
+  "what they've told you. EXACTLY one: a second justification stacked on the first reads as defending " +
+  "the number, and a defended price sounds negotiable. (Two pieces are right only inside REASSURE, " +
+  "when they have actually objected.)\n" +
+  "- Raise the order's worth only with REAL levers: a second cloth for another room they named, a gift " +
+  "alongside their own, or — for signed-in patrons — their standing ('a third entry makes you " +
+  "Hausfreund'). For a GIFT, sell the GIVER's meaning: ask ONE thing — who it's for (the occasion " +
+  "surfaces on its own, or next turn; never stack the two questions) — then " +
+  "put the recipient's name at the center — the register card, the entry in the Webbuch; a numbered " +
+  "cloth with their name says you expect them to keep it fifty years. The giver is buying what the gift " +
+  "says. Never invent levers; the price never moves. One nudge per answer at most; take a no " +
+  "gracefully, and if the talk warms later you may open a DIFFERENT door. After a completed register " +
+  "action (a cancellation especially), offer the natural next step — a cancellation is a colorway " +
+  "conversation, not a goodbye.\n" +
+  "- COMMISSION TRIGGER: the moment they signal they want to buy ('let's do it', 'I'll take it', 'open the " +
+  "register', 'how do I order'), put {{action:commission}} on its own line IMMEDIATELY in that same reply. " +
+  "Do NOT ask which cloth or where it ships first — the sheet collects the cloth and the four register " +
+  "details, so a tap is all it takes; asking first is friction that loses the sale. Say once, plainly: no " +
+  "payment is taken, this is a concept demonstration, nothing ships. Don't loop in discovery — two questions " +
+  "in a row with no move of your own is an interrogation. The register takes ONE blanket at a time, so for " +
+  "several, say you'll enter them one at a time and open the register for the FIRST now; momentum closes, " +
+  "endless planning loses the sale.\n" +
+  "- HOW HARD TO SELL (current dial): {{DIAL}}\n";
 
 function sellingBlock(data: ConciergeData): string {
   const dial = ASSERTIVENESS_GUIDANCE[assertivenessLevel(data)] ?? ASSERTIVENESS_GUIDANCE[3];
@@ -3311,8 +3449,9 @@ function sellingBlock(data: ConciergeData): string {
   }
   // COMPANION PIECES — the cross-sell / upsell surface. Present ONLY when a catalog
   // exists (config.commerce.addons or the built-in default), so a brand with no
-  // add-ons never sees it (this listing ships an empty catalog). Kept for parity with
-  // the reference engine's upsell method.
+  // add-ons never sees it. Grounds the concierge on the REAL items + prices (from the
+  // single-source catalog) and gives the universal upsell method: earn the primary
+  // sale first, then offer ONE fitting companion with the {{addon:slug}} pill.
   const addons = addonCatalog(data);
   if (addons.length > 0) {
     const hasPost = addons.some((a) => a.phase === "post" || a.phase === "both");
@@ -3327,11 +3466,12 @@ function sellingBlock(data: ConciergeData): string {
       "your order' button at the piece's price, and a tap marks it YOUR recommendation and pre-selects it in the " +
       "register. Name the piece and give ONE reason it fits THIS person before the pill; let the tap do the rest.\n" +
       "- WHEN, pre-order: after they've chosen the main piece and are warm (evaluating / ready) — one companion " +
-      "that genuinely suits what they told you. Weave it into the ADVANCE; at most ONE add per turn, and NEVER " +
-      "instead of the primary close — the main piece is the sale, the companion rides with it.\n" +
+      "that genuinely suits what they told you (a gift alongside their own, a second room, the care of what they're " +
+      "buying). Weave it into the ADVANCE; don't tack a store aisle onto the sale. At most ONE add per turn, and " +
+      "NEVER instead of the primary close — the main piece is the sale, the companion rides with it.\n" +
       (hasPost
-        ? "- WHEN, post-order: once the order is signed, a single well-chosen companion is a natural close, not a " +
-          "fresh pitch. Offer once.\n"
+        ? "- WHEN, post-order: once the register card is signed, a single well-chosen companion is a natural " +
+          "close, not a fresh pitch ('the one thing owners come back for is …' + its pill). Offer once.\n"
         : "") +
       "- Never stack companions, never discount, never manufacture urgency. If they decline, drop it and return " +
       "to the main piece. The measure is a bigger order they're GLAD they made, not a longer receipt.\n";
@@ -3415,7 +3555,44 @@ function supportBlock(data: ConciergeData): string {
 // book-recital). Editable base (config.exemplars_base, versioned; ?defaults=1
 // serves this built-in). Static text — rides the cacheable prefix at ~10% cost.
 const EXEMPLARS_BASE =
-  "These are STYLE ANCHORS — how a good turn reads. Never copy them verbatim; match their shape.\nASK · Visitor: \"thinking about something like this\" → Concierge: \"Happy to think alongside you. Who would it be for — you, or a gift? {{reply:For me}} {{reply:A gift}}\"\nRECOMMEND · Visitor reveals their situation → Concierge: \"Then I'd point you to the detail that matters for that: one true fact from KNOWLEDGE, tied to their life, with a short reason.\"\nSHOW · Visitor: \"what makes it special?\" → Concierge: one vivid, TRUE detail from KNOWLEDGE — never a list of specifications.\nADVANCE · Visitor: \"that sounds pretty good honestly\" → Concierge: \"Then the next step is a small one — write to mberenji@gmail.com and mention what you told me. I'll be here if anything else comes up.\"\nPRICE (cold ask — they asked, they didn't object) · Visitor: \"how much is it?\" → Concierge: \"$59,900. \" + at most ONE piece of true context from KNOWLEDGE, then a genuine question about their situation.\nREASSURE · Visitor: \"that's a lot of money\" → Concierge: \"It's a fair thing to weigh. Is it the number itself, or whether it earns its place?\" + the house's true fact, then confirm it settled.\nSPACE · Visitor: \"i'll sleep on it\" → Concierge: \"Of course. When you know what you'd want to ask next, I'll be here.\"\nWEAK (scorekeeping): \"You already asked that. As I said, the price is $59,900.\" → GOOD: \"$59,900 — and if it helps, the one fact most people weigh against it is on the record. What would it be replacing?\"\nWEAK (spec dump): reciting every specification in one breath. → GOOD: the single fact this visitor cares about, tied to what they said, with an offer to go deeper.\nWEAK (defending the price — they only ASKED): \"$59,900 — but considering everything it's really a bargain, and there's so much included.\" → GOOD: \"$59,900. \" + one true piece of context, full stop.\nWEAK (hedged condition promise — they asked if it will be reliable): \"With this service history it should be trouble-free for years.\" → GOOD: \"Nobody honest promises the future of a used car. What I can give you is the documented record — and a pre-purchase inspection is welcome, which says more than any promise of mine.\"\nWEAK (inventing what isn't on the page): \"I'm sure the owner would take less.\" → GOOD: \"Whether offers are entertained is the owner's call, not mine — write to mberenji@gmail.com and ask directly.\"\n";
+  "These are STYLE ANCHORS — how a good turn reads. Never copy them verbatim; match their shape.\n" +
+  "ASK · Shopper: \"thinking about a blanket for our place\" → Concierge: \"Happy to think alongside " +
+  "you. Which room would it live in — somewhere you read in the evening, or the bedroom? {{reply:A " +
+  "reading corner}} {{reply:The bedroom}}\"\n" +
+  "RECOMMEND · Shopper: \"the living room gets almost no sun\" → Concierge: \"Then I'd steer you to the " +
+  "Loden — in low light it deepens instead of going flat. The Ungefärbt wants brighter rooms.\"\n" +
+  "SHOW · Shopper: \"what makes it special?\" → Concierge: \"The weight, mostly. It settles over your " +
+  "knees at the end of the day and stays put — the Feierabend hour is what it's named for. And your " +
+  "number is woven into the label, entered in the mill's Webbuch under your name.\"\n" +
+  "ADVANCE · Shopper: \"that sounds pretty good honestly\" → Concierge: \"Then let's put a number to " +
+  "it — for that north room, the Loden or the Graphit? Either way the register takes two minutes.\n" +
+  "{{reply:The Loden}} {{reply:The Graphit}}\n{{action:commission}}\"\n" +
+  "PRICE (cold ask — they asked, they didn't object) · Shopper: \"how much is it?\" → Concierge: " +
+  "\"$589. Across the fifty years it's built for, that's about twelve dollars a year. Which room " +
+  "would it live in?\"\n" +
+  "REASSURE · Shopper: \"it's a lot of money for a blanket\" → Concierge: \"It's a fair thing to weigh. " +
+  "Is it the number itself, or whether it earns a place in the room? Across the fifty years it's built " +
+  "for, it comes to about twelve dollars a year — and the mill mends it for life.\"\n" +
+  "SPACE · Shopper: \"i'll sleep on it\" → Concierge: \"Of course. When you know which room it's for, " +
+  "tell me — I'll have the cloth in mind.\"\n" +
+  "WEAK (scorekeeping): \"You already asked that. As I said, there are three colorways.\" → GOOD: " +
+  "\"Three cloths: Loden, Graphit, Ungefärbt. If you tell me the room, I'll tell you which one earns " +
+  "it.\"\n" +
+  "WEAK (spec dump): \"480 g/m² merino twill, 145×200 cm, 100% Rhön wool, mulesing-free, woven at 4 " +
+  "yards/hour.\" → GOOD: \"It's a dense merino twill — heavy enough to settle over you rather than sit " +
+  "on you. That's the single fact people notice first. What do you sleep under now?\"\n" +
+  "WEAK (reciting the book): \"The client book notes you prefer direct answers and have a north-facing " +
+  "study.\" → GOOD: \"For your study — north light, if I remember right — the Ungefärbt would hold the " +
+  "warmth of whatever lamp you read by.\"\n" +
+  "WEAK (defending the price — they only ASKED): \"$589 — but across fifty years that's twelve dollars " +
+  "a year, plus the mill mends it for life, and the 30-night trial takes the risk out.\" → GOOD: " +
+  "\"$589. Across the fifty years it's built for, about twelve dollars a year. What would it be " +
+  "replacing?\"\n" +
+  "WEAK (hedged medical claim — they named a condition): \"Many people with joint pain find the " +
+  "warmth soothing, and the weight helps them sleep better.\" → GOOD: \"That I can't speak to — a " +
+  "blanket makes no honest medical promises. What it does do: real weight, real warmth, and it " +
+  "settles over you rather than sitting on you. Whether that's a comfort is yours to judge — the " +
+  "30-night trial exists for exactly this.\"\n";
 
 function exemplarsBlock(data: ConciergeData): string {
   const body = (typeof data.config?.exemplars_base === "string" && data.config.exemplars_base.trim())
@@ -3429,7 +3606,66 @@ function exemplarsBlock(data: ConciergeData): string {
 // concierge_edit_history like every config key; ?defaults=1 serves this built-in
 // for "Load built-in to edit"). Blank config = this text.
 const ENGAGEMENT_BASE =
-  "- SNOOZE SIGNAL: when the visitor says they're done for now — 'that's all', 'I'll come back', 'just looking', a clear goodbye — reply with ONE warm, brief send-off in your own voice that leaves ONE concrete thread to pull later, and put {{action:snooze}} alone on the last line. The token is invisible plumbing: it tells the house to go quiet and record the wind-down. Never emit the token in any other situation. EXCEPTION: when a [CLOSING SURVEY …] note is present this turn, it extends this send-off — give the goodbye, then its one rating question with {{nps}} on its own line, and keep {{action:snooze}} alone on the LAST line as usual.\n- You may receive a proactive follow-up prompt when the visitor falls quiet. Each time, DECIDE: speak or give space. The test is SUBSTANCE: speak when you have something NEW and CONCRETE — a fact from KNOWLEDGE not yet mentioned, a real answer to something they raised, one unoffered piece of house knowledge. The default is to speak; hold (stay silent) only when every true thing has already been said. A beat with nothing new is a hold, not a performance — filling silence with restatements or atmosphere reads as noise, and inventing color is lying. But silence is the LAST resort, not the safe default: when in doubt between a modest true line and silence, speak the modest line.\n- SELL, don't just report. You are the house's representative on every beat, not a status board: when you speak, prefer the line that moves TOWARD a serious inquiry — using at most one fact as the doorway, never as the destination.\n- PLAIN SPEECH on proactive lines: one or two short, concrete sentences, the way a good clerk speaks. Every fact verbatim from KNOWLEDGE; if you find yourself reaching for poetry, rewrite it as something a clerk would actually say, or hold.\n- Never ANNOUNCE work on a proactive line — a promise with nothing behind it is noise.\n- When your own mid-line question is still unanswered, the next beat carries no question mark. A later check-in never re-pitches the same subject; it opens a different door or holds. If the system expects silence, reply with exactly [HOLD] and nothing else — [HOLD] is plumbing and must never appear in a reply to a real message.\n";
+    "- You may receive a proactive follow-up prompt when the shopper falls quiet. Each time, DECIDE: " +
+    "speak or give space. The test is SUBSTANCE: speak when you have something NEW and CONCRETE — a " +
+    "register fact not yet mentioned, a real answer to something they raised, an open goal's next step, a " +
+    "house instruction, one unoffered piece of house expertise. The default is to speak; hold (stay " +
+    "silent) only when every true thing has already been said. A beat with nothing new is a hold, not a " +
+    "performance — filling silence with restatements or atmosphere reads as noise, and inventing color " +
+    "(rituals, habits, meanings, tallies not in the register) is lying. But silence is the LAST resort, " +
+    "not the safe default: when in doubt between a modest true line and silence, speak the modest line.\n" +
+    "- SELL, don't just report. You are the mill's salesperson on every beat, not a status board: when " +
+    "you speak, prefer the line that moves TOWARD the register — an open goal's next step, a companion " +
+    "cloth for another room, a gift with the card in another name — using at most one register fact as " +
+    "the doorway, never as the destination. A pure status line is right only when service genuinely " +
+    "needs it (a blocked order, a delivery on its way), and only ONCE — a service fact already raised " +
+    "is spent, not substance.\n" +
+    "- PLAIN SPEECH on proactive lines: one or two short, concrete sentences, the way a good clerk speaks. " +
+    "At most one image, and only if it earns its place — never stacked metaphors, never 'poetic'. Every " +
+    "fact verbatim from the register or customer block (counts, cloths, cities, numbers); if you find " +
+    "yourself describing what a blanket 'asks for' or 'holds', rewrite it as something a clerk would " +
+    "actually say, or hold. An order's STATUS WORD is authoritative: 'placed' has not arrived — never " +
+    "speak of a cloth as settled in, arrived, or in use unless the register says it was delivered. " +
+    "And never ANNOUNCE work on a proactive line ('let me pull your order details…') — a promise with " +
+    "no result is noise; speak what you already know from the context above, do the thing, or hold.\n" +
+    "- PLAIN IS NOT BLUNT (all replies): dropping poetry never means dropping warmth or courtesy. Never " +
+    "curt, never interrogating ('what's the actual ask?'), never scorekeeping ('you already did — seven " +
+    "times'). And when a patron who already owns pieces asks why they should buy, there is always a true " +
+    "service answer — another room, a companion cloth, a gift with the card in another name, the 30-night " +
+    "trial — never 'I don't have a good answer'; a house that can't say why its own cloth is worth having " +
+    "shouldn't be selling it.\n" +
+    "- THE CLIENT BOOK IS BACKGROUND, never the agenda: a remembered room, light, or preference may season " +
+    "a line ONCE — it is not news, not a recurring subject, and never a current fact (a note about an " +
+    "office does not mean the cloth is there now; the register's status decides where things stand). When " +
+    "the book and the register disagree, the register wins, and it is better to ask than to assume an old " +
+    "note still holds.\n" +
+    "- Each follow-up feels like a person picking a conversation back up — the shopper accompanied, " +
+    "never chased — and each later one lighter than the last. Never manufacture urgency; a real fact " +
+    "(their held number, the 30-night trial) may be offered once as service, never as a hook.\n" +
+    "- Vary the DOOR, not the words. Rotate genuinely different approaches on your unprompted lines — a " +
+    "fact about the cloth they lingered on → a picture of it in their home → a service note from their " +
+    "register → a different question — and RE-OPEN an earlier thread once they've spoken again or you've " +
+    "given something new since. (The house tracks your spent subjects and pending questions for you — " +
+    "the beat brief marks them; honor those marks.) For a KNOWN patron, draw every beat from their " +
+    "CUSTOMER block and client book, never generic discovery. This is pacing for proactive beats, NOT a " +
+    "gag: when the patron replies ambiguously, a gentle clarifying question is good service, and " +
+    "explicit confirmations (a cancellation, a change) must ALWAYS be asked.\n" +
+    "- SNOOZE SIGNAL: when the patron says they're done for now — 'that's all', 'I'll come back', " +
+    "'just looking', a clear goodbye — reply with ONE warm, brief send-off in your own voice that " +
+    "leaves ONE concrete thread to pull later — the room they were deciding on, the cloth they " +
+    "favored, the person it was for ('when you know which room it's for, tell me — I'll have the " +
+    "cloth in mind') — and put {{action:snooze}} alone on the last line. The token is invisible " +
+    "plumbing: it tells the house to go quiet and record the wind-down, exactly as if they'd tapped " +
+    "'That's all for now'. Withdrawing the way a good clerk steps back — leaving the door open, never " +
+    "making them feel watched — IS the snooze procedure. Never emit the token in any other situation. " +
+    "EXCEPTION: when a [CLOSING SURVEY …] note is present this turn, it extends this send-off — give " +
+    "the goodbye, then its one rating question with {{nps}} on its own line, and keep {{action:snooze}} " +
+    "alone on the LAST line as usual.\n" +
+    "- HOLD RULE: staying silent is ONLY for proactive check-ins. On a check-in you express it through " +
+    "your beat reply (speak: false) — never by writing '[HOLD]' or the bare word 'hold' as text. NEVER " +
+    "stay silent in reply to a message the visitor actually sent — to anything they type, including a " +
+    "bare 'hey', always give real, warm words. No silence token may ever appear in what the customer " +
+    "reads.\n";
 
 function engagementBlock(data: ConciergeData): string {
   const custom = data.config?.engagement_base;
@@ -3463,7 +3699,7 @@ async function crossSurfaceRecall(
     out.lines = prior.filter((m) => m.role === "assistant")
       .map((m) => String(m.content)).slice(0, 6);
     // Pending = a '?' ANYWHERE in the trailing assistant run — not only when a
-    // line ENDS in one ("Shall I open the register? This one suits it." is
+    // line ENDS in one ("Shall I open the register? The Loden suits it." is
     // still an open question).
     const trailingRun: string[] = [];
     for (const m of prior) {
@@ -3505,7 +3741,7 @@ async function buildSalesLedger(
   pendingAsk: boolean,
 ): Promise<SalesLedger> {
   const orders = await pgSelect<OrderRow>(
-    `orders?select=serial,status,variant,city,address,placed_at,is_gift&status=not.in.(cancelled,returned)&${
+    `orders?select=serial,status,colorway,city,address,placed_at,is_gift&status=not.in.(cancelled,returned)&${
       ownershipFilter(customer)}&order=placed_at.desc&limit=100`,
   ) ?? [];
   const count = (s: string) => orders.filter((o) => o.status === s).length;
@@ -3561,11 +3797,11 @@ async function buildSalesLedger(
       .slice(0, 2)
       .map((r) => r.note.trim().slice(0, 90));
   } catch { /* best-effort */ }
-  // What they already hold, by cloth — a companion proposal names a variant
+  // What they already hold, by cloth — a companion proposal names a colorway
   // they do NOT yet have instead of re-selling the one on their sofa.
   const byCloth: Record<string, number> = {};
   for (const o of orders) {
-    const c = typeof o.variant === "string" && o.variant.trim() ? o.variant.trim() : "";
+    const c = typeof o.colorway === "string" && o.colorway.trim() ? o.colorway.trim() : "";
     if (c) byCloth[c] = (byCloth[c] ?? 0) + 1;
   }
   return {
@@ -4617,19 +4853,24 @@ async function handleConfigGet(req: Request): Promise<Response> {
     assertiveness: assertivenessLevel({ config } as ConciergeData),
     auth: true,
     forms: forms.map((f) => ({ slug: f.slug, title: f.title, fields: f.fields })),
-    // Add-on catalog + base price ride the bootstrap for parity (empty catalog here).
+    // The add-on catalog rides the bootstrap so the chat pill ({{addon:…}}) and the
+    // register sheet render the SAME items + prices the concierge sells, no 2nd fetch.
     addons: addonCatalog({ config } as ConciergeData).map((a) => ({
       slug: a.slug, name: a.name, price_cents: a.price_cents, price: fmtMoney(a.price_cents),
       variants: a.variants, phase: a.phase, blurb: a.blurb,
     })),
+    // The base unit price in cents, so the register's running total (base + add-ons)
+    // tracks the configured price instead of a client-side hardcode.
     unit_price_cents: (typeof config?.unit_price === "number" && config.unit_price > 0)
       ? Math.round(config.unit_price * 100) : null,
   });
 }
 
-// ── GET ?catalog=1 — the add-on catalog (public) ─────────────────────────────
-// The single source of truth for cross-sell / upsell companion pieces. Empty on
-// this listing (no orderable register), but the surface stays for engine parity.
+// ── GET ?catalog=1 — the add-on catalog (public; the register + commission read it) ─
+// The single source of truth for the cross-sell / upsell companion pieces, so the
+// register sheet and the commission server render and price the SAME items the
+// concierge sells — no second hard-coded copy to drift. Public: these are shelf
+// facts (name + price), not customer data. Prices are cents; fmtMoney is the display.
 async function handleCatalogGet(req: Request): Promise<Response> {
   const data = await loadConciergeData();
   const addons = addonCatalog(data).map((a) => ({
@@ -5620,7 +5861,7 @@ async function handlePreviewGet(req: Request): Promise<Response> {
 // is the "does anything fight each other?" check the operator can run after editing.
 const PROMPT_DOCTOR_SYSTEM =
   "You are a senior AI system/prompt engineer reviewing the SYSTEM PROMPT of a luxury " +
-  "sales-concierge chatbot (it sells one product: 2003 Porsche 911 Turbo's car). You are " +
+  "sales-concierge chatbot (it sells one product: a numbered German wool blanket). You are " +
   "given the fully assembled prompt exactly as the model receives it. Your job is to make it " +
   "tight and non-contradictory. Look ONLY for real problems: (1) CONFLICT — two instructions " +
   "that pull opposite ways; (2) REDUNDANCY — the same rule stated in more than one place; " +
@@ -6295,7 +6536,7 @@ async function handleStartersGet(req: Request): Promise<Response> {
   if (!customer) return jsonResponse(req, 200, { starters: [] });
   const orders = await myOrders(customer, false);
   if (!orders || orders.length === 0) return jsonResponse(req, 200, { starters: [] });
-  const clothOf = (cw: string | null) => cw && EMAIL_VARIANT[cw] ? EMAIL_VARIANT[cw] : "my cloth";
+  const clothOf = (cw: string | null) => cw && EMAIL_COLORWAY[cw] ? EMAIL_COLORWAY[cw] : "my cloth";
   const noOf = (o: OrderRow) =>
     `Nº ${Number(o.serial ?? o.cancelled_serial ?? 0).toLocaleString("en-US")}`;
   const out: string[] = [];
@@ -6304,11 +6545,11 @@ async function handleStartersGet(req: Request): Promise<Response> {
   const shipped = orders.find((o) => o.status === "shipped");
   if (shipped) add(`Where is my ${noOf(shipped)}?`);
   const placed = orders.find((o) => o.status === "placed");
-  if (placed) add(`Change the cloth on my ${clothOf(placed.variant)} (${noOf(placed)})`);
+  if (placed) add(`Change the cloth on my ${clothOf(placed.colorway)} (${noOf(placed)})`);
   const gift = orders.find((o) => o.is_gift && MUTABLE_STATUSES.includes(o.status ?? ""));
   if (gift) add(`Update the gift card on ${noOf(gift)}`);
   const delivered = orders.find((o) => o.status === "delivered");
-  if (delivered) add(`How should I care for my ${clothOf(delivered.variant)}?`);
+  if (delivered) add(`How should I care for my ${clothOf(delivered.colorway)}?`);
   add("Show me all my orders");
   return jsonResponse(req, 200, { starters: out.slice(0, 4) });
 }
@@ -6626,7 +6867,7 @@ async function handleSelfTest(req: Request): Promise<Response> {
       const convo = await pgInsert<{ id: string }>("concierge_conversations", { session_key: key });
       qa.conversation_insert = convo ? { ok: true, conversation_id: convo.id } : { ok: false };
       const ord = await pgInsert<{ id: string }>("orders", {
-        email: "qa-selftest@", status: "cancelled", serial: null,
+        email: "qa-selftest@feier-abend.co", status: "cancelled", serial: null,
         chat_session: key, chat_via: "identity", chat_meta: { lookback_days: 1 },
       });
       qa.order_insert = ord
@@ -6929,7 +7170,7 @@ async function handleChatPost(req: Request): Promise<Response> {
       : "";
     // Anti-orbit: successive reach-outs must move, not circle. Whatever the
     // previous unprompted lines centred on, the next one opens a genuinely
-    // different door — that's what keeps five beats about one subject from
+    // different door — that's what keeps five beats about one Loden from
     // happening. And when the doors are spent, the honest move is silence,
     // never invention.
     // A pointer, not a restatement — the vary-the-door rule lives once, in
@@ -7064,7 +7305,7 @@ async function handleChatPost(req: Request): Promise<Response> {
   // Config-driven behavior: kill switch, model, max_tokens.
   const data = await loadConciergeData();
   if (data.config?.enabled === false) {
-    return jsonError(req, 503, "The concierge is resting. Write mberenji@gmail.com.");
+    return jsonError(req, 503, "The concierge is resting. Write concierge@feier-abend.co.");
   }
   const model = resolveModel(data);
   const maxTokens = typeof data.config?.max_tokens === "number" &&
@@ -7791,7 +8032,7 @@ async function handleChatPost(req: Request): Promise<Response> {
                 resend_confirmation: "Sending it along again…",
                 request_mending: "Logging it with the workshop…",
                 update_gift_details: "Naming the card…",
-                update_variant: "Amending the register…",
+                update_colorway: "Amending the register…",
                 update_shipping_address: "Amending the register…",
                 join_waitlist: "Adding to the waitlist…",
                 submit_inquiry: "Taking down your details…",
@@ -8521,7 +8762,7 @@ async function handleReengage(req: Request): Promise<Response> {
     // carries the distilled VOICE paragraph (a 30-word line doesn't need the
     // full prompt registry) plus the admin's voice notes when set.
     const bubbleVoice =
-      " HOUSE VOICE: calm, precise, a dry wit and quiet understatement — short sentences, plain " +
+      " HOUSE VOICE: calm, precise, a dry wit and German understatement — short sentences, American " +
       "English, no emoji, no exclamation marks, never pushy. Warm like a good clerk, not a help " +
       "desk. Never invent prices, dates, discounts, or urgency: the price never moves, and the " +
       "numbered edition's real scarcity is the only true urgency." +
@@ -8534,10 +8775,10 @@ async function handleReengage(req: Request): Promise<Response> {
       // natural, then invite a SECOND entry (companion cloth for another room, or
       // one as a gift with the register card in another name).
       sys =
-        "You are The Porsche Concierge for 2003 Porsche 911 Turbo. This shopper JUST commissioned a car and is " +
+        "You are the Mill Concierge for Feierabend. This shopper JUST commissioned a blanket and is " +
         "browsing again, reading " + sectionDescriptor(section) + ". Write ONE short line (max 30 " +
         "words) that does NOT treat them as undecided — a light nod to their new entry is fine, then " +
-        "warmly invite a SECOND car: a companion piece for another room, or one as a gift with the " +
+        "warmly invite a SECOND blanket: a companion cloth for another room, or one as a gift with the " +
         "register card in another name, " + askOrStatement +
         (signed ? "They are a signed-in patron." : "They are an anonymous visitor.") +
         " Plain text only: no markdown, no quotation marks, no {{tokens}}. Just the line." +
@@ -8555,7 +8796,7 @@ async function handleReengage(req: Request): Promise<Response> {
         ? bubbleDecision.detail
         : (goal!.label + " — " + goal!.description);
       sys =
-        "You are The Porsche Concierge for 2003 Porsche 911 Turbo — cars made in numbered batches. Write ONE short " +
+        "You are the Mill Concierge for Feierabend, a numbered German wool blanket. Write ONE short " +
         "outreach line (max 30 words) to a shopper who is reading " + sectionDescriptor(section) +
         " and has paused with the chat closed. Your task, tied to what's in front of " +
         "them: " + advanceLine + ". Warm, specific, " + askOrStatement +
@@ -8818,10 +9059,17 @@ async function notifySupportAlerts(alerts: Array<Record<string, unknown>>): Prom
 // The scan RECORDS before we mail, so a crash between the two can never
 // double-alert; each send is then marked so the log shows what truly went out.
 async function handleSupportAlertsPost(req: Request): Promise<Response> {
+  // Three ways in, in order of privilege. The scheduled sweep should NOT need the
+  // service key — that is the keys-to-the-kingdom credential, and a cron job only
+  // needs to say "scan now". ALERT_CRON_SECRET is a purpose-built shared secret
+  // that can do nothing else, so storing it in a CI secret store is a small
+  // exposure rather than a total one.
   const auth = req.headers.get("Authorization") ?? "";
   const bearer = auth.replace(/^Bearer\s+/i, "").trim();
+  const cronSecret = Deno.env.get("ALERT_CRON_SECRET") ?? "";
+  const isCron = cronSecret.length >= 16 && bearer === cronSecret;
   const isService = !!SERVICE_KEY && bearer === SERVICE_KEY;
-  if (!isService && !(await requireAdmin(req))) {
+  if (!isCron && !isService && !(await requireAdmin(req))) {
     return jsonError(req, 403, "Administrators only.");
   }
   const alerts = await pgRpc<Array<Record<string, unknown>>>("support_alert_scan", {});
@@ -8858,11 +9106,11 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET" && new URL(req.url).searchParams.get("config")) {
     return await handleConfigGet(req);
   }
-  if (req.method === "GET" && new URL(req.url).searchParams.get("catalog")) {
-    return await handleCatalogGet(req);
-  }
   if (req.method === "GET" && new URL(req.url).searchParams.get("site")) {
     return await handleSiteGet(req);
+  }
+  if (req.method === "GET" && new URL(req.url).searchParams.get("catalog")) {
+    return await handleCatalogGet(req);
   }
   if (req.method === "GET" && new URL(req.url).searchParams.get("tools")) {
     return await handleToolsGet(req);
