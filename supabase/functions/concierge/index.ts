@@ -9381,7 +9381,10 @@ async function draftSiteKbEntries(url: string, drafts: SiteDraftRow[]): Promise<
     const ok = await pgPatch(`site_kb_drafts?id=eq.${batch[n].id}&status=eq.pending`, {
       proposed_title: title, proposed_md: md,
     });
-    if (ok) wrote++;
+    // pgPatch returns [] when the filter matched nothing (the draft was
+    // approved or dismissed while we were drafting) — and [] is truthy. Count
+    // rows, not the array, or the sweep reports proposals it never wrote.
+    if (ok && ok.length) wrote++;
   }
   return wrote;
 }
