@@ -1,0 +1,128 @@
+name: Site Watch Sweep
+
+# Asks the concierge to re-read the watched pages and draft knowledge for
+# whatever changed (studio → Knowledge → Site watch).
+#
+# WHY THIS EXISTS: a storefront carries three tiers of copy — hard-coded markup,
+# the site editor, and the knowledge sections — and the concierge can only read
+# the third. So the day someone adds a payment method to the page, the bot keeps
+# confidently answering with last quarter's facts, and nothing in the system
+# notices. A page edit fires no event this server can hear. This is the asking.
+#
+# It cannot spam you. The first look at a page is a BASELINE that produces no
+# drafts at all; after that, only a section whose text actually changed opens
+# one, and at most one draft stays open per section. On an unedited site every
+# run does nothing, which is the normal result.
+#
+# It never publishes. Every run stops at a draft for a human to approve — page
+# copy is persuasion, and a job that quietly promoted marketing prose into
+# "knowledge" is how a concierge starts inventing policy.
+#
+# SETUP: the SAME secret as the support sweep — one purpose-built credential for
+# "do the scheduled thing", deliberately not the service-role key:
+#   1. Invent a long random string, e.g.  openssl rand -hex 32
+#   2. Supabase → Edge Functions → concierge → Secrets: ALERT_CRON_SECRET = <it>
+#   3. GitHub → Settings → Secrets → Actions: ALERT_CRON_SECRET = <the same>
+# Until the secret is set the job SKIPS cleanly rather than failing every run.
+#
+# Also needs the pages themselves: studio → Knowledge → Site watch → Pages to
+# watch. With none configured the endpoint returns "off" and this job says so.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every six hours. Deliberately far slower than the alert sweep: a page is
+    # edited a few times a year, not a few times an hour, and each run costs a
+    # fetch plus a drafting call. Six hours means a change is on the reviewer's
+    # desk the same day without paying for a watcher that stares continuously.
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: site-watch-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-read the watched pages
+        env:
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          CRON_SECRET: ${{ secrets.ALERT_CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${CRON_SECRET:-}" ] || [ -z "${PROJECT_REF:-}" ]; then
+            echo "### Site watch sweep — skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`ALERT_CRON_SECRET\` or \`SUPABASE_PROJECT_REF\` is not set, so there is nothing to call." >> "$GITHUB_STEP_SUMMARY"
+            echo "Setup instructions are in the header of this workflow file and in the reference engine's KNOWLEDGE.md (Maniwar/Blanket)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          URL="https://${PROJECT_REF}.supabase.co/functions/v1/concierge?sitewatch=1"
+          # A cold edge function or a blip should not be reported as a failure.
+          for attempt in 1 2 3; do
+            CODE=$(curl -sS -o /tmp/sitewatch.json -w '%{http_code}' -X POST "$URL" \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "Content-Type: application/json" \
+              --max-time 120 -d '{}' || echo "000")
+            [ "$CODE" = "200" ] && break
+            echo "attempt ${attempt}: HTTP ${CODE}"
+            sleep $((attempt * 5))
+          done
+
+          BODY=$(cat /tmp/sitewatch.json 2>/dev/null || echo '{}')
+          {
+            echo "### Site watch sweep"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$CODE" != "200" ]; then
+            {
+              echo "**The sweep did not run** — HTTP \`${CODE}\`."
+              echo ""
+              echo "A 403 almost always means \`ALERT_CRON_SECRET\` differs between GitHub and the"
+              echo "Supabase function's secrets. The concierge is NOT being told about page edits"
+              echo "until this is fixed."
+              echo ""
+              echo '```'
+              echo "${BODY}" | head -c 500
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if printf '%s' "$BODY" | grep -q '"enabled":false'; then
+            {
+              echo "Watching is **off** — no pages are configured."
+              echo ""
+              echo "Turn it on in the studio: Knowledge → Site watch → Pages to watch."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          DRAFTED=$(printf '%s' "$BODY" | grep -o '"drafted":[0-9]*' | grep -o '[0-9]*' || echo 0)
+          DRAFTED=${DRAFTED:-0}
+          # Every per-page count, summed — new + changed + removed sections.
+          MOVED=$(printf '%s' "$BODY" \
+            | grep -o '"\(new\|changed\|removed\)":[0-9]*' | grep -o '[0-9]*$' \
+            | awk '{n+=$1} END {print n+0}')
+          FAILED=$(printf '%s' "$BODY" | grep -c '"ok":false' || true)
+
+          if [ "${MOVED:-0}" = "0" ]; then
+            echo "Nothing changed on the watched pages. (The normal result — an unedited site is a quiet sweep.)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "**${MOVED} section(s) changed; ${DRAFTED} draft(s) written.**"
+              echo ""
+              echo "Nothing is live yet — review and approve in the studio under Knowledge → Site watch."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "${FAILED:-0}" != "0" ]; then
+            {
+              echo ""
+              echo "> ${FAILED} page(s) could not be read. Their last capture was left untouched, so a"
+              echo "> bad gateway is never mistaken for a wiped site — but check the URL is still right."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

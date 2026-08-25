@@ -1134,6 +1134,32 @@
   /* digest promoted to the stage's accent */
   .eng-digest{ border-top:none; border-left:2px solid var(--brass,#d3b88e);
     background:rgba(211,184,142,.05); padding:8px 12px; margin-top:12px; }
+  /* ---------- Site watch: the page changed, the knowledge did not ---------- */
+  /* The reviewer's job here is a JUDGEMENT, not data entry: does this change to
+     the page mean the concierge needs to know something new? So the layout puts
+     the evidence (what the page now says) above the proposal, and the proposal
+     stays editable — approving a draft you cannot correct is not review. */
+  .sw-draft{ border:1px solid var(--hairline); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .sw-draft + .sw-draft{ margin-top:0; }
+  .sw-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .sw-head h4{ margin:0; font-size:15px; flex:1 1 auto; min-width:0; }
+  .sw-kind{ font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:.14em;
+    text-transform:uppercase; border-radius:4px; padding:3px 7px; border:1px solid var(--hairline);
+    color:var(--wool-dim); white-space:nowrap; }
+  .sw-kind.new{ color:var(--brass-soft); border-color:var(--brass); }
+  .sw-kind.removed{ color:#c98b7a; border-color:#7d4f43; }
+  .sw-evidence{ font-size:13px; line-height:1.55; color:var(--wool); background:var(--wool-faint);
+    border-radius:8px; padding:10px 12px; margin-bottom:10px; white-space:pre-wrap; word-break:break-word; }
+  .sw-was{ margin-bottom:10px; }
+  .sw-was summary{ cursor:pointer; font-family:'IBM Plex Mono', monospace; font-size:11px;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--wool-dim); }
+  .sw-was .sw-evidence{ margin-top:8px; margin-bottom:0; opacity:.75; }
+  .sw-draft textarea{ min-height:120px; font-size:13px; line-height:1.5; }
+  .sw-acts{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+  .sw-acts .micro{ flex:1 1 auto; }
+  .sw-url{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .sw-url .input{ flex:1 1 240px; }
+
 </style>
 </head>
 <body>
@@ -1943,6 +1969,50 @@ need to ask my partner | Of course — the hold keeps their number while they ta
         <div class="card-foot">
           <button id="gaps-draft" class="btn primary">Draft knowledge from gaps ✳</button>
           <button id="gaps-refresh" class="btn">Refresh</button>
+        </div>
+      </section>
+
+      <!-- SITE WATCH — the other inbound queue. "Knowledge gaps" is what
+           visitors asked and the bot could not answer; this is what the SITE
+           says that the bot was never told. Both feed the sections below, so
+           they sit together above them.
+           It drafts and never publishes: page copy is persuasion, and a pass
+           that quietly promoted marketing prose into "knowledge" is exactly how
+           a concierge starts inventing policy. A human approves. -->
+      <section class="card">
+        <div class="card-head">
+          <h3>Site watch</h3>
+          <span class="micro">what the page says that the concierge was never told</span>
+        </div>
+        <p class="note" style="margin-bottom:14px;">
+          The concierge answers <strong>only</strong> from the sections below — copy written straight into the
+          page, or through the site editor, is invisible to it. This reads the live page, notices what changed,
+          and drafts an entry for you to approve. It never publishes on its own.
+        </p>
+        <div id="sw-status" class="micro" style="margin-bottom:12px;"></div>
+        <div id="sw-drafts"></div>
+        <details id="sw-setup" style="margin-top:14px;">
+          <summary class="micro" style="cursor:pointer;letter-spacing:.1em;text-transform:uppercase;">Pages to watch</summary>
+          <div style="margin-top:12px;">
+            <label class="micro" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+              <input type="checkbox" id="sw-enabled"> Watch these pages
+            </label>
+            <div id="sw-urls"></div>
+            <div class="row-tools" style="margin-top:8px;">
+              <button id="sw-url-add" class="btn" type="button">Add page</button>
+            </div>
+            <p class="note" style="margin-top:10px;">
+              Public <code>https://</code> pages only. The first look at a new page is a
+              <strong>baseline</strong> — it learns the page as it stands today and stays quiet. You will hear
+              from it when something <em>changes</em>.
+            </p>
+          </div>
+        </details>
+        <div class="card-foot">
+          <button id="sw-save" class="btn primary" type="button">Save pages</button>
+          <button id="sw-check" class="btn" type="button">Check now</button>
+          <button id="sw-refresh" class="btn" type="button">Refresh</button>
+          <span id="sw-msg" class="micro"></span>
         </div>
       </section>
 
@@ -3065,6 +3135,7 @@ async function route() {
     loadActions();
     loadCache();
     loadGaps();
+    loadSiteWatch();
     loadCustomers();
     loadWaitlist();
     loadInquiries();
@@ -6915,6 +6986,249 @@ function renderGaps() {
     row.appendChild(done);
     list.appendChild(row);
   });
+}
+
+/* ============================================================
+   TAB 2c — SITE WATCH (site_kb_drafts / site_snapshots)
+
+   The second inbound queue. Knowledge gaps ask "what did a visitor want that we
+   could not answer"; this asks "what does the PAGE say that we never taught the
+   bot". A storefront has three tiers of copy — hard-coded markup, the site
+   editor, and these knowledge sections — and the concierge can only read the
+   third, so the page can promise something the bot has never heard of.
+
+   Everything here stops one step short of publishing. The reviewer's job is a
+   judgement, not data entry, so the layout leads with the evidence and keeps
+   the proposal editable: approving a draft you cannot correct is not review.
+   ============================================================ */
+
+var swState = { cfg: null, drafts: [], wired: false };
+
+function swWire() {
+  if (swState.wired) return;
+  swState.wired = true;
+  var a = $('sw-url-add');
+  if (a) a.addEventListener('click', function () { swAddUrlRow(''); });
+  var sv = $('sw-save'); if (sv) sv.addEventListener('click', function () { withBusy(sv, swSave); });
+  var ck = $('sw-check'); if (ck) ck.addEventListener('click', function () { withBusy(ck, swCheckNow); });
+  var rf = $('sw-refresh'); if (rf) rf.addEventListener('click', function () { withBusy(rf, loadSiteWatch); });
+}
+
+function swAddUrlRow(val) {
+  var wrap = $('sw-urls'); if (!wrap) return;
+  var d = el('div', 'sw-url');
+  var i = document.createElement('input');
+  i.type = 'url'; i.className = 'input sw-u'; i.placeholder = 'https://your-site.example/';
+  i.value = val || '';
+  var x = el('button', 'btn ghost', 'Remove');
+  x.type = 'button';
+  x.addEventListener('click', function () { d.parentNode.removeChild(d); });
+  d.appendChild(i); d.appendChild(x);
+  wrap.appendChild(d);
+}
+
+async function loadSiteWatch() {
+  swWire();
+  var cfgRes = await sb.from('concierge_config').select('value').eq('key', 'sitewatch').maybeSingle();
+  swState.cfg = (cfgRes && cfgRes.data && cfgRes.data.value) || {};
+  var en = $('sw-enabled');
+  if (en) en.checked = swState.cfg.enabled === true;
+  var wrap = $('sw-urls');
+  if (wrap) {
+    wrap.textContent = '';
+    var urls = Array.isArray(swState.cfg.urls) ? swState.cfg.urls : [];
+    if (!urls.length) swAddUrlRow('');
+    else urls.forEach(function (u) { swAddUrlRow(u); });
+  }
+
+  var dr = await sb.rpc('site_kb_drafts_list', { p_status: 'pending', p_limit: 50 });
+  if (dr.error) { fail('Load site drafts', dr.error); return; }
+  swState.drafts = dr.data || [];
+
+  var st = await sb.rpc('site_watch_status', {});
+  swRenderStatus(st && st.data);
+  swRenderDrafts();
+}
+
+function swRenderStatus(st) {
+  var n = $('sw-status'); if (!n) return;
+  n.textContent = '';
+  if (!st || !Array.isArray(st.pages) || !st.pages.length) {
+    // Not an error state — nobody has pointed it at a page yet. Say what to do
+    // rather than showing an empty count that reads like a fault.
+    n.textContent = 'No pages watched yet — add one under “Pages to watch”, then Check now to take a baseline.';
+    return;
+  }
+  var bits = st.pages.map(function (p) {
+    var host = String(p.url || '');
+    try { host = new URL(p.url).host + new URL(p.url).pathname.replace(/\/$/, ''); } catch (e) { /* raw */ }
+    return host + ' · ' + p.sections + ' sections · last read ' + fmtWhen(p.last_seen);
+  });
+  n.appendChild(el('div', '', bits.join('  |  ')));
+  if (st.approved || st.dismissed) {
+    var tail = el('div', '');
+    tail.style.marginTop = '4px';
+    tail.style.opacity = '.7';
+    tail.textContent = st.approved + ' published · ' + st.dismissed + ' dismissed';
+    n.appendChild(tail);
+  }
+}
+
+function swRenderDrafts() {
+  var list = $('sw-drafts'); if (!list) return;
+  list.textContent = '';
+  if (!swState.drafts.length) {
+    list.appendChild(el('div', 'empty micro',
+      'Nothing waiting — the page and the knowledge agree, as far as the watcher can tell.'));
+    return;
+  }
+  swState.drafts.forEach(function (d) { list.appendChild(swDraftCard(d)); });
+}
+
+function swDraftCard(d) {
+  var card = el('div', 'sw-draft');
+
+  var head = el('div', 'sw-head');
+  var kind = el('span', 'sw-kind ' + (d.change_kind || ''),
+    d.change_kind === 'new' ? 'new section'
+      : d.change_kind === 'removed' ? 'section gone' : 'edited');
+  head.appendChild(kind);
+  head.appendChild(el('h4', '', d.heading || d.chunk_key));
+  card.appendChild(head);
+
+  var src = el('div', 'micro');
+  src.style.marginBottom = '8px';
+  src.textContent = (d.url || '') + '  ·  seen ' + fmtWhen(d.created_at);
+  card.appendChild(src);
+
+  // The evidence, first. For a removal the OLD text IS the evidence, and it is
+  // the more urgent case: knowledge still promising a withdrawn offer is the
+  // expensive kind of wrong.
+  if (d.change_kind === 'removed') {
+    var warn = el('div', 'micro');
+    warn.style.cssText = 'color:#c98b7a;margin-bottom:8px;';
+    warn.textContent = 'This section is no longer on the page. Anything the concierge still says about it is now out of date.';
+    card.appendChild(warn);
+    card.appendChild(el('div', 'sw-evidence', d.old_text || ''));
+  } else {
+    card.appendChild(el('div', 'sw-evidence', d.new_text || ''));
+    if (d.old_text) {
+      var det = document.createElement('details');
+      det.className = 'sw-was';
+      var sum = document.createElement('summary');
+      sum.textContent = 'What it said before';
+      det.appendChild(sum);
+      det.appendChild(el('div', 'sw-evidence', d.old_text));
+      card.appendChild(det);
+    }
+  }
+
+  var ti = document.createElement('input');
+  ti.type = 'text'; ti.className = 'input';
+  ti.placeholder = 'Section title';
+  ti.value = d.proposed_title || d.heading || '';
+  ti.style.marginBottom = '8px';
+  card.appendChild(ti);
+
+  var ta = document.createElement('textarea');
+  ta.className = 'input';
+  ta.value = d.proposed_md || '';
+  ta.placeholder = 'What the concierge should know, in your own words.';
+  card.appendChild(ta);
+
+  if (!d.proposed_md) {
+    // Say WHY it is blank. A silent empty box reads as a bug; it usually means
+    // the drafting pass has not run yet or could not reach the model, and the
+    // change itself is safely on the books either way.
+    var why = el('div', 'micro');
+    why.style.marginTop = '6px';
+    why.textContent = 'No proposal yet — the change is recorded, so this is safe to write yourself or leave for the next check.';
+    card.appendChild(why);
+  }
+
+  var acts = el('div', 'sw-acts');
+  var msg = el('span', 'micro', '');
+  var pub = el('button', 'btn primary', 'Publish to knowledge');
+  pub.type = 'button';
+  pub.addEventListener('click', function () {
+    withBusy(pub, async function () {
+      var md = (ta.value || '').trim();
+      if (!md) { msg.textContent = 'Write the entry first — there is nothing to publish yet.'; return; }
+      var r = await sb.rpc('approve_site_kb_draft', {
+        p_id: d.id, p_title: (ti.value || '').trim(), p_md: md
+      });
+      if (r.error) { fail('Publish draft', r.error); return; }
+      if (r.data && r.data.ok === false) { msg.textContent = r.data.error || 'Could not publish.'; return; }
+      swState.drafts = swState.drafts.filter(function (x) { return x.id !== d.id; });
+      card.remove();
+      if (!swState.drafts.length) swRenderDrafts();
+      toast('Published — the concierge knows this now');
+      // The new entry is live knowledge, so the sections list below is stale.
+      if (typeof loadSections === 'function' && typeof KB_SPEC !== 'undefined') loadSections(KB_SPEC);
+    });
+  });
+  var dis = el('button', 'btn ghost', 'Not knowledge');
+  dis.type = 'button';
+  dis.title = 'Dismiss this change. The watcher stays quiet about this section until it changes again.';
+  dis.addEventListener('click', function () {
+    withBusy(dis, async function () {
+      var r = await sb.rpc('dismiss_site_kb_draft', { p_id: d.id });
+      if (r.error) { fail('Dismiss draft', r.error); return; }
+      swState.drafts = swState.drafts.filter(function (x) { return x.id !== d.id; });
+      card.remove();
+      if (!swState.drafts.length) swRenderDrafts();
+      toast('Dismissed');
+    });
+  });
+  acts.appendChild(pub); acts.appendChild(dis); acts.appendChild(msg);
+  card.appendChild(acts);
+  return card;
+}
+
+async function swSave() {
+  var note = $('sw-msg');
+  var urls = [];
+  Array.prototype.forEach.call(document.querySelectorAll('#sw-urls .sw-u'), function (i) {
+    var v = (i.value || '').trim();
+    if (v) urls.push(v);
+  });
+  var bad = urls.filter(function (u) { return !/^https:\/\/[^\s/]+\./i.test(u); });
+  if (bad.length) {
+    note.textContent = 'Public https:// addresses only — could not use: ' + bad.join(', ');
+    return;
+  }
+  var cfg = { enabled: $('sw-enabled').checked, urls: urls.slice(0, 6) };
+  var r = await sb.from('concierge_config').upsert({ key: 'sitewatch', value: cfg }, { onConflict: 'key' });
+  if (r.error) { note.textContent = 'Could not save: ' + r.error.message; return; }
+  swState.cfg = cfg;
+  note.textContent = cfg.enabled
+    ? 'Saved — watching ' + urls.length + ' page' + (urls.length === 1 ? '' : 's') + '.'
+    : 'Saved — watching is off, so nothing will be checked.';
+}
+
+async function swCheckNow() {
+  var note = $('sw-msg');
+  note.textContent = 'Reading the page…';
+  try {
+    var j = await adminPost('?sitewatch=1', {});
+    if (!j.enabled) {
+      note.textContent = 'Watching is off — turn it on under “Pages to watch”, then check again.';
+      return;
+    }
+    var pages = j.pages || [];
+    var failed = pages.filter(function (p) { return !p.ok; });
+    var base = pages.filter(function (p) { return p.ok && p.baseline; });
+    var moved = pages.reduce(function (n, p) { return n + (p.ok ? (p.new || 0) + (p.changed || 0) + (p.removed || 0) : 0); }, 0);
+    var parts = [];
+    if (base.length) parts.push(base.length + ' page(s) learned as a baseline — you will hear about changes from here');
+    if (moved) parts.push(moved + ' change(s) found');
+    else if (!base.length) parts.push('nothing changed since the last look');
+    if (failed.length) parts.push(failed.length + ' page(s) could not be read');
+    note.textContent = parts.join(' · ');
+  } catch (e) {
+    note.textContent = 'Check failed: ' + (e && e.message || e);
+  }
+  await loadSiteWatch();
 }
 
 /* ============================================================

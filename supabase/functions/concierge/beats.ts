@@ -977,3 +977,178 @@ export const RECOGNITION_JUDGE_NOTE =
   "record shows one — \"the house called you about the tour\" is grounded if a completed callback is on file. What " +
   "REMAINS a defect-10 fabrication: claiming the house will, or did, reach out UNPROMPTED (marketing calls or emails), " +
   "or asserting a specific call/appointment time with no basis in the grounding.";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SITE WATCH — reading a rendered page the way a reader would
+//
+// The concierge only knows concierge_kb. Copy that lives in hard-coded markup
+// or in the CMS is invisible to it, so a page can promise something the bot has
+// never heard of. Watching the RENDERED HTML catches both, because both end up
+// as markup by the time a browser sees them.
+//
+// This is deliberately a regex extractor rather than a DOM parse. The job is
+// not fidelity — it is a STABLE FINGERPRINT PER SECTION. A parser would give
+// prettier text and the same fundamental problem: what counts as a section is a
+// judgement call, and headings are the one landmark authors reliably provide.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PageChunk {
+  key: string;
+  heading: string;
+  text: string;
+}
+
+/** Elements whose contents are never prose. Dropped whole, tags and all. */
+const SITE_DROP_TAGS = ["script", "style", "svg", "noscript", "template", "iframe", "canvas"];
+
+// Chrome, not content. A nav carries a cart count and a footer carries a
+// copyright year — both change on their own schedule and neither is ever the
+// answer to a question, so watching them would mean a draft every January and a
+// reviewer who learns to ignore the queue.
+const SITE_CHROME_TAGS = ["nav", "header", "footer", "aside"];
+
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  mdash: "—", ndash: "–", hellip: "…", rsquo: "’", lsquo: "‘",
+  ldquo: "“", rdquo: "”", times: "×", middot: "·", bull: "•",
+  Prime: "″", prime: "′", laquo: "«", raquo: "»", lsaquo: "‹", rsaquo: "›",
+  deg: "°", trade: "™", reg: "®", copy: "©", euro: "€", pound: "£", frac12: "½",
+  eacute: "é", egrave: "è", uuml: "ü", ouml: "ö", auml: "ä", szlig: "ß",
+};
+
+export function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => safeCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => safeCodePoint(parseInt(d, 10)))
+    .replace(/&([a-z]+[0-9]*);/gi, (m, name: string) => {
+      const hit = HTML_ENTITIES[name.toLowerCase()];
+      return hit === undefined ? m : hit;
+    });
+}
+
+function safeCodePoint(n: number): string {
+  if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return "";
+  try { return String.fromCodePoint(n); } catch { return ""; }
+}
+
+/** Slugify a heading into a chunk key — the identity a section keeps across
+ *  edits. Derived from the heading rather than position, because inserting a
+ *  section at the top would otherwise renumber every section below it and
+ *  report the whole page as changed. */
+export function chunkKeyFor(heading: string): string {
+  const base = decodeEntities(heading)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return base || "section";
+}
+
+function stripTags(html: string): string {
+  return decodeEntities(
+    html
+      // Block-level ends become spaces so "…done.</p><p>Next…" doesn't weld.
+      .replace(/<\/(p|div|li|tr|h[1-6]|section|article|blockquote)>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, ""),
+  ).replace(/\s+/g, " ").trim();
+}
+
+export interface ExtractOpts {
+  /** Sections shorter than this are noise — a stray caption, an empty div.
+   *  Drafting a KB entry from six words wastes a reviewer's attention. */
+  minChars?: number;
+  /** Hard ceiling per section, so one enormous page can't blow the request. */
+  maxChars?: number;
+  /** Refuse to report on pages with more sections than this. */
+  maxChunks?: number;
+}
+
+/**
+ * Split rendered HTML into heading-delimited sections.
+ *
+ * Text appearing BEFORE the first heading is kept as an "intro" chunk — on a
+ * lot of landing pages the most important sentence on the site sits above the
+ * first <h2>, and dropping it would blind the watcher to exactly the copy most
+ * likely to be edited.
+ */
+export function extractPageChunks(html: string, opts: ExtractOpts = {}): PageChunk[] {
+  const minChars = opts.minChars ?? 40;
+  const maxChars = opts.maxChars ?? 6000;
+  const maxChunks = opts.maxChunks ?? 80;
+  if (typeof html !== "string" || !html.trim()) return [];
+
+  let body = html.replace(/<!--[\s\S]*?-->/g, "");
+  const m = body.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  if (m) body = m[1];
+  for (const tag of [...SITE_DROP_TAGS, ...SITE_CHROME_TAGS]) {
+    body = body.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, "gi"), " ");
+    // An unclosed chrome tag would otherwise swallow the rest of the document.
+    body = body.replace(new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi"), " ");
+  }
+
+  const parts: Array<{ heading: string; html: string }> = [];
+  const headingRe = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+  let last = 0;
+  let pending: string | null = null;
+  let hit: RegExpExecArray | null;
+  while ((hit = headingRe.exec(body)) !== null) {
+    const slice = body.slice(last, hit.index);
+    if (pending === null) {
+      if (stripTags(slice).length >= minChars) parts.push({ heading: "Intro", html: slice });
+    } else {
+      parts.push({ heading: pending, html: slice });
+    }
+    pending = stripTags(hit[2]);
+    last = hit.index + hit[0].length;
+  }
+  if (pending === null) {
+    // A page with no headings at all is still worth watching — treat the whole
+    // body as one section rather than reporting nothing and looking healthy.
+    const whole = stripTags(body);
+    if (whole.length < minChars) return [];
+    return [{ key: "page", heading: "Page", text: whole.slice(0, maxChars) }];
+  }
+  parts.push({ heading: pending, html: body.slice(last) });
+
+  const out: PageChunk[] = [];
+  const seen = new Map<string, number>();
+  for (const p of parts) {
+    const text = stripTags(p.html).slice(0, maxChars);
+    if (text.length < minChars) continue;
+    let key = chunkKeyFor(p.heading);
+    // Two sections can legitimately share a heading ("Details", "Details").
+    // Suffix the later ones so they keep separate identities instead of
+    // colliding and looking like one section that keeps rewriting itself.
+    const n = seen.get(key) ?? 0;
+    seen.set(key, n + 1);
+    if (n > 0) key = `${key}-${n + 1}`;
+    out.push({ key, heading: p.heading.slice(0, 200) || "Section", text });
+    if (out.length >= maxChunks) break;
+  }
+  return out;
+}
+
+/**
+ * Only public https pages. The sweep runs inside the edge function with the
+ * service role in scope, so an admin-set URL is still a request this server
+ * makes on someone's behalf — pointed at a loopback or link-local address it
+ * becomes a way to read things the internet cannot. Cheap to refuse, and no
+ * legitimate storefront lives at 127.0.0.1.
+ */
+export function safeWatchUrl(raw: string): boolean {
+  let u: URL;
+  try { u = new URL(raw); } catch { return false; }
+  if (u.protocol !== "https:") return false;
+  const h = u.hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".internal")) return false;
+  if (h === "metadata.google.internal" || h === "169.254.169.254") return false;
+  if (/^\[?(::1|fe80:|fc00:|fd)/i.test(h)) return false;
+  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 10 || a === 127 || a === 0 || (a === 192 && b === 168) ||
+        (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254)) return false;
+  }
+  return true;
+}

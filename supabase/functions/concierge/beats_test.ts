@@ -15,6 +15,9 @@ import {
   normalizeQuestionKey,
   starterFeedsGap,
   chooseBeatAction,
+  decodeEntities,
+  extractPageChunks,
+  safeWatchUrl,
   DEFAULT_PROPOSAL_REST_HOURS,
   extractSubjects,
   hasPendingAsk,
@@ -769,4 +772,130 @@ Deno.test("client book: records people, refuses policy (the dual-sign-off regres
   );
 
   assertEq(noteWritesPolicy(""), false, "an empty note is not policy");
+});
+
+// ── Site watch: the page extractor ──────────────────────────────────────────
+// The diff is only as good as the fingerprint. Every test here is a way the
+// extractor could quietly poison the review queue: unstable keys mean a page
+// that reports itself changed every sweep, and a swallowed body means a page
+// that reports itself unchanged forever.
+
+Deno.test("extractPageChunks splits on headings and keys off the heading text", () => {
+  const html = `<body><h2>Shipping &amp; Returns</h2>
+    <p>Everything ships within three working days of the order landing.</p>
+    <h2>Payment</h2><p>We now accept KeySavvy for private-party payments.</p></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.length, 2, "c.length");
+  assertEq(c[0].key, "shipping-returns", "c[0].key");
+  assertEq(c[0].heading, "Shipping & Returns", "c[0].heading");
+  assert(c[0].text.includes("three working days"), "c[0].text.includes('three working days')");
+  assertEq(c[1].key, "payment", "c[1].key");
+  assert(c[1].text.includes("KeySavvy"), "c[1].text.includes('KeySavvy')");
+});
+
+Deno.test("extractPageChunks keeps copy above the first heading", () => {
+  const html = `<body><p>The most important sentence on the whole site lives up here.</p>
+    <h2>Details</h2><p>Something considerably less important than the line above.</p></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.length, 2, "c.length");
+  assertEq(c[0].key, "intro", "c[0].key");
+  assert(c[0].text.includes("most important sentence"), "c[0].text.includes('most important sentence')");
+});
+
+Deno.test("extractPageChunks drops scripts, styles and chrome", () => {
+  const html = `<body><nav><a href="/">Cart (3)</a></nav>
+    <script>var cart = 3; document.write("Cart (3)")</script>
+    <style>.x{color:red}</style>
+    <h2>About</h2><p>A long enough sentence about the actual product to survive the noise floor.</p>
+    <footer>Copyright 2025 — all rights reserved, every year a new number.</footer></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.length, 1, "c.length");
+  assertEq(c[0].key, "about", "c[0].key");
+  assert(!c[0].text.includes("Cart"), "nav leaked into content");
+  assert(!c[0].text.includes("Copyright"), "footer leaked into content");
+  assert(!c[0].text.includes("color:red"), "css leaked into content");
+});
+
+Deno.test("extractPageChunks keys are stable when a section is inserted above", () => {
+  const before = `<body><h2>Payment</h2><p>We accept the usual cards and nothing more exotic.</p></body>`;
+  const after = `<body><h2>Brand new banner</h2><p>An announcement that did not exist here yesterday at all.</p>
+    <h2>Payment</h2><p>We accept the usual cards and nothing more exotic.</p></body>`;
+  const a = extractPageChunks(before);
+  const b = extractPageChunks(after);
+  const payA = a.find((x) => x.key === "payment")!;
+  const payB = b.find((x) => x.key === "payment")!;
+  // Position changed; identity and text must not. Otherwise inserting one
+  // section reports the entire page as rewritten.
+  assertEq(payA.text, payB.text, "payA.text");
+  assertEq(b.length, 2, "b.length");
+});
+
+Deno.test("extractPageChunks disambiguates repeated headings", () => {
+  const html = `<body><h3>Details</h3><p>The first block of details, long enough to be kept around.</p>
+    <h3>Details</h3><p>A second block of details, also long enough to survive the floor.</p></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.map((x) => x.key).join(","), "details,details-2", "repeated headings get distinct keys");
+});
+
+Deno.test("extractPageChunks applies a noise floor", () => {
+  const html = `<body><h2>Hi</h2><p>Too short.</p>
+    <h2>Real</h2><p>This section is comfortably long enough to be worth a reviewer's attention.</p></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.length, 1, "c.length");
+  assertEq(c[0].key, "real", "c[0].key");
+});
+
+Deno.test("extractPageChunks survives a page with no headings", () => {
+  const html = `<body><div>A single-page listing with no headings at all, but plenty of prose to read.</div></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.length, 1, "c.length");
+  assertEq(c[0].key, "page", "c[0].key");
+});
+
+Deno.test("extractPageChunks returns nothing for empty or contentless input", () => {
+  assertEq(extractPageChunks("").length, 0, "empty input yields no chunks");
+  assertEq(extractPageChunks("<body><script>x=1</script></body>").length, 0, "script-only page yields no chunks");
+});
+
+Deno.test("extractPageChunks does not weld adjacent blocks together", () => {
+  const html = `<body><h2>Care</h2><p>Wash it cold.</p><p>Dry it flat and it will outlive you.</p></body>`;
+  const c = extractPageChunks(html);
+  assertEq(c.length, 1, "c.length");
+  assert(c[0].text.includes("cold. Dry it flat"), `welded: ${c[0].text}`);
+});
+
+Deno.test("decodeEntities handles named and numeric references", () => {
+  assertEq(decodeEntities("Tea &amp; Cake &#8212; &#x2014; &nbsp;done"), "Tea & Cake — —  done", "decodeEntities('Tea &amp; Cake &#8212; &#x2014; &nbsp;done')");
+  // An unknown entity is left alone rather than silently eaten.
+  assertEq(decodeEntities("&notarealentity;"), "&notarealentity;", "decodeEntities('&notarealentity;')");
+});
+
+Deno.test("safeWatchUrl refuses anything that is not a public https page", () => {
+  // The sweep runs server-side with the service role in scope, so a watched URL
+  // is a request THIS SERVER makes. Pointed inward it reads what the internet
+  // cannot.
+  for (const bad of [
+    "http://feier-abend.co/",            // plaintext
+    "https://localhost/",
+    "https://127.0.0.1/",
+    "https://10.0.0.5/admin",
+    "https://192.168.1.1/",
+    "https://172.16.4.4/",
+    "https://169.254.169.254/latest/meta-data/",
+    "https://metadata.google.internal/",
+    "https://kong.internal/",
+    "file:///etc/passwd",
+    "not a url at all",
+    "",
+  ]) {
+    assert(!safeWatchUrl(bad), `should have refused: ${bad}`);
+  }
+  for (const good of [
+    "https://feier-abend.co/",
+    "https://maniwar.github.io/porsche996turbo/",
+    "https://example.com/listing?v=2",
+    "https://172.32.0.1/",   // just outside the private 172.16/12 block
+  ]) {
+    assert(safeWatchUrl(good), `should have allowed: ${good}`);
+  }
 });

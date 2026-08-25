@@ -37,6 +37,9 @@ import {
   starterFeedsGap,
   classifyJudgeReason,
   composeGapSkeleton,
+  extractPageChunks,
+  type PageChunk,
+  safeWatchUrl,
   noteWritesPolicy,
   judgeFloorAllows,
   normalizeQuestionKey,
@@ -9217,6 +9220,229 @@ async function handleSupportAlertsPost(req: Request): Promise<Response> {
   return jsonResponse(req, 200, { fired: alerts.length, sent, alerts });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SITE WATCH — the pass that notices the page changed
+//
+// The concierge knows concierge_kb and nothing else. Copy hard-coded into the
+// markup, or written through the site_content CMS, is invisible to it — so a
+// listing can advertise a payment method the bot has never heard of, and the
+// bot will keep confidently answering with last quarter's facts.
+//
+// This pass fetches the RENDERED page (which catches hard-coded and CMS copy
+// alike, because both are HTML by the time a reader sees them), diffs it
+// section by section against the last capture, and DRAFTS a knowledge entry
+// for whatever moved. It never publishes. A human approves.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SITEWATCH_URL_CAP = 6;        // pages per sweep
+const SITEWATCH_BYTES_CAP = 3_000_000;
+const SITEWATCH_DRAFT_CAP = 8;      // model-written proposals per sweep
+const SITEWATCH_FETCH_MS = 20000;
+
+interface SiteWatchCfg { enabled: boolean; urls: string[] }
+
+function siteWatchConfig(config: Record<string, unknown> | null): SiteWatchCfg {
+  const raw = (config?.sitewatch ?? {}) as Record<string, unknown>;
+  const urls = (Array.isArray(raw.urls) ? raw.urls : [])
+    .map((u) => String(u ?? "").trim())
+    .filter((u) => safeWatchUrl(u))
+    .slice(0, SITEWATCH_URL_CAP);
+  // Absent config means OFF. A watcher that switches itself on the moment the
+  // code ships would start fetching whatever it could guess about the site.
+  return { enabled: raw.enabled === true && urls.length > 0, urls };
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function fetchPageChunks(url: string): Promise<Array<PageChunk & { hash: string }> | null> {
+  let html = "";
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(SITEWATCH_FETCH_MS),
+      headers: { "accept": "text/html", "user-agent": "concierge-sitewatch/1" },
+    });
+    if (!res.ok) return null;
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct && !ct.includes("html")) return null;
+    html = (await res.text()).slice(0, SITEWATCH_BYTES_CAP);
+  } catch { return null; }
+  const chunks = extractPageChunks(html);
+  if (!chunks.length) return null;
+  return await Promise.all(chunks.map(async (c) => ({ ...c, hash: await sha256Hex(c.text) })));
+}
+
+interface SiteDraftRow {
+  id: number; chunk_key: string; heading: string | null;
+  change_kind: string; old_text: string | null; new_text: string | null;
+}
+
+/**
+ * Turn the raw diff into a proposed KB entry.
+ *
+ * STRICTLY EXTRACTIVE, and that is the whole design. The house has already been
+ * burned once by a model that turned a shopper's passing worry into standing
+ * policy; a pass that reads marketing copy and writes "knowledge" is the same
+ * failure waiting in a new costume. So the prompt's job is mostly prohibition:
+ * restate what the page says, name nothing it does not, and where the copy is
+ * plainly incomplete, say so in the entry itself so the concierge knows the
+ * edge of its own knowledge instead of improvising past it.
+ */
+async function draftSiteKbEntries(url: string, drafts: SiteDraftRow[]): Promise<number> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  if (!apiKey || !drafts.length) return 0;
+  const batch = drafts.slice(0, SITEWATCH_DRAFT_CAP);
+  const block = batch.map((d, i) => {
+    const head = `${i}. [${d.change_kind.toUpperCase()}] section "${d.heading || d.chunk_key}"`;
+    if (d.change_kind === "removed") {
+      return `${head}\nTHIS SECTION IS GONE FROM THE PAGE. It used to say:\n${(d.old_text || "").slice(0, 2500)}`;
+    }
+    const was = d.old_text ? `\nPREVIOUSLY:\n${d.old_text.slice(0, 1500)}` : "";
+    return `${head}${was}\nNOW SAYS:\n${(d.new_text || "").slice(0, 2500)}`;
+  }).join("\n\n---\n\n");
+
+  let items: Array<Record<string, unknown>> = [];
+  try {
+    const res = await llmFetch("sitewatch-draft", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({
+        model: BEAT_JUDGE_MODEL, max_tokens: 2000, temperature: 0,
+        system:
+          "You convert CHANGED WEBSITE COPY into draft knowledge-base entries for a sales concierge. " +
+          "A human reviews everything you write before it goes live.\n\n" +
+          "WRITE ONLY WHAT THE PAGE SAYS. This is the one rule that matters. Do not add a fee, a " +
+          "price, a timeline, a guarantee, a policy, an eligibility condition, or a party's " +
+          "obligation that is not stated in the copy in front of you. Do not resolve an ambiguity " +
+          "by picking the likely answer. Do not import what you know about a named company, product " +
+          "or service from anywhere else — if the page names a payment processor you recognise, you " +
+          "still know ONLY what this page says about it.\n\n" +
+          "Where the copy plainly leaves an obvious question open, END the entry with a line " +
+          "beginning 'NOT STATED HERE:' naming those gaps. That line is FOR THE CONCIERGE, and it " +
+          "is the most valuable thing you can write: it tells the bot the edge of its own knowledge " +
+          "so it offers to find out instead of inventing an answer.\n\n" +
+          "Strip the persuasion. Marketing copy is written to move someone; a knowledge entry is " +
+          "written to answer someone. Keep the facts, drop the adjectives.\n\n" +
+          "content_md: 2-8 short markdown bullets, plain and factual. title: merchant-facing, under " +
+          "70 characters. For a REMOVED section, write the entry as a CORRECTION — the page no " +
+          "longer offers this — because stale knowledge promising a withdrawn offer is the " +
+          "expensive kind of wrong. Set kind='skip' for a section that is pure decoration, " +
+          "navigation, or a cosmetic rewording that changes no fact.",
+        tools: [{
+          name: "entries",
+          description: "One entry per changed section.",
+          input_schema: {
+            type: "object",
+            properties: {
+              entries: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    num: { type: "integer" },
+                    kind: { type: "string", enum: ["entry", "skip"] },
+                    title: { type: "string" },
+                    content_md: { type: "string" },
+                  },
+                  required: ["num", "kind"],
+                },
+              },
+            },
+            required: ["entries"],
+          },
+        }],
+        tool_choice: { type: "tool", name: "entries" },
+        messages: [{ role: "user", content: `PAGE: ${url}\n\nCHANGED SECTIONS:\n\n${block}` }],
+      }),
+    });
+    if (res.ok) {
+      const j = await res.json();
+      const tu = Array.isArray(j.content) ? j.content.find((b: { type?: string }) => b.type === "tool_use") : null;
+      const inp = (tu?.input ?? {}) as { entries?: unknown };
+      if (Array.isArray(inp.entries)) items = inp.entries as Array<Record<string, unknown>>;
+    }
+  } catch { /* a failed drafting pass loses nothing — the draft row still holds
+                the before/after, so a human can write it, and the next sweep
+                retries. This is exactly why snapshots advance only alongside
+                the draft row and never ahead of it. */ }
+
+  let wrote = 0;
+  for (const it of items) {
+    const n = typeof it.num === "number" ? it.num : -1;
+    if (n < 0 || n >= batch.length) continue;
+    if (String(it.kind ?? "") === "skip") continue;
+    const title = String(it.title ?? "").trim().slice(0, 120);
+    const md = String(it.content_md ?? "").trim().slice(0, 6000);
+    if (!title || !md) continue;
+    const ok = await pgPatch(`site_kb_drafts?id=eq.${batch[n].id}&status=eq.pending`, {
+      proposed_title: title, proposed_md: md,
+    });
+    if (ok) wrote++;
+  }
+  return wrote;
+}
+
+/** One sweep over every watched page. Safe to call as often as you like. */
+async function runSiteWatch(): Promise<Record<string, unknown>> {
+  const cfgRows = await pgSelect<{ key: string; value: unknown }>(
+    "concierge_config?select=key,value&key=eq.sitewatch") ?? [];
+  const cfg = siteWatchConfig(
+    cfgRows.length ? { sitewatch: cfgRows[0].value } : null);
+  if (!cfg.enabled) return { enabled: false, pages: [] };
+
+  const pages: Array<Record<string, unknown>> = [];
+  let drafted = 0;
+  for (const url of cfg.urls) {
+    const chunks = await fetchPageChunks(url);
+    if (!chunks) {
+      // A page we could not read is NOT a page with nothing on it. Reporting
+      // the fetch failure and moving on beats recording an empty capture that
+      // would look, next sweep, like the site had been wiped.
+      pages.push({ url, ok: false, error: "could not read the page" });
+      continue;
+    }
+    const rec = await pgRpc<Record<string, unknown>>("site_watch_record", {
+      p_url: url,
+      p_chunks: chunks.map((c) => ({ key: c.key, heading: c.heading, text: c.text, hash: c.hash })),
+    });
+    if (!rec || rec.ok !== true) {
+      pages.push({ url, ok: false, error: String(rec?.error ?? "the diff did not run") });
+      continue;
+    }
+    const open = (Array.isArray(rec.drafts) ? rec.drafts : []) as SiteDraftRow[];
+    if (open.length && drafted < SITEWATCH_DRAFT_CAP) {
+      drafted += await draftSiteKbEntries(url, open.slice(0, SITEWATCH_DRAFT_CAP - drafted));
+    }
+    pages.push({
+      url, ok: true, baseline: rec.baseline, sections: rec.sections,
+      new: rec.new, changed: rec.changed, removed: rec.removed, pending: open.length,
+    });
+  }
+  return { enabled: true, pages, drafted };
+}
+
+// ── POST ?sitewatch=1 — sweep the watched pages ─────────────────────────────
+// Same three doors as the alert sweep: an admin in the studio pressing "check
+// now", the service key, or the purpose-built cron secret — which is what the
+// scheduled job should carry, because a job that only needs to say "look at the
+// site" has no business holding the keys to the kingdom.
+async function handleSiteWatchPost(req: Request): Promise<Response> {
+  const auth = req.headers.get("Authorization") ?? "";
+  const bearer = auth.replace(/^Bearer\s+/i, "").trim();
+  const cronSecret = Deno.env.get("ALERT_CRON_SECRET") ?? "";
+  const isCron = cronSecret.length >= 16 && bearer === cronSecret;
+  const isService = !!SERVICE_KEY && bearer === SERVICE_KEY;
+  if (!isCron && !isService && !(await requireAdmin(req))) {
+    return jsonError(req, 403, "Administrators only.");
+  }
+  const out = await runSiteWatch();
+  return jsonResponse(req, 200, out);
+}
+
 async function handlePrunePost(req: Request): Promise<Response> {
   if (!(await requireAdmin(req))) return jsonError(req, 403, "Administrators only.");
   let body: Record<string, unknown>;
@@ -9237,6 +9463,9 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method === "POST" && new URL(req.url).searchParams.get("support_alerts")) {
     return await handleSupportAlertsPost(req);
+  }
+  if (req.method === "POST" && new URL(req.url).searchParams.get("sitewatch")) {
+    return await handleSiteWatchPost(req);
   }
   if (req.method === "POST" && new URL(req.url).searchParams.get("prune")) {
     return await handlePrunePost(req);

@@ -4702,3 +4702,233 @@ revoke execute on function public.support_alert_mark(bigint,text) from public, a
 -- (idempotent — a NOTIFY is always safe.)
 -- ─────────────────────────────────────────────────────────────────────────────
 notify pgrst, 'reload schema';
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SITE WATCH — the concierge notices when the page changes under it
+--
+-- There are three tiers of copy on a storefront, and the bot can only see one:
+--   1. hard-coded markup in index.html   — invisible to the bot
+--   2. the site_content CMS             — invisible to the bot
+--   3. concierge_kb                     — the ONLY thing it actually knows
+-- So the day someone adds a payment section to the page, the concierge keeps
+-- cheerfully saying the thing it was told last year. This closes that gap by
+-- watching the RENDERED page — which catches tier 1 and 2 alike, because both
+-- end up as HTML — and asking a human to bless a KB entry for what it found.
+--
+-- Deliberately NOT auto-injecting page copy into the prompt. Marketing prose is
+-- persuasion, not knowledge: it repeats itself, it is written to be skimmed,
+-- and it would bloat every turn while quietly duplicating the curated KB. The
+-- machine's job is to NOTICE and DRAFT. Publishing stays a human act.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- One row per section of a watched page. Section-granular on purpose: a
+-- whole-page hash tells you "something changed" and nothing more, which is
+-- useless for drafting. We need to know WHICH part moved, and what it said.
+create table if not exists public.site_snapshots (
+  id bigint generated always as identity primary key,
+  url text not null,
+  chunk_key text not null,
+  heading text,
+  text text not null,
+  hash text not null,
+  captured_at timestamptz not null default now(),
+  unique (url, chunk_key));
+create index if not exists site_snapshots_url_idx on public.site_snapshots (url);
+
+-- A proposed KB entry, born of a diff. Kept in its own table rather than as a
+-- disabled concierge_kb row so the provenance — what changed, from what, to
+-- what — sits beside the proposal while a human decides. A disabled KB row
+-- would carry the answer but lose the question.
+create table if not exists public.site_kb_drafts (
+  id bigint generated always as identity primary key,
+  url text not null,
+  chunk_key text not null,
+  heading text,
+  change_kind text not null check (change_kind in ('new','changed','removed')),
+  old_text text,
+  new_text text,
+  proposed_title text,
+  proposed_md text,
+  status text not null default 'pending' check (status in ('pending','approved','dismissed')),
+  kb_slug text,
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz);
+-- At most ONE open draft per section. Without this, a section edited twice
+-- before anyone looks would stack two drafts describing overlapping truths,
+-- and the reviewer would publish whichever they clicked first.
+create unique index if not exists site_kb_drafts_open_idx
+  on public.site_kb_drafts (url, chunk_key) where status = 'pending';
+create index if not exists site_kb_drafts_status_idx
+  on public.site_kb_drafts (status, created_at desc);
+
+-- ── The diff, in one transaction ────────────────────────────────────────────
+-- Takes the freshly-extracted sections and returns what moved. Snapshots are
+-- committed in the SAME statement that records the drafts, never before: the
+-- draft row is the durable memory of "this changed". If we advanced the
+-- snapshot first and the drafting model call then failed, the change would be
+-- swallowed forever — the next sweep would see no difference and say nothing.
+--
+-- First contact with a URL is a BASELINE, not news: seeding snapshots for a
+-- page nobody has watched yet would otherwise open a draft for every section
+-- on it and bury the reviewer under thirty proposals on day one.
+create or replace function public.site_watch_record(p_url text, p_chunks jsonb)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_known int;
+  v_new int := 0; v_changed int := 0; v_removed int := 0;
+  v_baseline boolean;
+begin
+  if coalesce(btrim(p_url),'') = '' then
+    return jsonb_build_object('ok', false, 'error', 'no url');
+  end if;
+  if jsonb_typeof(p_chunks) <> 'array' or jsonb_array_length(p_chunks) = 0 then
+    -- An empty extraction almost always means the fetch failed or the markup
+    -- changed shape — NOT that the page went blank. Treating it as "everything
+    -- was removed" would delete the whole baseline and fabricate a wall of
+    -- removal drafts, so refuse instead.
+    return jsonb_build_object('ok', false, 'error', 'no chunks extracted');
+  end if;
+
+  select count(*) into v_known from public.site_snapshots s where s.url = p_url;
+  v_baseline := (v_known = 0);
+
+  drop table if exists _incoming;
+  create temp table _incoming on commit drop as
+  select c->>'key' as chunk_key, c->>'heading' as heading,
+         c->>'text' as text, c->>'hash' as hash
+    from jsonb_array_elements(p_chunks) c
+   where coalesce(c->>'key','') <> '' and coalesce(c->>'text','') <> '';
+
+  if not v_baseline then
+    -- New sections
+    insert into public.site_kb_drafts (url, chunk_key, heading, change_kind, old_text, new_text)
+    select p_url, i.chunk_key, i.heading, 'new', null, i.text
+      from _incoming i
+      left join public.site_snapshots s on s.url = p_url and s.chunk_key = i.chunk_key
+     where s.id is null
+    on conflict (url, chunk_key) where status = 'pending' do update
+      set change_kind = 'new', new_text = excluded.new_text,
+          heading = excluded.heading, proposed_md = null, proposed_title = null,
+          created_at = now();
+    get diagnostics v_new = row_count;
+
+    -- Edited sections. old_text is left alone on conflict: it holds the text a
+    -- reviewer last had reason to believe was live, which is the useful
+    -- baseline for judging a second edit — not the intermediate they never saw.
+    insert into public.site_kb_drafts (url, chunk_key, heading, change_kind, old_text, new_text)
+    select p_url, i.chunk_key, i.heading, 'changed', s.text, i.text
+      from _incoming i
+      join public.site_snapshots s on s.url = p_url and s.chunk_key = i.chunk_key
+     where s.hash <> i.hash
+    on conflict (url, chunk_key) where status = 'pending' do update
+      set change_kind = case when site_kb_drafts.change_kind = 'new'
+                             then 'new' else 'changed' end,
+          new_text = excluded.new_text, heading = excluded.heading,
+          proposed_md = null, proposed_title = null, created_at = now();
+    get diagnostics v_changed = row_count;
+
+    -- Vanished sections. Worth a draft of its own: the KB may still be
+    -- promising something the page has stopped offering, and that is the
+    -- expensive kind of wrong.
+    insert into public.site_kb_drafts (url, chunk_key, heading, change_kind, old_text, new_text)
+    select p_url, s.chunk_key, s.heading, 'removed', s.text, null
+      from public.site_snapshots s
+      left join _incoming i on i.chunk_key = s.chunk_key
+     where s.url = p_url and i.chunk_key is null
+    on conflict (url, chunk_key) where status = 'pending' do update
+      set change_kind = 'removed', new_text = null, created_at = now();
+    get diagnostics v_removed = row_count;
+  end if;
+
+  -- Advance the baseline only now that the drafts are on the books.
+  insert into public.site_snapshots (url, chunk_key, heading, text, hash)
+  select p_url, i.chunk_key, i.heading, i.text, i.hash from _incoming i
+  on conflict (url, chunk_key) do update
+    set heading = excluded.heading, text = excluded.text,
+        hash = excluded.hash, captured_at = now();
+
+  delete from public.site_snapshots s
+   where s.url = p_url
+     and not exists (select 1 from _incoming i where i.chunk_key = s.chunk_key);
+
+  return jsonb_build_object(
+    'ok', true, 'url', p_url, 'baseline', v_baseline,
+    'sections', (select count(*) from _incoming),
+    'new', v_new, 'changed', v_changed, 'removed', v_removed,
+    'drafts', (select coalesce(jsonb_agg(jsonb_build_object(
+                 'id', d.id, 'chunk_key', d.chunk_key, 'heading', d.heading,
+                 'change_kind', d.change_kind, 'old_text', left(d.old_text, 4000),
+                 'new_text', left(d.new_text, 4000))), '[]'::jsonb)
+                 from public.site_kb_drafts d
+                where d.url = p_url and d.status = 'pending' and d.proposed_md is null));
+end; $$;
+revoke execute on function public.site_watch_record(text,jsonb) from public, anon, authenticated;
+
+-- ── The review queue ────────────────────────────────────────────────────────
+create or replace function public.site_kb_drafts_list(
+  p_status text default 'pending', p_limit int default 50)
+returns setof public.site_kb_drafts language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  return query
+    select * from public.site_kb_drafts d
+     where d.status = coalesce(nullif(btrim(p_status),''), 'pending')
+     order by d.created_at desc
+     limit greatest(1, least(coalesce(p_limit, 50), 200));
+end; $$;
+
+-- Publishing writes a real, enabled KB entry — which trips the cache-flush
+-- triggers on concierge_kb, so the stale answers the bot had memorised for this
+-- topic are dropped in the same breath.
+create or replace function public.approve_site_kb_draft(
+  p_id bigint, p_title text default null, p_md text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare d record; v_slug text; v_title text; v_md text;
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  select * into d from public.site_kb_drafts where id = p_id;
+  if d.id is null then return jsonb_build_object('ok', false, 'error', 'no such draft'); end if;
+  if d.status <> 'pending' then return jsonb_build_object('ok', false, 'error', 'already ' || d.status); end if;
+  v_title := coalesce(nullif(btrim(p_title),''), d.proposed_title, d.heading, 'Site update');
+  v_md    := coalesce(nullif(btrim(p_md),''), d.proposed_md);
+  if coalesce(btrim(v_md),'') = '' then return jsonb_build_object('ok', false, 'error', 'nothing to publish'); end if;
+  v_slug := 'site-' || regexp_replace(lower(d.chunk_key), '[^a-z0-9]+', '-', 'g');
+  v_slug := left(regexp_replace(v_slug, '(^-|-$)', '', 'g'), 60);
+  insert into public.concierge_kb (slug, title, content_md, sort_order, enabled)
+    values (v_slug, left(v_title,120), v_md, 500, true)
+  on conflict (slug) do update set title = excluded.title, content_md = excluded.content_md, enabled = true;
+  update public.site_kb_drafts set status='approved', kb_slug=v_slug, resolved_at=now() where id = p_id;
+  return jsonb_build_object('ok', true, 'slug', v_slug, 'title', v_title);
+end; $$;
+
+-- Dismissing is a real answer, not a deferral: it closes the draft so the next
+-- sweep does not re-raise the same edit. The snapshot has already advanced, so
+-- "no thanks" means "this change needs no KB entry" — and it stays quiet until
+-- the section changes AGAIN.
+create or replace function public.dismiss_site_kb_draft(p_id bigint)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_n int;
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  update public.site_kb_drafts set status='dismissed', resolved_at=now()
+   where id = p_id and status = 'pending';
+  get diagnostics v_n = row_count;
+  if v_n = 0 then return jsonb_build_object('ok', false, 'error', 'not a pending draft'); end if;
+  return jsonb_build_object('ok', true);
+end; $$;
+
+-- What the watcher knows, for the studio's header line.
+create or replace function public.site_watch_status()
+returns jsonb language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.is_concierge_admin() then raise exception 'not authorized'; end if;
+  return jsonb_build_object(
+    'pages', (select coalesce(jsonb_agg(x order by x->>'url'), '[]'::jsonb) from (
+                select jsonb_build_object('url', s.url, 'sections', count(*),
+                       'last_seen', max(s.captured_at)) as x
+                  from public.site_snapshots s group by s.url) t),
+    'pending', (select count(*) from public.site_kb_drafts where status='pending'),
+    'approved', (select count(*) from public.site_kb_drafts where status='approved'),
+    'dismissed', (select count(*) from public.site_kb_drafts where status='dismissed'));
+end; $$;
+
+notify pgrst, 'reload schema';
