@@ -3291,8 +3291,14 @@ function sectionEnabled(data: ConciergeData, key: string): boolean {
 // RECOGNITION & CLIENT BOOK — the single owner of clienteling (standing, the invisible
 // client book). Meaningful signed-in (full) and anon (the invite to sign in), so it's
 // a general toggleable section, not signed-in-only.
-function recognitionBlock(): string {
-  return "\nRECOGNITION & CLIENT BOOK (clienteling — treat patrons by their standing)\n" +
+// RECOGNITION & CLIENT BOOK — the built-in text, and an editable BASE like every
+// other prompt block (config.recognition_base; ?defaults=1 serves this for "Load
+// built-in to edit"). It was NOT overridable, and that was a real leak: this text
+// names the reference house's own standing tiers, so a brand that vendored the
+// engine taught its concierge another shop's vocabulary on every single turn, with
+// no way to correct it short of editing the engine — or switching the section off
+// and losing the "keep the book invisible / never fabricate standing" rules with it.
+const RECOGNITION_BASE_TEXT =
     "- When CUSTOMER is present in LIVE STATE you are NOT speaking to a stranger. Read their NAME, " +
     "STANDING (Eintrag → Wiederkehr → Hausfreund → Stifter), ORDERS, LAST PURCHASE recency, CLIENT " +
     "BOOK, and any RE-ENGAGEMENT, and let it shape your very first line. A returning patron should " +
@@ -3306,12 +3312,31 @@ function recognitionBlock(): string {
     "otherwise narrate your note-taking. The patron should feel known, never recorded. If CUSTOMER is " +
     "absent you are anonymous-blind: don't guess a name or history — invite them to sign in with " +
     "{{action:signin}} so you can serve them as themselves.\n";
+
+function recognitionBlock(data: ConciergeData): string {
+  const custom = data.config?.recognition_base;
+  const body = (typeof custom === "string" && custom.trim())
+    ? custom.trim() + "\n"
+    : RECOGNITION_BASE_TEXT;
+  return "\nRECOGNITION & CLIENT BOOK (clienteling — treat patrons by their standing)\n" +
+    body;
 }
 
 // REGISTER DESK — the single owner of the tool discipline for signed-in owners. The
 // step-by-step for each task lives in the signed-in SOPs; this states the tools and the
 // cross-cutting rules that keep the register honest.
 function registerBlock(data: ConciergeData): string {
+  // Overridable, like every other prompt block. The built-in text names the
+  // reference house's own desk — its tools, its cloth vocabulary — so a brand
+  // whose commerce works differently could not correct it, only switch the
+  // whole section off and lose the tool discipline along with it.
+  // NOT served by ?defaults=1: unlike the other bases this one is computed
+  // from the live form catalogue, so there is no single static text to load.
+  const custom = data.config?.register_base;
+  if (typeof custom === "string" && custom.trim()) {
+    return "\nREGISTER DESK (you hold the desk's tools for this signed-in, email-verified owner)\n" +
+      custom.trim() + "\n";
+  }
   return "\nREGISTER DESK (you hold the desk's tools for this signed-in, email-verified owner)\n" +
     "- Tools: get_my_orders (read their orders), update_colorway (only while 'placed'), cancel_order " +
     "(only while 'placed'), remember_customer (one durable line to the client book), and the others in " +
@@ -4043,7 +4068,7 @@ function assemblePromptSections(
     { key: "core", label: "Core constitution", included: true, text: core },
   ];
   const builders: Record<string, () => string> = {
-    recognition: () => recognitionBlock(),
+    recognition: () => recognitionBlock(data),
     register: () => registerBlock(data),
     selling: () => sellingBlock(data),
     support: () => supportBlock(data),
@@ -5943,6 +5968,7 @@ async function handleDefaultsGet(req: Request): Promise<Response> {
     engagement_base: ENGAGEMENT_BASE,
     selling_base: SELLING_BASE,
     exemplars_base: EXEMPLARS_BASE,
+    recognition_base: RECOGNITION_BASE_TEXT,
     // The toggleable sections, so the admin UI can render the on/off switches without
     // hardcoding the list (kept in sync with PROMPT_SECTIONS here on the server).
     sections: PROMPT_SECTIONS.map((s) => ({ key: s.key, label: s.label, signedInOnly: !!s.signedInOnly })),

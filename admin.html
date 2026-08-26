@@ -1869,6 +1869,15 @@ need to ask my partner | Of course — the hold keeps their number while they ta
           </div>
           <div class="cfg-state" id="cfg-exemplars-base-state"></div>
         </div>
+        <div class="field" style="margin-top:16px;">
+          <label class="micro" for="cfg-recognition-base">Recognition &amp; client book<span class="info-badge" title="How the concierge treats a patron it recognises: reading their standing, what standing earns, and the rule that the client book stays INVISIBLE (never narrate note-taking, never fabricate standing or past orders). Edit this if your house names its tiers differently — the built-in uses the reference house's own vocabulary, which is exactly the sort of thing that should not survive into another brand. Versioned; History restores any prior one.">i</span></label>
+          <textarea id="cfg-recognition-base" rows="8" placeholder="Blank = the built-in recognition rules. Press “Load built-in to edit”, tweak, and Save."></textarea>
+          <div class="field-actions">
+            <button class="cfg-linkbtn cfg-loaddefault" type="button" data-target="cfg-recognition-base" data-default="recognition_base">Load built-in to edit</button>
+            <button class="cfg-linkbtn cfg-history" type="button" data-entity="config" data-ref="recognition_base">History ⟲</button>
+          </div>
+          <div class="cfg-state" id="cfg-recognition-base-state"></div>
+        </div>
         <div class="card-foot">
           <button id="save-selling" class="btn primary">Save selling style</button>
         </div>
@@ -3797,7 +3806,8 @@ const PROMPT_LINT_LABELS = {
   voice_base: 'Voice — base', voice_notes: 'Voice — tuning notes',
   clientbook_base: 'Client book — base', clientbook_policy: 'Client book — policy',
   engagement_base: 'Engagement rulebook', beat_notes: 'Standing reach-out note',
-  selling_base: 'Selling method', exemplars_base: 'Worked examples'
+  selling_base: 'Selling method', exemplars_base: 'Worked examples',
+  recognition_base: 'Recognition & client book'
 };
 let _lintSnapshot = {};
 function snapshotPromptTexts(cfg) {
@@ -4392,6 +4402,7 @@ async function loadConfig() {
   $('cfg-objections').value = objectionsToText(cfg.objections);
   if ($('cfg-selling-base')) $('cfg-selling-base').value = (typeof cfg.selling_base === 'string') ? cfg.selling_base : '';
   if ($('cfg-exemplars-base')) $('cfg-exemplars-base').value = (typeof cfg.exemplars_base === 'string') ? cfg.exemplars_base : '';
+  if ($('cfg-recognition-base')) $('cfg-recognition-base').value = (typeof cfg.recognition_base === 'string') ? cfg.recognition_base : '';
   snapshotPromptTexts(cfg);   // the honesty lint only reads fields that CHANGE from here
   refreshAllCfgStates();   // "Effect" readouts + revert links reflect the loaded config
   renderSectionToggles(cfg.prompt_sections);   // per-section on/off switches
@@ -4848,12 +4859,13 @@ async function saveSelling() {
     { key: 'hooks', value: hooks, updated_at: nowIso() },
     { key: 'objections', value: objections, updated_at: nowIso() },
     { key: 'selling_base', value: String($('cfg-selling-base').value || ''), updated_at: nowIso() },
-    { key: 'exemplars_base', value: String($('cfg-exemplars-base').value || ''), updated_at: nowIso() }
+    { key: 'exemplars_base', value: String($('cfg-exemplars-base').value || ''), updated_at: nowIso() },
+    { key: 'recognition_base', value: String($('cfg-recognition-base').value || ''), updated_at: nowIso() }
   ];
   const res = await sb.from('concierge_config').upsert(rows, { onConflict: 'key' });
   if (res.error) { fail('Save behavior & selling style', res.error); return; }
   toast('Behavior & selling style saved');
-  lintPromptTexts([['selling_base', $('cfg-selling-base').value], ['exemplars_base', $('cfg-exemplars-base').value]]);
+  lintPromptTexts([['selling_base', $('cfg-selling-base').value], ['exemplars_base', $('cfg-exemplars-base').value], ['recognition_base', $('cfg-recognition-base').value]]);
 }
 
 /* ============================================================
