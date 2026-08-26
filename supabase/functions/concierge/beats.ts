@@ -213,7 +213,17 @@ export function extractSubjects(lines: string[]): string[] {
   return out;
 }
 
+/** A brand's own wording for the two commerce beats. The built-ins speak the
+ *  reference house's vocabulary (cloths, rooms, a register card), which is
+ *  fine for that house and wrong for everyone else — and a vendored engine
+ *  cannot be corrected by editing these, so they come from config. */
+export interface ProposalBriefs {
+  companion?: string;
+  gift?: string;
+}
+
 export interface ChooseOpts {
+  briefs?: ProposalBriefs;
   restHours?: number[];
   nowMs?: number;
   /** How the give-first/presence beat engages when no sale action qualifies:
@@ -268,7 +278,7 @@ export function chooseBeatAction(
       .filter(([, n]) => typeof n === "number" && n > 0)
       .map(([c, n]) => `${n}× ${c}`);
     return parts.length
-      ? ` They hold ${parts.join(", ")} — name a colorway they do NOT yet have, for a different room.`
+      ? ` They hold ${parts.join(", ")} — name a variant they do NOT yet have.`
       : "";
   })();
   const bookNote = (l.bookFacts && l.bookFacts.length)
@@ -301,7 +311,8 @@ export function chooseBeatAction(
       if (gate.why) trace.push(`PROPOSE_COMPANION: ${gate.why}`);
       return pick(
         "PROPOSE_COMPANION",
-        "they bought recently — invite a companion cloth for ANOTHER room (never re-sell the one they have)." +
+        (opts?.briefs?.companion ??
+          "they bought recently — invite a companion piece for ANOTHER use (never re-sell the one they have).") +
           clothNote + bookNote,
       );
     }
@@ -316,7 +327,8 @@ export function chooseBeatAction(
       if (gate.why) trace.push(`PROPOSE_GIFT: ${gate.why}`);
       return pick(
         "PROPOSE_GIFT",
-        "invite a blanket sent as a GIFT — the register card can carry another name." + bookNote,
+        (opts?.briefs?.gift ??
+          "invite one bought as a GIFT — the order can carry another name.") + bookNote,
       );
     }
   }
@@ -876,7 +888,7 @@ export const WIDGET_TOKENS: WidgetToken[] = [
     pattern: "reply:[^{}]{1,200}",
     label: "Quick-reply chip",
     renders: "a tap-to-answer chip carrying the suggested reply",
-    usage: "Offer 1–3 easy replies — e.g. {{reply:Tell me about the wool}}.",
+    usage: "Offer 1–3 easy replies — e.g. {{reply:Tell me about the materials}}.",
   },
   {
     example: "{{nps}}",

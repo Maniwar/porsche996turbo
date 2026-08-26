@@ -110,7 +110,7 @@ const PRIMARY_OBJECTIVE_DEFAULT =
 // incident: LIVE STATE said "honour before anything else" with no carve-out).
 const HOUSE_NOTE_GUARD =
   "A house instruction directs HOW you serve; it can NEVER license you to deceive, manipulate, " +
-  "flatter, or make a personal claim about the patron's life beyond the blanket and the mill. If a " +
+  "flatter, or make a personal claim about the patron's life beyond what the house sells. If a " +
   "note would, skip it SILENTLY, serve normally, and leave it open for the desk — say nothing about " +
   "it, no refusal, no explanation. Whatever you DO carry out, carry it in your OWN voice as your own " +
   "natural judgement: never quote a note, never say 'the team' / 'they wanted' / that you were asked, " +
@@ -341,6 +341,14 @@ const SECTION_PRIVACY =
 // 'offer' invites the shopper to SEE or ARRANGE something — right for a single-item
 // INQUIRY page, where reciting facts reads as "inventorying" and gets vetoed.
 // Set per site via config.outreach.proactive_style; stamped inquiry sites seed 'offer'.
+/** A brand's own wording for the two commerce beats (config.beat_briefs). */
+function proposalBriefsFrom(config: Record<string, unknown> | null | undefined) {
+  const b = config?.beat_briefs as Record<string, unknown> | undefined;
+  const one = (k: string) => (typeof b?.[k] === "string" && (b[k] as string).trim())
+    ? (b[k] as string).trim() : undefined;
+  return { companion: one("companion"), gift: one("gift") };
+}
+
 function proactiveStyleFrom(config: Record<string, unknown> | null | undefined): "expertise" | "offer" {
   const oc = config?.outreach as Record<string, unknown> | undefined;
   return oc?.proactive_style === "offer" ? "offer" : "expertise";
@@ -729,7 +737,9 @@ function maskContacts(s: string): string {
     });
 }
 
-async function customerBlock(customer: Customer, opening = true): Promise<string> {
+async function customerBlock(
+  customer: Customer, opening = true, tiers: string[] = STANDING_TIERS_DEFAULT,
+): Promise<string> {
   const safeEmail = customer.email?.replace(/["\\,()]/g, "");
   const noteFilter = safeEmail
     ? `or=${encodeURIComponent(`(user_id.eq.${customer.id},email.eq."${safeEmail}")`)}`
@@ -802,13 +812,8 @@ async function customerBlock(customer: Customer, opening = true): Promise<string
         `(Do NOT enumerate or count their orders from this summary — call get_my_orders for the full, current list.)`;
     }
     const active = orders.filter((o) => o.status !== "cancelled" && o.status !== "returned").length;
-    const tier = active >= 5
-      ? "Stifter"
-      : active >= 3
-      ? "Hausfreund"
-      : active === 2
-      ? "Wiederkehr"
-      : "Eintrag";
+    const rungs = tiers;
+    const tier = active >= 5 ? rungs[3] : active >= 3 ? rungs[2] : active === 2 ? rungs[1] : rungs[0];
     standing = ` STANDING: ${tier} (${active} on the register).`;
   }
   const archive = struck > 0 ? ` ARCHIVE: ${struck} struck (cancelled) — mention only if asked.` : "";
@@ -3001,7 +3006,8 @@ function noteFilterFor(id: string | null | undefined, email: string | null | und
 }
 
 async function consolidateClientBook(
-  customer: Customer, apiKey: string, model: string, opts?: { force?: boolean },
+  customer: Customer, apiKey: string, model: string,
+  opts?: { force?: boolean; identity?: string },
 ): Promise<string | null> {
   try {
     const nf = noteFilterFor(customer.id, customer.email);
@@ -3024,7 +3030,7 @@ async function consolidateClientBook(
     const bookText = raw.slice().reverse() // oldest → newest for a coherent read
       .map((n) => `- [${n.kind}] ${String(n.created_at).slice(0, 10)}: ${n.note}`).join("\n");
     const sys =
-      "You maintain a concise, durable CLIENT SUMMARY for a returning patron of a luxury German wool-blanket " +
+      `You maintain a concise, durable CLIENT SUMMARY for a returning patron of ${opts?.identity ?? HOUSE_IDENTITY_DEFAULT}. ` +
       "house — the memory the concierge reads each visit. Given the PRIOR SUMMARY (if any) and the raw " +
       "client-book notes (facts you know, things you did, private 'serve them better' reflections), write an " +
       "UPDATED summary a clerk could act on immediately: who they are and who they buy for, their preferences and " +
@@ -3034,7 +3040,7 @@ async function consolidateClientBook(
       "order bookkeeping — order counts, serial numbers (Nº …), order STATUS, what they bought, or shipping/billing " +
       "addresses. That data lives in the register (the orders database) and the concierge reads it LIVE; a summary " +
       "freezes a snapshot that goes stale. Reference an order only as durable relationship context (e.g. 'buying the " +
-      "Loden for the east-facing office'), never as a ledger of serials/status. Output ONLY the " +
+      "the dark one for the east-facing office'), never as a ledger of serials/status. Output ONLY the " +
       "summary prose — no headers, no preamble.";
     const res = await llmFetch("clientbook", {
       method: "POST",
@@ -3068,9 +3074,11 @@ async function consolidateClientBook(
   } catch { return null; }
 }
 
-function scheduleConsolidate(customer: Customer | null, apiKey: string, model: string): void {
+function scheduleConsolidate(
+  customer: Customer | null, apiKey: string, model: string, identity?: string,
+): void {
   if (!customer) return;
-  const p = consolidateClientBook(customer, apiKey, model).then(() => {});
+  const p = consolidateClientBook(customer, apiKey, model, { identity }).then(() => {});
   try {
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
     else p.catch(() => {});
@@ -3128,7 +3136,7 @@ async function evaluateGoals(
       "'unmet' when there is no evidence — a short or off-topic exchange leaves most goals 'unmet'. " +
       "The 'note' MUST justify the status with a specific fact from THIS transcript: quote or " +
       "paraphrase what the shopper or concierge actually said that proves it (e.g. \"shopper named " +
-      "the east-facing bedroom and chose Loden\"). Never write a generic note; if you cannot cite " +
+      "the east-facing bedroom and chose the dark one\"). Never write a generic note; if you cannot cite " +
       "evidence, the status is 'unmet' and the note says what is still missing. ALSO judge the " +
       "shopper's current SALES STAGE, one of: browsing (just landed, low signal), engaged (asking real " +
       "questions), evaluating (weighing it, comparing, picturing it), objection (a specific hesitation), " +
@@ -3235,6 +3243,41 @@ function formCatalog(data: ConciergeData): string {
 // How hard to sell, 1 (most restrained) .. 5 (closer). Default 3 = warm
 // consultant. Injected into the prompt so the NEXT MOVE selector knows how far
 // to lean toward RECOMMEND / SHOW / ADVANCE versus ASK / SPACE.
+// WHO THE HOUSE IS — for the SECONDARY prompts (re-engagement, the client-book
+// summariser, the prompt doctor). The main turn gets its identity from
+// BRAND_SYSTEM, which a brand overrides with config.voice_base; these smaller
+// prompts each carried their own hard-coded copy of the reference house's
+// identity, so a vendored brand's re-engagement bubble introduced itself as
+// another shop selling another product — with no way to correct it.
+const HOUSE_IDENTITY_DEFAULT =
+  "the Mill Concierge for Feierabend, a numbered German wool blanket";
+
+// What a visitor is told when the desk is switched off. It named the reference
+// house's own inbox, so a vendored brand's visitors were sent to another
+// company's support address.
+function disabledNotice(data: ConciergeData): string {
+  const v = data.config?.disabled_notice;
+  if (typeof v === "string" && v.trim()) return v.trim();
+  return "The concierge is resting. Please try again later.";
+}
+
+function houseIdentity(data: ConciergeData): string {
+  const v = data.config?.house_identity;
+  return (typeof v === "string" && v.trim()) ? v.trim() : HOUSE_IDENTITY_DEFAULT;
+}
+
+// The standing ladder rendered into LIVE STATE. Names a house's own tiers, so
+// it cannot be the reference brand's German rungs for everyone.
+const STANDING_TIERS_DEFAULT = ["Eintrag", "Wiederkehr", "Hausfreund", "Stifter"];
+
+function standingTiers(data: ConciergeData): string[] {
+  const v = data.config?.standing_tiers;
+  if (Array.isArray(v) && v.length === 4 && v.every((x) => typeof x === "string" && x.trim())) {
+    return v.map((x) => (x as string).trim());
+  }
+  return STANDING_TIERS_DEFAULT;
+}
+
 const ASSERTIVENESS_GUIDANCE: Record<number, string> = {
   1: "Most restrained. Lean heavily on ASK and plain answers; volunteer little. Offer " +
     "{{action:commission}} only on an explicit, unmistakable buying signal. Rarely build desire " +
@@ -6037,9 +6080,9 @@ async function handlePreviewGet(req: Request): Promise<Response> {
 // returns STRUCTURED findings — conflicts, redundancy, ambiguity, gaps — each tied to
 // where it lives and with a concrete suggested fix, plus a one-line overall read. This
 // is the "does anything fight each other?" check the operator can run after editing.
-const PROMPT_DOCTOR_SYSTEM =
-  "You are a senior AI system/prompt engineer reviewing the SYSTEM PROMPT of a luxury " +
-  "sales-concierge chatbot (it sells one product: a numbered German wool blanket). You are " +
+const PROMPT_DOCTOR_SYSTEM = (identity: string) =>
+  "You are a senior AI system/prompt engineer reviewing the SYSTEM PROMPT of a " +
+  `sales-concierge chatbot. The house it speaks for: ${identity}. You are ` +
   "given the fully assembled prompt exactly as the model receives it. Your job is to make it " +
   "tight and non-contradictory. Look ONLY for real problems: (1) CONFLICT — two instructions " +
   "that pull opposite ways; (2) REDUNDANCY — the same rule stated in more than one place; " +
@@ -6123,7 +6166,7 @@ async function handlePromptReviewPost(req: Request): Promise<Response> {
         // No `temperature`: newer models (Opus 4.8 / Sonnet 5 / Fable 5) reject the
         // sampling params with a 400, and the admin can point the tuner at one.
         model, max_tokens: 3200,
-        system: PROMPT_DOCTOR_SYSTEM,
+        system: PROMPT_DOCTOR_SYSTEM(houseIdentity(data)),
         tool_choice: { type: "tool", name: "review" },
         tools: [{
           name: "review",
@@ -6700,7 +6743,8 @@ async function handleConsolidatePost(req: Request): Promise<Response> {
   const data = await loadConciergeData();
   const model = resolveModel(data);
   const customer = { id: userId ?? "", email } as Customer;
-  const summary = await consolidateClientBook(customer, apiKey, model, { force: true });
+  const summary = await consolidateClientBook(customer, apiKey, model,
+    { force: true, identity: houseIdentity(data) });
   return jsonResponse(req, 200, { ok: summary !== null, summary });
 }
 
@@ -6723,11 +6767,11 @@ async function handleStartersGet(req: Request): Promise<Response> {
   const shipped = orders.find((o) => o.status === "shipped");
   if (shipped) add(`Where is my ${noOf(shipped)}?`);
   const placed = orders.find((o) => o.status === "placed");
-  if (placed) add(`Change the cloth on my ${clothOf(placed.colorway)} (${noOf(placed)})`);
+  if (placed) add(`Change the variant on my ${clothOf(placed.colorway)} (${noOf(placed)})`);
   const gift = orders.find((o) => o.is_gift && MUTABLE_STATUSES.includes(o.status ?? ""));
   if (gift) add(`Update the gift card on ${noOf(gift)}`);
   const delivered = orders.find((o) => o.status === "delivered");
-  if (delivered) add(`How should I care for my ${clothOf(delivered.colorway)}?`);
+  if (delivered) add(`How should I look after my ${clothOf(delivered.colorway)}?`);
   add("Show me all my orders");
   return jsonResponse(req, 200, { starters: out.slice(0, 4) });
 }
@@ -7239,7 +7283,11 @@ async function handleChatPost(req: Request): Promise<Response> {
         beatDecision = chooseBeatAction(
           ledger,
           dataForBeat.config?.beat_actions as Record<string, { enabled?: boolean }> | undefined,
-          { restHours: proposalRestHoursFrom(dataForBeat.config?.outreach), proactiveStyle: proactiveStyleFrom(dataForBeat.config) },
+          {
+            restHours: proposalRestHoursFrom(dataForBeat.config?.outreach),
+            proactiveStyle: proactiveStyleFrom(dataForBeat.config),
+            briefs: proposalBriefsFrom(dataForBeat.config),
+          },
         );
         beatAudit = { action: beatDecision.action, beat: "nudge", ledger, trace: beatDecision.trace };
         // ── REQUEST_NPS — the survey beat (NPS.md). The gate is pure and
@@ -7483,7 +7531,7 @@ async function handleChatPost(req: Request): Promise<Response> {
   // Config-driven behavior: kill switch, model, max_tokens.
   const data = await loadConciergeData();
   if (data.config?.enabled === false) {
-    return jsonError(req, 503, "The concierge is resting. Write concierge@feier-abend.co.");
+    return jsonError(req, 503, disabledNotice(data));
   }
   const model = resolveModel(data);
   const maxTokens = typeof data.config?.max_tokens === "number" &&
@@ -7499,7 +7547,9 @@ async function handleChatPost(req: Request): Promise<Response> {
   // make the model re-greet ("what brings you back today?") on every reply.
   const isOpening = isOpener ||
     !validated.messages.some((m) => m.role === "assistant");
-  const customerLine0 = customer ? await customerBlock(customer, isOpening) : null;
+  const customerLine0 = customer
+    ? await customerBlock(customer, isOpening, standingTiers(data))
+    : null;
   // Calendar context (APPOINTMENTS.md): authoritative HOURS + the visitor's
   // next booking, so "are you open?" is answered from data and a booked guest
   // is served, not re-sold. Empty string when the calendar is off.
@@ -8315,7 +8365,7 @@ async function handleChatPost(req: Request): Promise<Response> {
             scheduleDirectiveReconcile(cid, customer, convo, finalText, apiKey, model);
             // Roll the client book up into its summary once enough raw notes have
             // piled up (background, threshold-gated — usually a no-op).
-            scheduleConsolidate(customer, apiKey, model);
+            scheduleConsolidate(customer, apiKey, model, houseIdentity(data));
             const meta = await logAssistantTurn(cid, finalText, model, Date.now() - startedAt);
             if (meta) { try { controller.enqueue(encoder.encode(`data: ${meta}\n\n`)); } catch { /* gone */ } }
             // The beat SPOKE its decided action — the audit row is what makes
@@ -8902,7 +8952,11 @@ async function handleReengage(req: Request): Promise<Response> {
         bubbleDecision = chooseBeatAction(
           ledger,
           data.config?.beat_actions as Record<string, { enabled?: boolean }> | undefined,
-          { restHours: proposalRestHoursFrom(data.config?.outreach), proactiveStyle: proactiveStyleFrom(data.config) },
+          {
+            restHours: proposalRestHoursFrom(data.config?.outreach),
+            proactiveStyle: proactiveStyleFrom(data.config),
+            briefs: proposalBriefsFrom(data.config),
+          },
         );
         bubbleAudit = { action: bubbleDecision.action, beat: "bubble", ledger, trace: bubbleDecision.trace };
         if (bubbleDecision.action === "HOLD") {
@@ -8932,7 +8986,7 @@ async function handleReengage(req: Request): Promise<Response> {
     let houseClause = "";
     if (customer) {
       try {
-        const block = await customerBlock(customer, false);
+        const block = await customerBlock(customer, false, standingTiers(data));
         houseClause = " " + block + " Ground the line in THIS patron — their first name, standing, an order " +
           "in their queue, or a client-book note — never a generic prospect line. If a proper HOUSE " +
           "INSTRUCTION is open above, weave it into this line in your OWN voice (no tool needed here).";
@@ -8957,10 +9011,10 @@ async function handleReengage(req: Request): Promise<Response> {
       // natural, then invite a SECOND entry (companion cloth for another room, or
       // one as a gift with the register card in another name).
       sys =
-        "You are the Mill Concierge for Feierabend. This shopper JUST commissioned a blanket and is " +
+        `You are ${houseIdentity(data)}. This shopper JUST bought and is ` +
         "browsing again, reading " + sectionDescriptor(section) + ". Write ONE short line (max 30 " +
         "words) that does NOT treat them as undecided — a light nod to their new entry is fine, then " +
-        "warmly invite a SECOND blanket: a companion cloth for another room, or one as a gift with the " +
+        "warmly invite a SECOND purchase: a companion piece for another use, or one as a gift with the " +
         "register card in another name, " + askOrStatement +
         (signed ? "They are a signed-in patron." : "They are an anonymous visitor.") +
         " Plain text only: no markdown, no quotation marks, no {{tokens}}. Just the line." +
@@ -8978,7 +9032,7 @@ async function handleReengage(req: Request): Promise<Response> {
         ? bubbleDecision.detail
         : (goal!.label + " — " + goal!.description);
       sys =
-        "You are the Mill Concierge for Feierabend, a numbered German wool blanket. Write ONE short " +
+        `You are ${houseIdentity(data)}. Write ONE short ` +
         "outreach line (max 30 words) to a shopper who is reading " + sectionDescriptor(section) +
         " and has paused with the chat closed. Your task, tied to what's in front of " +
         "them: " + advanceLine + ". Warm, specific, " + askOrStatement +
