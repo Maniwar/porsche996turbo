@@ -447,10 +447,12 @@
     .cond-photo:hover .cond-face img { transform:scale(1.04); }
     .cond-face > span { position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,0.82)); font-size:11px; color:rgba(255,255,255,0.75); letter-spacing:0.04em; }
     .cond-flip-hint { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.7); font-size:12px; display:flex; align-items:center; justify-content:center; pointer-events:none; }
-    .cond-back { transform:rotateY(180deg); background:var(--bg-2); border-color:rgba(191,58,28,0.35); display:flex; flex-direction:column; justify-content:space-between; padding:14px; }
+    .cond-back { transform:rotateY(180deg); background:var(--bg-2); border-color:rgba(191,58,28,0.35); display:flex; flex-direction:column; gap:10px; padding:14px; }
+    /* text block flexes and scrolls; the button is pinned so it can never be clipped */
+    .cond-back > div { flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .cond-back h5 { font-size:12px; font-weight:700; color:var(--red-b); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:8px; }
     .cond-back p { font-size:11.5px; line-height:1.55; color:var(--dim); }
-    .cond-back button { align-self:flex-start; background:none; border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:rgba(255,255,255,0.8); font-size:10.5px; letter-spacing:0.06em; padding:6px 12px; cursor:pointer; font-family:inherit; }
+    .cond-back button { flex:0 0 auto; align-self:flex-start; background:none; border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:rgba(255,255,255,0.8); font-size:10.5px; letter-spacing:0.06em; padding:6px 12px; cursor:pointer; font-family:inherit; }
     .cond-back button:hover { border-color:var(--red-b); color:#fff; }
     @media (max-width:700px) { .cond-grid { grid-template-columns:repeat(2,1fr); } .cond-back p { font-size:10.5px; line-height:1.45; } }
     @media (prefers-reduced-motion: reduce) { .cond-flip { transition:none; } }
@@ -2252,7 +2254,7 @@
       <div class="cond-photo" onclick="condFlip(this)">
         <div class="cond-flip">
           <div class="cond-face"><img src="interior-refreshed-console.jpg" loading="lazy" alt="Center console and Sony head unit after trim replacement"><span>Console &amp; head unit</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Console &mdash; Replaced</h5><p>Switch surrounds, HVAC panel, and vent trim all replaced. Clean black finish, no chalking. Sony XAV-9000ES centered in it.</p></div><button onclick="event.stopPropagation();openLb(21)">View Photo &#8599;</button></div>
+          <div class="cond-face cond-back"><div><h5>Console &mdash; Replaced</h5><p>Switch surrounds, HVAC panel, and vent trim replaced. Clean black finish, no chalking.</p></div><button onclick="event.stopPropagation();openLb(21)">View Photo &#8599;</button></div>
         </div>
       </div>
       <div class="cond-photo" onclick="condFlip(this)">
@@ -2269,8 +2271,8 @@
       </div>
       <div class="cond-photo" onclick="condFlip(this)">
         <div class="cond-flip">
-          <div class="cond-face"><img src="trim-door-panel.jpg" loading="lazy" alt="Driver door panel scratches"><span>Driver&rsquo;s door panel</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Door Panel &mdash; Still Marked</h5><p>The one item not addressed: scratch marks in the door card&rsquo;s soft-touch top. Cosmetic only. Used OEM panels are cheap and a straightforward swap.</p></div><button onclick="event.stopPropagation();openLb(24)">View Photo &#8599;</button></div>
+          <div class="cond-face"><img src="trim-seat-back.jpg" loading="lazy" alt="Seat back shell with scratch marks"><span>Seat back shell</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Seat Back &mdash; Still Marked</h5><p>The one item not addressed: scratches in the plastic seat back shell. Cosmetic only, and out of sight when seated.</p></div><button onclick="event.stopPropagation();openLb(24)">View Photo &#8599;</button></div>
         </div>
       </div>
     </div>
@@ -2947,7 +2949,7 @@ const PHOTOS = [
   { src: 'interior-refreshed-console.jpg', cap: 'Console — trim replaced, Sony XAV-9000ES installed', rot: false },
   { src: 'interior-refreshed-dash.jpg',    cap: 'Dash and vent trim — replaced, correct matte black finish', rot: false },
   { src: 'interior-refreshed-wide.jpg',    cap: 'Full cabin — current condition after trim replacement', rot: false },
-  { src: 'trim-door-panel.jpg',      cap: 'Condition — driver\'s door panel: scratch marks (not addressed)', rot: false },
+  { src: 'trim-seat-back.jpg',       cap: 'Condition — seat back shell: scratch marks (not addressed)', rot: false },
 ];
 
 let cur = 0;
