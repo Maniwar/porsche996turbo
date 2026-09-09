@@ -671,6 +671,11 @@
       max-height: 600px;
       margin-top: 12px;
     }
+    /* optional narrative block — collapses with the tag list */
+    .svc-detail { max-height:0; overflow:hidden; transition:max-height 0.4s ease; }
+    .svc-item.expanded .svc-detail { max-height:400px; margin-top:12px; }
+    .svc-detail p { font-size:12.5px; line-height:1.7; color:var(--dim); }
+    .svc-detail p + p { margin-top:9px; color:var(--muted); }
     .svc-tag {
       font-size: 11px;
       background: var(--bg-3);
@@ -1539,7 +1544,7 @@
     <div class="hero-img-mobile" role="presentation" aria-hidden="true"></div>
     <div class="hero-stats">
       <div class="hs"><div class="hs-l">Asking</div><div class="hs-v">$59,900</div></div>
-      <div class="hs"><div class="hs-l">Mileage</div><div class="hs-v">~94,600</div></div>
+      <div class="hs"><div class="hs-l">Mileage</div><div class="hs-v">~94,900</div></div>
       <div class="hs"><div class="hs-l">Engine</div><div class="hs-v">Mezger 3.6TT</div></div>
       <div class="hs"><div class="hs-l">Transmission</div><div class="hs-v">Tiptronic S</div></div>
       <div class="hs"><div class="hs-l">Drivetrain</div><div class="hs-v">AWD</div></div>
@@ -1570,7 +1575,7 @@
       </div>
       <div class="snap-grid rv">
         <div class="snap-cell"><div class="snap-l">Year</div><div class="snap-v">2003</div></div>
-        <div class="snap-cell"><div class="snap-l">Mileage</div><div class="snap-v">~94,600</div></div>
+        <div class="snap-cell"><div class="snap-l">Mileage</div><div class="snap-v">~94,900</div></div>
         <div class="snap-cell"><div class="snap-l">Color</div><div class="snap-v gold">Zanzibar Red</div></div>
         <div class="snap-cell"><div class="snap-l">Paint Code</div><div class="snap-v gold">L1A8 / 00501</div></div>
         <div class="snap-cell"><div class="snap-l">Engine</div><div class="snap-v">Mezger Flat-6</div></div>
@@ -1697,7 +1702,7 @@
       <div class="int-scan"></div>
       <div class="int-overlay">
         <div class="int-label">Odometer &mdash; Photographed In Situ</div>
-        <div class="int-title">94,702 Miles<span class="int-sub">Matches the listing. Every number real.</span></div>
+        <div class="int-title">94,702 Miles<span class="int-sub">Photographed at 94,702. Last documented reading: 94,890 on the July 2026 invoice.</span></div>
       </div>
     </div>
   </div>
@@ -1707,15 +1712,15 @@
 <section class="service-section" id="sec-20-407-invested-all-documented">
   <div class="container">
     <div class="eyebrow rv">Verified Service History</div>
-    <h2 class="sh rv">$20,407 Invested. All Documented.</h2>
+    <h2 class="sh rv">$24,331 Invested. All Documented.</h2>
     <p class="sp rv">Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice with OEM Porsche part numbers. This is not a car that was deferred — it was driven by someone who maintained it properly.</p>
 
     <!-- Summary blocks -->
     <div class="service-total-block rv">
       <div class="stb featured">
         <span class="stb-tag">Total Documented Service</span>
-        <div class="stb-num">$20,407</div>
-        <div class="stb-sub">6 RAC invoices + OEM windshield<br>Mar 2025 &ndash; May 2026</div>
+        <div class="stb-num">$24,331</div>
+        <div class="stb-sub">8 RAC invoices + OEM windshield<br>Mar 2025 &ndash; Jul 2026</div>
       </div>
       <div class="stb">
         <span class="stb-tag">Last Major Service</span>
@@ -1870,13 +1875,13 @@
         </div>
       </div>
 
-      <!-- Visit 7: Most recent -->
+      <!-- Visit 7 -->
       <div class="svc-item">
         <div class="svc-dot-col"><div class="svc-dot"></div></div>
         <div class="svc-card">
           <div class="svc-meta">
             <div>
-              <div class="svc-date">MAY 2026 &nbsp;&middot;&nbsp; 94,585 MILES &nbsp;&middot;&nbsp; MOST RECENT</div>
+              <div class="svc-date">MAY 2026 &nbsp;&middot;&nbsp; 94,585 MILES</div>
               <div class="svc-title">Oil Service + Alignment</div>
             </div>
             <div class="svc-total">$653</div>
@@ -1887,7 +1892,59 @@
             <span class="svc-tag">OEM Oil Filter</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
-          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051923 &nbsp;&middot;&nbsp; Ready to drive</div>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051923</div>
+        </div>
+      </div>
+
+      <!-- Visit 8: Water pump — most recent -->
+      <div class="svc-item featured">
+        <div class="svc-dot-col"><div class="svc-dot"></div></div>
+        <div class="svc-card">
+          <div class="svc-meta">
+            <div>
+              <div class="svc-date">JULY 10, 2026 &nbsp;&middot;&nbsp; 94,890 MILES</div>
+              <div class="svc-title">Water Pump + Turbo Oil Line</div>
+            </div>
+            <div class="svc-total">$2,707</div>
+          </div>
+          <div class="svc-items">
+            <span class="svc-tag key">Water Pump &mdash; OEM 996 106 011 77 (New)</span>
+            <span class="svc-tag key">Turbo Oil Line (New)</span>
+            <span class="svc-tag key">Seized Oil Line Removed From Cooling Manifold</span>
+            <span class="svc-tag">Turbo Oil Line O-Rings &mdash; OEM 999 701 789 40 (x2)</span>
+            <span class="svc-tag">Porsche Coolant (x2)</span>
+            <span class="svc-tag">Rusted Exhaust Strap Bolts Cut &amp; Removed</span>
+          </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <div class="svc-detail">
+            <p>The water pump is the 996 Turbo&rsquo;s known wear item, and it has now been replaced with the OEM unit rather than deferred to the next owner. Ten hours of labor went into this visit: five on the pump itself, one extra for rust, and four removing an oil line seized into the cooling manifold &mdash; the kind of job that gets skipped on a car being prepped to flip.</p>
+            <p>Noted on the invoice in the interest of full disclosure: the shop was unable to remove the heat shields, so those remain original.</p>
+          </div>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #052064</div>
+        </div>
+      </div>
+
+      <!-- Visit 9: AC condenser — most recent -->
+      <div class="svc-item">
+        <div class="svc-dot-col"><div class="svc-dot"></div></div>
+        <div class="svc-card">
+          <div class="svc-meta">
+            <div>
+              <div class="svc-date">JULY 22, 2026 &nbsp;&middot;&nbsp; 94,890 MILES &nbsp;&middot;&nbsp; MOST RECENT</div>
+              <div class="svc-title">AC Condenser + System Recharge</div>
+            </div>
+            <div class="svc-total">$1,217</div>
+          </div>
+          <div class="svc-items">
+            <span class="svc-tag key">AC Condenser &mdash; OEM 997 573 911 05 (New)</span>
+            <span class="svc-tag key">AC System Evacuated &amp; Recharged</span>
+            <span class="svc-tag">R-134a Refrigerant</span>
+          </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <div class="svc-detail">
+            <p>Twelve days after the water pump, the car went back in for a new OEM condenser with a full evacuate-and-recharge. Texas summers are the real test of a 23-year-old AC system, and this one now blows cold on fresh hardware.</p>
+          </div>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #052087 &nbsp;&middot;&nbsp; Ready to drive</div>
         </div>
       </div>
 
@@ -2034,7 +2091,7 @@
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
-        <h4>$20,407 Documented Service</h4>
+        <h4>$24,331 Documented Service</h4>
         <p>Seven itemized service visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX. Every invoice, every OEM part number, available to serious buyers.</p>
       </div>
       <div class="hl-card js-glow rv">
@@ -2109,7 +2166,7 @@
         <div class="sr"><span class="sr-k">Exterior Color</span><span class="sr-v g">Zanzibar Red (L1A8)</span></div>
         <div class="sr"><span class="sr-k">Factory Color Code</span><span class="sr-v g">00501 &mdash; Special Color</span></div>
         <div class="sr"><span class="sr-k">Interior</span><span class="sr-v">Black Full Leather</span></div>
-        <div class="sr"><span class="sr-k">Mileage</span><span class="sr-v">~94,600</span></div>
+        <div class="sr"><span class="sr-k">Mileage</span><span class="sr-v">~94,900</span></div>
         <div class="sr"><span class="sr-k">Title</span><span class="sr-v">Clean &mdash; Texas</span></div>
         <div class="sr"><span class="sr-k">Accident History</span><span class="sr-v">None on record</span></div>
         <div class="sr"><span class="sr-k">Location</span><span class="sr-v">McKinney, TX</span></div>
@@ -2284,7 +2341,7 @@
   <div class="container">
     <div class="eyebrow rv">Get In Touch</div>
     <h2 class="sh rv">Serious Buyers Get Serious Answers</h2>
-    <p class="sp rv">All seven service invoices are available to qualified buyers. Pre-purchase inspections are welcome and encouraged. Cars in this exact configuration don&rsquo;t come up &mdash; when they do, they don&rsquo;t last.</p>
+    <p class="sp rv">All nine service invoices are available to qualified buyers. Pre-purchase inspections are welcome and encouraged. Cars in this exact configuration don&rsquo;t come up &mdash; when they do, they don&rsquo;t last.</p>
     <div class="contact-cards rv">
       <a href="tel:+14247991987" class="cc-card">
         <div class="cc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.27a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg></div>
@@ -2336,7 +2393,7 @@
 
 <footer>
   <div>2003 Porsche 911 Turbo &nbsp;&middot;&nbsp; VIN WP0AB29983S687118 &nbsp;&middot;&nbsp; McKinney, TX</div>
-  <div>Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; $20,407 Documented Service &nbsp;&middot;&nbsp; <a href="privacy.html" style="color:inherit;text-decoration:underline;text-underline-offset:2px">Privacy</a></div>
+  <div>Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; $24,331 Documented Service &nbsp;&middot;&nbsp; <a href="privacy.html" style="color:inherit;text-decoration:underline;text-underline-offset:2px">Privacy</a></div>
 </footer>
 
 <!-- ══ AUDIO PLAYER (the #audioBtn control lives in the top nav; see the <nav>) ══ -->
@@ -2723,7 +2780,7 @@ const ctrObs = new IntersectionObserver(entries => {
   if (entries[0].isIntersecting) {
     ctrTotal.textContent = '0';
     ctrVisits.textContent = '0';
-    countUp(ctrTotal,  20407, '', '', 2200);
+    countUp(ctrTotal,  24331, '', '', 2200);
     countUp(ctrVisits, 7,     '', '', 1200);
   }
 }, { threshold: 0.3 });
