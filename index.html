@@ -810,6 +810,60 @@
     .pts-stat .pn { font-size:30px; font-weight:900; line-height:1.1; color:var(--gold); display:block; }
     .pts-stat .pl { font-size:9px; text-transform:uppercase; letter-spacing:1.8px; color:var(--muted); display:block; margin-top:7px; line-height:1.5; }
 
+    /* ── RECENT MARKET DATA ── */
+    .mkt-section { background: var(--bg-1); }
+    .mkt-basis { font-size:12px; color:var(--muted); letter-spacing:0.02em; line-height:1.7; margin:-28px 0 36px; max-width:720px; }
+    .mkt-basis strong { color:var(--dim); font-weight:600; }
+    .mkt-chart { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:56px 40px 40px; margin-bottom:18px; }
+    .mkt-scale { position:relative; height:10px; border-radius:5px; background:var(--bg-3); margin:34px 0 40px; }
+    .mkt-band { position:absolute; top:0; bottom:0; border-radius:5px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55), rgba(191,58,28,0.25)); }
+    .mkt-pin { position:absolute; top:50%; width:2px; height:26px; background:var(--muted); transform:translate(-50%,-50%); }
+    .mkt-pin.up .mkt-lbl { bottom:calc(100% + 6px); }
+    .mkt-pin.down .mkt-lbl { top:calc(100% + 6px); }
+    .mkt-lbl { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; text-align:center; font-size:10px; letter-spacing:0.06em; color:var(--muted); line-height:1.35; }
+    .mkt-lbl b { display:block; font-size:12px; font-weight:700; color:var(--dim); letter-spacing:0; }
+    .mkt-pin.ask { width:3px; height:44px; background:var(--gold); box-shadow:0 0 18px rgba(201,168,117,0.5); z-index:2; }
+    .mkt-pin.ask .mkt-lbl { color:var(--gold); bottom:calc(100% + 8px); }
+    .mkt-pin.ask .mkt-lbl b { font-size:17px; color:var(--gold); }
+    .mkt-ends { display:flex; justify-content:space-between; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-top:-26px; }
+    .mkt-key { font-size:11px; color:var(--muted); line-height:1.6; margin-top:22px; }
+    .mkt-key i { display:inline-block; width:22px; height:8px; border-radius:4px; vertical-align:middle; margin-right:6px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55)); }
+    .mkt-bench { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:18px; }
+    .mkt-b { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; }
+    .mkt-b .bv { font-size:26px; font-weight:800; line-height:1.1; }
+    .mkt-b .bv.gold { color:var(--gold); }
+    .mkt-b .bl { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-top:8px; line-height:1.5; }
+    .mkt-comps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+    .mkt-c { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; position:relative; }
+    .mkt-c.hi { border-color:rgba(201,168,117,0.35); }
+    .mkt-tag { position:absolute; top:14px; right:14px; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; padding:4px 8px; border-radius:4px; border:1px solid var(--border); color:var(--muted); }
+    .mkt-tag.sold { color:var(--gold); border-color:rgba(201,168,117,0.4); }
+    .mkt-tag.ask  { color:var(--red-b); border-color:rgba(191,58,28,0.45); }
+    .mkt-c .cv { font-size:24px; font-weight:800; margin-bottom:6px; }
+    .mkt-c .ct { font-size:13px; font-weight:600; color:var(--text); line-height:1.4; }
+    .mkt-c .cm { font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.55; }
+    .mkt-c sup { color:var(--gold); font-size:9px; }
+    .mkt-why { margin-top:6px; background:linear-gradient(135deg, #160808 0%, #0a0404 100%); border:1px solid rgba(191,58,28,0.22); border-radius:14px; padding:44px 48px; display:grid; grid-template-columns:1fr auto; gap:44px; align-items:center; }
+    .mkt-why h3 { font-size:24px; font-weight:800; margin-bottom:12px; }
+    .mkt-why h3 em { font-style:normal; color:var(--gold); }
+    .mkt-why p { color:var(--dim); font-size:14.5px; line-height:1.8; margin-bottom:10px; }
+    .mkt-why .mkt-claim { color:var(--gold); font-weight:600; margin-top:4px; }
+    .mkt-verdict { text-align:center; padding:26px 30px; border:1px solid rgba(201,168,117,0.3); border-radius:12px; min-width:190px; }
+    .mkt-verdict .vn { font-size:34px; font-weight:900; color:var(--gold); line-height:1; display:block; }
+    .mkt-verdict .vl { font-size:9px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); display:block; margin-top:8px; line-height:1.5; }
+    .mkt-verdict .vs { font-size:11px; color:var(--dim); margin-top:14px; padding-top:12px; border-top:1px solid var(--border); line-height:1.5; }
+    .mkt-notes { margin-top:26px; font-size:11px; color:var(--muted); line-height:1.65; max-width:760px; }
+    .mkt-notes p { margin-bottom:4px; }
+    .mkt-notes sup { color:var(--gold); }
+    .mkt-src { margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+    .mkt-src h5 { font-size:10px; text-transform:uppercase; letter-spacing:2.5px; color:var(--muted); margin-bottom:10px; }
+    .mkt-src ul { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; }
+    .mkt-src li { font-size:11px; color:var(--muted); line-height:1.5; }
+    .mkt-src a { color:var(--dim); text-decoration:underline; text-underline-offset:2px; }
+    .mkt-src a:hover { color:var(--gold); }
+    @media (max-width:900px) { .mkt-comps, .mkt-bench { grid-template-columns:1fr 1fr; } .mkt-why { grid-template-columns:1fr; padding:30px 24px; } .mkt-src ul { grid-template-columns:1fr; } }
+    @media (max-width:600px) { .mkt-comps, .mkt-bench { grid-template-columns:1fr; } .mkt-chart { padding:52px 14px 30px; } .mkt-lbl { font-size:8.5px; } .mkt-lbl b { font-size:10.5px; } .mkt-pin.ask .mkt-lbl b { font-size:14px; } }
+
     /* ── HIGHLIGHTS ── */
     .hl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
     .hl-card {
@@ -1538,7 +1592,7 @@
   <div id="heroBg"><canvas id="heroCanvas"></canvas></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="hero-pill"><span class="hero-dot"></span> Exceptionally Rare &mdash; Likely 1-of-1 US Spec</div>
+    <div class="hero-pill"><span class="hero-dot"></span> Exceptionally Rare &mdash; One of Two Known in US Spec</div>
     <h1>2003 Porsche<br>911 <em>Turbo</em></h1>
     <p class="hero-sub">Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; Tiptronic S &nbsp;&middot;&nbsp; McKinney, TX</p>
     <div class="hero-img-mobile" role="presentation" aria-hidden="true"></div>
@@ -2020,6 +2074,78 @@
   </div>
 </div>
 
+<!-- ══ RECENT MARKET DATA ══ -->
+<section class="mkt-section" id="recent-market-data">
+  <div class="container">
+    <div class="eyebrow rv">Recent Market Data</div>
+    <h2 class="sh rv">Where $59,900 Sits</h2>
+    <p class="sp rv">Researched September 2026 and reproduced here so you do not have to take the price on faith. Every figure below links to its source at the bottom of this section.</p>
+    <p class="mkt-basis rv"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
+
+    <div class="mkt-chart rv">
+      <div class="mkt-scale">
+        <div class="mkt-band" style="left:9.78%;right:22.22%"></div>
+        <div class="mkt-pin up" style="left:38.90%"><div class="mkt-lbl"><b>$52,506</b>Tiptronic benchmark</div></div>
+        <div class="mkt-pin down" style="left:24.44%"><div class="mkt-lbl"><b>$46,000</b>96,534 mi Tiptronic, sold 2023</div></div>
+        <div class="mkt-pin ask" style="left:55.33%"><div class="mkt-lbl"><b>$59,900</b>This car, ~94,900 mi</div></div>
+        <div class="mkt-pin down" style="left:69.77%"><div class="mkt-lbl"><b>$66,398</b>94,000 mi Tiptronic, asking</div></div>
+        <div class="mkt-pin up" style="left:83.02%"><div class="mkt-lbl"><b>$72,357</b>Manual benchmark</div></div>
+      </div>
+      <div class="mkt-ends"><span>$35,000</span><span>$80,000</span></div>
+      <div class="mkt-key"><i></i>Shaded band: 2026 Tiptronic 996 Turbo auction sales, $39,400 to $70,000 (per-lot mileage not stated for most lots). Benchmarks are market-wide figures, not tied to a single mileage. The $139,995 Zanzibar Red dealer ask sits off this chart to the right.</div>
+    </div>
+
+    <div class="mkt-bench rv">
+      <div class="mkt-b"><div class="bv">$52,506</div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, Tiptronic</div></div>
+      <div class="mkt-b"><div class="bv">$72,357</div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, manual</div></div>
+      <div class="mkt-b"><div class="bv gold">$19,851</div><div class="bl">Manual premium, about 38 percent<br>The gap this ask is priced under</div></div>
+    </div>
+
+    <div class="mkt-comps rv">
+      <div class="mkt-c"><span class="mkt-tag sold">Sold</span><div class="cv">$70,000</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">34,000 miles. Bring a Trailer, September 8, 2026. The high-water mark for a 2026 Tiptronic sale.</div></div>
+      <div class="mkt-c hi"><span class="mkt-tag sold">Sold</span><div class="cv">$65,100</div><div class="ct">2001 Turbo, Zanzibar Red<sup>2</sup></div><div class="cm">27,000 miles. September 2024, Hagerty sale record. The only other Zanzibar Red Turbo sale found in the archives.</div></div>
+      <div class="mkt-c hi"><span class="mkt-tag ask">Asking, unsold</span><div class="cv">$139,995</div><div class="ct">2003 Turbo, Tiptronic, Zanzibar Red</div><div class="cm">56,094 miles, one owner. A current dealer ask, not a sale, and an outlier. It is the only other US-spec car in this color and transmission.</div></div>
+      <div class="mkt-c"><span class="mkt-tag ask">Asking</span><div class="cv">$66,398</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">94,000 miles. The nearest active listing to this car in mileage, offered above this price.</div></div>
+      <div class="mkt-c"><span class="mkt-tag sold">Sold</span><div class="cv">$46,000</div><div class="ct">2002 Turbo, Tiptronic</div><div class="cm">96,534 miles. PCarMarket, October 2023. The closest verified high-mileage sale; directional only, given its age.</div></div>
+      <div class="mkt-c"><span class="mkt-tag">Range</span><div class="cv">$42,250 to $67,008</div><div class="ct">US Bring a Trailer Tiptronic sales, 2026</div><div class="cm">Mileage not stated. Autoblog, September 2026: stock examples trade from close to $45,000 into the $70,000s.</div></div>
+    </div>
+
+    <div class="mkt-why rv">
+      <div>
+        <h3>Why <em>$59,900</em></h3>
+        <p>This ask sits near the upper end of the documented range, and deliberately so. The benchmark cars do not have Zanzibar Red paint, $24,332 in fresh documented service, or a clean Texas title. The nearest active comp with similar miles is asking $66,398, above this price. The only other car in this color and transmission is asking $139,995.</p>
+        <p>At a no-reserve auction this car would most likely land between $48,000 and $62,000. As a private sale with the color story and the service receipts up front, $59,900 is firm but fair, with room for a serious buyer to negotiate into the mid-50s.</p>
+        <p class="mkt-claim">Priced under the manual premium, above the deferred-maintenance cars, and $80,095 under the only other one like it.</p>
+      </div>
+      <div class="mkt-verdict">
+        <span class="vn">$59,900</span>
+        <span class="vl">Asking<br>Serious offers considered</span>
+        <div class="vs">Likely no-reserve auction result:<br>$48,000 to $62,000</div>
+      </div>
+    </div>
+
+    <div class="mkt-notes rv">
+      <p><sup>1</sup> No confirmed 2026 Zanzibar Red sold comp was found, so the color premium is directional, not proven.</p>
+      <p><sup>2</sup> The 2024 Zanzibar Red sale's transmission was not recorded.</p>
+    </div>
+
+    <div class="mkt-src rv">
+      <h5>Sources</h5>
+      <ul>
+        <li><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-automatic/" target="_blank" rel="noopener">Classic.com, 996 Turbo Tiptronic market</a> (benchmark $52,506, market-wide)</li>
+        <li><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-manual/year-2003/" target="_blank" rel="noopener">Classic.com, 996 Turbo manual market</a> (benchmark $72,357, market-wide)</li>
+        <li><a href="https://www.hagerty.com/valuation-tools/past-sales/2001-porsche-911/WP0AB29901S685862/37556d9c-6fe2-4341-90d6-12d0d8440211" target="_blank" rel="noopener">Hagerty past sales, 2001 Turbo, Zanzibar Red</a> (27,000 mi, sold $65,100, Sept 2024)</li>
+        <li><a href="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" target="_blank" rel="noopener">Classic.com listing, 2003 Zanzibar Red Tiptronic</a> (56,094 mi, asking $139,995)</li>
+        <li><a href="https://bringatrailer.com/porsche/996-turbo/" target="_blank" rel="noopener">Bring a Trailer, 996 Turbo results archive</a> (2026 Tiptronic sales $42,250 to $67,008; 34,000 mi 2003 sold $70,000, Sept 8, 2026)</li>
+        <li><a href="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" target="_blank" rel="noopener">PCarMarket auction, 2002 Turbo Tiptronic</a> (96,534 mi, sold $46,000, Oct 2023)</li>
+        <li>Dealer listing, September 2026, 2003 Turbo Tiptronic (94,000 mi, asking $66,398)</li>
+        <li><a href="https://www.autoblog.com/carbuying/2002-porsche-911-turbo-for-sale-with-112600-miles" target="_blank" rel="noopener">Autoblog, September 2026</a> (market context: stock examples $45,000 into the $70,000s)</li>
+        <li><a href="https://www.theautopian.com/the-unloved-996-porsche-911-turbo-used-to-be-cheap-now-pristine-ones-sell-for-more-than-new-911s/" target="_blank" rel="noopener">The Autopian, August 2026</a> (market trend: flat to rising)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <!-- ══ COLOR STORY ══ -->
 <section class="color-section" id="a-color-that-shifts-with-the-light">
   <div class="container">
@@ -2048,7 +2174,7 @@
       </div>
       <div class="cc">
         <h4>The Research Behind the Claim</h4>
-        <p>Searches spanning Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and Porsche enthusiast forums have found no other Zanzibar Red 996 Turbo Tiptronic in US specification. Factory documentation is on the build sheet. Paint code L1A8 is confirmed VIN-to-paint.</p>
+        <p>Searches spanning Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and Porsche enthusiast forums have found exactly one other Zanzibar Red 996 Turbo Tiptronic in US specification: a one-owner 2003 with 56,094 miles that a dealer is currently asking $139,995 for. Factory documentation is on the build sheet. Paint code L1A8 is confirmed VIN-to-paint.</p>
       </div>
     </div>
 
@@ -2058,7 +2184,7 @@
         <h3>Paint to Sample, <em>Before It Had a Name</em></h3>
         <p>Porsche&rsquo;s bespoke-color program is now one of the most coveted options in the catalog. Ordered through Porsche Exclusive Manufaktur, Paint to Sample adds $12,830 to a new 911 Turbo &mdash; and for a color outside the catalog, up to $25,660 plus a factory feasibility study that can run eleven months. Buyers pay it gladly, because special-color Porsches occupy a different tier of the market: they are the cars collectors search for by name, and the ones that draw the crowd at auction.</p>
         <p>In 2003, the same program was called <em>Farbe nach Wahl</em> &mdash; &ldquo;color of choice.&rdquo; There was no waitlist and no hashtag. It was simply an expensive box almost nobody ticked, requiring a buyer who knew exactly what they wanted and a factory willing to paint one car one color. That is what option 00501 on this build sheet records: someone paid real money, two decades before it was fashionable, to make a Zanzibar Red Turbo exist.</p>
-        <p class="pts-claim">The paint isn&rsquo;t a feature of this car. It&rsquo;s the reason there is likely only one.</p>
+        <p class="pts-claim">The paint isn&rsquo;t a feature of this car. It&rsquo;s the reason there are only two known in the United States.</p>
       </div>
       <div class="pts-stats">
         <div class="pts-stat"><span class="pn">$12,830</span><span class="pl">Paint to Sample upcharge<br>on a new 911 Turbo</span></div>
@@ -2077,8 +2203,8 @@
     <div class="hl-grid">
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
-        <h4>Likely 1-of-1 in US Spec</h4>
-        <p>Zero other Zanzibar Red 996 Turbo Tiptronics have appeared in any US auction archive, registry, or marketplace after extensive research. Factory code 00501 is on the build sheet.</p>
+        <h4>One of Two Known in US Spec</h4>
+        <p>Exactly one other Zanzibar Red 996 Turbo Tiptronic has surfaced in any US auction archive, registry, or marketplace after extensive research, and its dealer is asking $139,995. Factory code 00501 is on the build sheet.</p>
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
@@ -2142,12 +2268,12 @@
       <div>
         <h3>The Rarity Argument</h3>
         <p>Porsche built approximately 3,700 examples of the 996 Turbo worldwide in 2003. A fraction were Tiptronics. A smaller fraction were ordered in factory Special Colors. Of those, Zanzibar Red was among the rarest choices &mdash; a complex, light-shifting color that required a factory surcharge.</p>
-        <p>After searching Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and every major Porsche enthusiast community, <strong class="rarity-em">not one other Zanzibar Red 996 Turbo Tiptronic has surfaced in the United States.</strong></p>
-        <p class="rarity-claim">This car may genuinely not exist anywhere else.</p>
+        <p>After searching Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and every major Porsche enthusiast community, <strong class="rarity-em">exactly one other Zanzibar Red 996 Turbo Tiptronic has surfaced in the United States, and it is priced at $139,995.</strong></p>
+        <p class="rarity-claim">Two known. This is the one priced to sell.</p>
       </div>
       <div class="rarity-badge">
-        <span class="rn">1</span>
-        <span class="rl">Known US-Spec<br>Zanzibar Red<br>996 Turbo Tip</span>
+        <span class="rn">2</span>
+        <span class="rl">Known US-Spec<br>Zanzibar Red<br>996 Turbo Tips</span>
       </div>
     </div>
   </div>
@@ -2284,7 +2410,7 @@
   <div class="kb-overlay"></div>
   <div class="kb-content rv">
     <div class="kb-quote">Not just red.<br><em>Zanzibar Red.</em><br>Factory code 00501.</div>
-    <div class="kb-attr">Special Order &nbsp;&middot;&nbsp; Likely 1-of-1 in the United States</div>
+    <div class="kb-attr">Special Order &nbsp;&middot;&nbsp; One of Two Known in the United States</div>
   </div>
 </div>
 
@@ -3220,7 +3346,7 @@ window.PORSCHE_CONCIERGE_CONFIG = {
      are published as null — the widget treats null as "absent". -->
 <script>
 (function () {
-  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'recent-market-data', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
   var pageT0 = Date.now();
   var maxDepth = 0;
   function publishState() {
