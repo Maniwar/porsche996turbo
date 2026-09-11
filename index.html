@@ -875,7 +875,23 @@
     .bk-note { font-size:11px; color:var(--muted); line-height:1.5; margin-top:2px; }
     .mkt-check { margin-top:10px; align-self:flex-start; display:inline-flex; align-items:center; gap:7px; background:var(--gold); color:#0a0705; font-weight:800; font-size:11.5px; letter-spacing:0.02em; padding:9px 15px; border-radius:100px; text-decoration:none; transition:transform 0.2s, box-shadow 0.25s; }
     .mkt-check:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(201,168,117,0.35); }
-    .mkt-c.flipped::after { display:none; }
+    /* flipped: the listing screenshot becomes a blurred, darkened backdrop that drifts and breathes */
+    .mkt-c::before { content:''; position:absolute; inset:-14%; z-index:0; pointer-events:none;
+      background-image:linear-gradient(180deg, rgba(10,7,5,0.80) 0%, rgba(10,7,5,0.62) 45%, rgba(10,7,5,0.88) 100%), var(--shot, none);
+      background-size:cover; background-position:center top; filter:blur(7px) saturate(1.15);
+      opacity:0; transform:scale(1.04); transition:opacity 0.7s ease 0.25s; }
+    .mkt-c.flipped::before { opacity:1; animation:bkDrift 22s ease-in-out infinite alternate; }
+    @keyframes bkDrift { 0%{transform:scale(1.04) translate3d(0,0,0);filter:blur(7px) saturate(1.15)} 50%{filter:blur(9px) saturate(1.3)} 100%{transform:scale(1.13) translate3d(-2%,-3%,0);filter:blur(6px) saturate(1.1)} }
+    .mkt-flip { position:relative; z-index:1; }
+    /* flipped: the reveal sheen becomes a slow looping sweep over the backdrop */
+    .mkt-c.flipped::after { display:block; z-index:2; background:linear-gradient(105deg, transparent, rgba(201,168,117,0.16), rgba(255,255,255,0.10), transparent); animation:mktSheenLoop 4.8s ease-in-out 0.9s infinite; }
+    @keyframes mktSheenLoop { 0%{left:-110px;opacity:0} 8%{opacity:1} 55%{left:calc(100% + 110px);opacity:1} 56%{opacity:0} 100%{left:calc(100% + 110px);opacity:0} }
+    .mkt-c.flipped .bk-row { border-bottom-color:rgba(255,255,255,0.10); }
+    .mkt-c.flipped .bk-row span, .mkt-c.flipped .bk-note { color:rgba(255,255,255,0.62); }
+    /* no browser focus ring on tap or click; keyboard focus keeps a gold one */
+    .mkt-c:focus { outline:none; }
+    .mkt-c:focus-visible { outline:2px solid var(--gold); outline-offset:3px; }
+    @media (prefers-reduced-motion: reduce) { .mkt-c.flipped::before { animation:none; } .mkt-c.flipped::after { animation:none; display:none; } }
     .mkt-check { border:none; font-family:inherit; cursor:pointer; }
     /* ── LISTING MODAL ── */
     .mkt-modal { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(7,5,5,0.74); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); opacity:0; pointer-events:none; transition:opacity 0.28s; }
@@ -2403,7 +2419,7 @@
     </div>
 
     <div class="mkt-comps">
-      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" data-shot="comps/classic-149995.jpg" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" data-shot="comps/classic-149995.jpg" style="--shot:url('comps/classic-149995.jpg')" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag ask">Asking, unsold</span>
@@ -2423,7 +2439,7 @@
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/porsche/996-turbo/" data-shot="comps/bat-996-turbo.jpg" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/porsche/996-turbo/" data-shot="comps/bat-996-turbo.jpg" style="--shot:url('comps/bat-996-turbo.jpg')" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag sold">Sold</span>
@@ -2443,7 +2459,7 @@
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.autoassets.com/porsche" data-shot="comps/autoassets-64398.jpg" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.autoassets.com/porsche" data-shot="comps/autoassets-64398.jpg" style="--shot:url('comps/autoassets-64398.jpg')" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag ask">Asking</span>
@@ -2463,7 +2479,7 @@
           </div>
         </div>
       </div>
-      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/listing/2001-porsche-911-turbo-coupe-74/" data-shot="comps/bat-2001-zanzibar.jpg" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/listing/2001-porsche-911-turbo-coupe-74/" data-shot="comps/bat-2001-zanzibar.jpg" style="--shot:url('comps/bat-2001-zanzibar.jpg')" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag sold">Sold</span>
@@ -2483,7 +2499,7 @@
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/porsche/996-turbo/" data-shot="comps/bat-996-turbo.jpg" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/porsche/996-turbo/" data-shot="comps/bat-996-turbo.jpg" style="--shot:url('comps/bat-996-turbo.jpg')" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag">Range</span>
@@ -2503,7 +2519,7 @@
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" data-shot="comps/pcarmarket-46000.jpg" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" data-shot="comps/pcarmarket-46000.jpg" style="--shot:url('comps/pcarmarket-46000.jpg')" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag sold">Sold</span>
