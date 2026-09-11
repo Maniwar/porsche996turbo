@@ -3211,8 +3211,10 @@ function countUp(el, target, prefix, suffix, duration) {
 
 /* Market chart: band draws, pins drop, numbers count up, once */
 (function marketLive(){
-  /* Replays on every visit, scrolling down or back up. Count-ups are
-     cancellable so leaving mid-count never strands a stale number. */
+  /* Replays on every visit in either direction. Each block owns its own
+     numbers: they start counting when the block enters the viewport and
+     reset only once the block is completely out of view, so a visible
+     number can never read zero. Count-ups are cancellable. */
   const fmt = new Intl.NumberFormat();
   function count(el, target, duration) {
     const token = (el._tok = (el._tok || 0) + 1), start = performance.now();
@@ -3224,29 +3226,24 @@ function countUp(el, target, prefix, suffix, duration) {
     })(start);
   }
   function zero(el) { el._tok = (el._tok || 0) + 1; el.textContent = '0'; }
+  function watch(el, onEnter, onLeave) {
+    if (!el) return;
+    new IntersectionObserver(entries => {
+      const e = entries[0];
+      if (e.isIntersecting) onEnter(); else onLeave();
+    }, { threshold: 0 }).observe(el);
+  }
   const EQ = [['mktB1',52506],['mktB2',24332],['mktB3',76838],['mktB4',59900]];
   const eq = document.querySelector('.mkt-eq');
-  if (eq) new IntersectionObserver(entries => {
-    const e = entries[0];
-    if (e.isIntersecting) {
-      eq.classList.add('in');
-      EQ.forEach(([id,v],i) => { const el = document.getElementById(id); if (el) setTimeout(() => { if (eq.classList.contains('in')) count(el, v, 1400); }, 200 + i*180); });
-    } else {
-      eq.classList.remove('in');
-      EQ.forEach(([id]) => { const el = document.getElementById(id); if (el) zero(el); });
-    }
-  }, { threshold: 0.3 }).observe(eq);
-  const chart = document.querySelector('.mkt-chart'), v = document.getElementById('mktV');
-  if (chart) new IntersectionObserver(entries => {
-    const e = entries[0];
-    if (e.isIntersecting) {
-      chart.classList.add('live');
-      if (v) setTimeout(() => { if (chart.classList.contains('live')) count(v, 59900, 1500); }, 300);
-    } else {
-      chart.classList.remove('live');
-      if (v) zero(v);
-    }
-  }, { threshold: 0.35 }).observe(chart);
+  watch(eq,
+    () => { eq.classList.add('in'); EQ.forEach(([id,v],i) => { const el = document.getElementById(id); if (el) setTimeout(() => { if (eq.classList.contains('in')) count(el, v, 1400); }, 150 + i*180); }); },
+    () => { eq.classList.remove('in'); EQ.forEach(([id]) => { const el = document.getElementById(id); if (el) zero(el); }); });
+  const chart = document.querySelector('.mkt-chart');
+  watch(chart, () => chart.classList.add('live'), () => chart.classList.remove('live'));
+  const why = document.querySelector('.mkt-why'), v = document.getElementById('mktV');
+  watch(why,
+    () => { if (v) setTimeout(() => count(v, 59900, 1500), 250); },
+    () => { if (v) zero(v); });
 })();
 
 const ctrTotal  = document.getElementById('ctrTotal');
