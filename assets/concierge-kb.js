@@ -20,7 +20,7 @@
   window.PORSCHE_KB = {
     images: {
     "samsung-frame-tv-image-1": {
-      "src": "samsung-frame-tv-image%20%281%29.png",
+      "src": "sunset-side-profile.jpg",
       "alt": "Zanzibar Red at golden sunset — cinematic side profile"
     },
     "full-side-profile-spring-roses": {
