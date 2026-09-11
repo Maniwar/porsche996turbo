@@ -849,10 +849,17 @@
     .mkt-eqcap { font-size:11.5px; color:var(--muted); line-height:1.65; margin:12px 0 0; max-width:860px; }
     .mkt-eqcap b { color:var(--dim); font-weight:600; }
     .mkt-math { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; max-width:860px; }
-    .mkt-math > div { background:var(--bg-2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; font-size:12px; color:var(--dim); line-height:1.75; }
-    .mkt-math h6 { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--gold); margin:0 0 6px; font-weight:700; }
-    .mkt-math b { color:var(--text); font-weight:600; }
-    .mkt-math .r { color:var(--gold); font-weight:700; }
+    .mkt-math > div { --mx:50%; --my:50%; background:radial-gradient(240px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:18px 20px 16px; transition:border-color 0.3s, transform 0.25s; }
+    .mkt-math > div:hover { border-color:rgba(201,168,117,0.4); transform:translateY(-2px); }
+    .mkt-math h6 { font-size:10px; letter-spacing:2.2px; text-transform:uppercase; color:var(--gold); margin:0 0 10px; font-weight:700; }
+    .mrow { display:grid; grid-template-columns:16px 104px 1fr; gap:10px; align-items:baseline; padding:5px 0; font-size:12px; color:var(--muted); line-height:1.4; }
+    .mrow .op { color:var(--gold); font-weight:700; text-align:center; font-size:14px; }
+    .mrow .v { font-variant-numeric:tabular-nums; text-align:right; color:var(--text); font-weight:600; font-size:13.5px; white-space:nowrap; }
+    .mrow.sum { border-top:1px solid var(--border); margin-top:3px; padding-top:8px; }
+    .mrow.res { border-top:1px solid rgba(201,168,117,0.4); margin-top:6px; padding-top:10px; }
+    .mrow.res .v { color:var(--gold); font-size:19px; font-weight:800; }
+    .mrow.res .l { color:var(--dim); }
+    @media (max-width:600px) { .mrow { grid-template-columns:14px 92px 1fr; font-size:11.5px; } }
     @media (max-width:600px) { .mkt-math { grid-template-columns:1fr; } }
     .mkt-op.gold { color:var(--gold); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
     .mkt-b.result { border-color:rgba(201,168,117,0.45); background:linear-gradient(135deg, #16110a 0%, #0a0805 100%); }
@@ -2579,9 +2586,23 @@
       <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span data-count="59900">0</span></div><div class="bl">This car<br>$3,300 less, and the big repairs are already done</div></div>
     </div>
     <p class="mkt-eqcap rv-repeat"><b>Why 35 cents a mile? You do not have to trust that number.</b> Here is the whole range. <b>What the market says:</b> the two 2026 Tiptronics on this page, 34,000 miles at $70,000 and 94,000 miles at $64,398, are about 9 cents a mile apart. At 9 cents, the 2024 car with this car&rsquo;s miles is worth about $80,700. <b>The break-even:</b> for the 2024 car to be worth less than $59,900 with this car&rsquo;s miles, you would have to take off more than 40 cents for every extra mile, over four times what the market shows. <b>The point:</b> pick any rate from 9 cents to 39 cents and the 2024 car still lands above this one. 35 cents sits just under the break-even on purpose.</p>
-    <div class="mkt-math rv-repeat">
-      <div><h6>Where the 9 cents comes from</h6><b>$70,000</b> (34,000 miles, sold Sept 2026<a class="ref" href="#src-5">5</a>) minus <b>$64,398</b> (94,224 miles, for sale now<a class="ref" href="#src-7">7</a>) = <b>$5,602</b><br>94,224 miles minus 34,000 miles = <b>60,224 miles</b><br>$5,602 divided by 60,224 miles = <span class="r">9.3 cents a mile</span></div>
-      <div><h6>Where the 40-cent break-even comes from</h6><b>$87,000</b> (the 2024 car at today&rsquo;s prices) minus <b>$59,900</b> (this car) = <b>$27,100</b><br>95,000 miles minus 27,000 miles = <b>68,000 miles</b><br>$27,100 divided by 68,000 miles = <span class="r">39.9 cents a mile</span></div>
+    <div class="mkt-math">
+      <div class="rv-repeat js-glow">
+        <h6>Where the 9 cents comes from</h6>
+        <div class="mrow"><span class="op"></span><span class="v">$70,000</span><span class="l">34,000 miles, sold Sept 2026<a class="ref" href="#src-5">5</a></span></div>
+        <div class="mrow"><span class="op">&minus;</span><span class="v">$64,398</span><span class="l">94,224 miles, for sale now<a class="ref" href="#src-7">7</a></span></div>
+        <div class="mrow sum"><span class="op">=</span><span class="v">$5,602</span><span class="l">price gap</span></div>
+        <div class="mrow"><span class="op">&divide;</span><span class="v">60,224</span><span class="l">miles gap, 94,224 minus 34,000</span></div>
+        <div class="mrow res"><span class="op">=</span><span class="v">9.3&cent;</span><span class="l">a mile, the market&rsquo;s own rate</span></div>
+      </div>
+      <div class="rv-repeat js-glow">
+        <h6>Where the 40-cent break-even comes from</h6>
+        <div class="mrow"><span class="op"></span><span class="v">$87,000</span><span class="l">the 2024 car at today&rsquo;s prices</span></div>
+        <div class="mrow"><span class="op">&minus;</span><span class="v">$59,900</span><span class="l">this car</span></div>
+        <div class="mrow sum"><span class="op">=</span><span class="v">$27,100</span><span class="l">price gap</span></div>
+        <div class="mrow"><span class="op">&divide;</span><span class="v">68,000</span><span class="l">miles gap, 95,000 minus 27,000</span></div>
+        <div class="mrow res"><span class="op">=</span><span class="v">39.9&cent;</span><span class="l">a mile, the break-even rate</span></div>
+      </div>
     </div>
 
     <div class="mkt-notes rv-repeat">
