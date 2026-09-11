@@ -846,6 +846,16 @@
     .mkt-eq { display:grid; grid-template-columns:1fr auto 1fr auto 1fr auto 1.15fr; gap:12px; align-items:stretch; margin-bottom:18px; }
     .mkt-op { display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:300; color:var(--muted); padding:0 2px; }
     .mkt-eqk { font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:var(--gold); margin:30px 0 12px; }
+    .mkt-census { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:6px 22px 10px; margin-bottom:18px; }
+    .cz-row { display:grid; grid-template-columns:1.1fr 0.7fr 1.6fr 1.2fr; gap:14px; padding:12px 0; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--muted); line-height:1.5; align-items:baseline; }
+    .cz-row:last-child { border-bottom:none; }
+    .cz-row.head { font-size:9.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--muted); padding:10px 0 6px; }
+    .cz-row b { color:var(--text); font-weight:600; }
+    .cz-row .r { color:var(--text); font-weight:600; }
+    .cz-row.me { background:linear-gradient(90deg, rgba(201,168,117,0.10), transparent 70%); margin:0 -22px; padding-left:22px; padding-right:22px; }
+    .cz-row.me b, .cz-row.me .r { color:var(--gold); }
+    .cz-cap { font-size:12px; color:var(--dim); line-height:1.65; margin:12px 0 0; max-width:860px; }
+    @media (max-width:700px) { .cz-row { grid-template-columns:1fr 1fr; row-gap:4px; } .cz-row.head { display:none; } .cz-row > span:nth-child(3), .cz-row > span:nth-child(4) { grid-column:1 / -1; } }
     .mkt-eqcap { font-size:11.5px; color:var(--muted); line-height:1.65; margin:12px 0 0; max-width:860px; }
     .mkt-eqcap b { color:var(--dim); font-weight:600; }
     .mkt-math { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; max-width:860px; }
@@ -2557,6 +2567,17 @@
       </div>
     </div>
 
+    <div class="mkt-eqk rv-repeat">Every Zanzibar Red 996 Turbo we could find in the United States</div>
+    <div class="mkt-census rv-repeat">
+      <div class="cz-row head"><span>Car</span><span>Miles</span><span>Where and when</span><span>What happened</span></div>
+      <div class="cz-row me"><span><b>2003, Tiptronic</b></span><span>95,000</span><span>McKinney, TX, for sale now</span><span class="r">This car, $59,900 asking</span></div>
+      <div class="cz-row"><span><b>2003, Tiptronic</b></span><span>56,094</span><span>Orlando dealer, listed Sept 2026<a class="ref" href="#src-4">4</a></span><span class="r">Asking $149,995, unsold</span></div>
+      <div class="cz-row"><span><b>2001, Tiptronic</b></span><span>27,000</span><span>Bring a Trailer, Sept 2024<a class="ref" href="#src-3">3</a></span><span class="r">Sold $62,000</span></div>
+      <div class="cz-row"><span><b>2001, 6-speed</b></span><span>28,235</span><span>Pennsylvania dealer, Dec 2018<a class="ref" href="#src-13">13</a>; later a Miami dealer<a class="ref" href="#src-14">14</a></span><span class="r">Asked $69,900 in 2018</span></div>
+      <div class="cz-row"><span><b>2002, 6-speed, modified</b></span><span>99,217</span><span>PCarMarket, Oct 2024<a class="ref" href="#src-12">12</a></span><span class="r">Bid to $46,000, did not sell</span></div>
+    </div>
+    <p class="cz-cap rv-repeat">Five cars, ever, in eight years of auction archives and dealer listings. Three are Tiptronics. Porsche Club of America lists Zanzibar Red among its 986 and 996 unicorn colors: a color that carries a premium and that almost nobody ordered.<a class="ref" href="#src-15">15</a></p>
+
     <div class="mkt-why rv-repeat">
       <div>
         <h3>Why $59,900 Is <em>the Cheap Way In</em></h3>
@@ -2627,6 +2648,9 @@
         <li id="src-10"><a href="https://bringatrailer.com/listing/2001-porsche-911-turbo-coupe-135/" target="_blank" rel="noopener">Bring a Trailer Lot #259,968, 27k-Mile 2001 Turbo Coupe 6-Speed</a> (sold $119,500, Aug 27, 2026)</li>
         <li id="src-11"><a href="https://www.cargurus.com/Cars/l-Used-2003-Porsche-911-c3389" target="_blank" rel="noopener">CarGurus, used 2003 Porsche 911</a> (average price up 36.8 percent year over year, Sept 2026)</li>
         <li id="src-12"><a href="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-9/" target="_blank" rel="noopener">PCarMarket Lot V-0048511-MP, 2002 Turbo 6-Speed Modified, Zanzibar Red Metallic</a> (99,217 mi, bid to $46,000, unsold, Oct 2024)</li>
+        <li id="src-13"><a href="https://germancarsforsaleblog.com/zanzibar-red-2001-porsche-911-turbo-coupe/" target="_blank" rel="noopener">German Cars For Sale Blog, Zanzibar Red 2001 911 Turbo Coupe</a> (6-speed, 28,235 mi, $69,900, UDrive Automobiles, Dec 27, 2018)</li>
+        <li id="src-14"><a href="https://www.mildcollection.com/2001-porsche-911-turbo-paint-to-sample-c-184.htm" target="_blank" rel="noopener">Mild Collection, 2001 911 Turbo Paint To Sample, stock #5307</a> (same car: Savannah beige interior, HRE wheels, about 28,000 mi; price not shown)</li>
+        <li id="src-15"><a href="https://www.pca.org/news/2020-09-25/unicorn-colors-porsche-986996-edition" target="_blank" rel="noopener">Porsche Club of America, Unicorn Colors: The Porsche 986/996 Edition</a> (Sept 25, 2020)</li>
       </ol>
     </div>
   </div>
