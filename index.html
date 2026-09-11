@@ -816,8 +816,17 @@
     .mkt-basis strong { color:var(--dim); font-weight:600; }
     .mkt-chart { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:56px 40px 40px; margin-bottom:18px; }
     .mkt-scale { position:relative; height:10px; border-radius:5px; background:var(--bg-3); margin:34px 0 64px; }
-    .mkt-band { position:absolute; top:0; bottom:0; border-radius:5px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55), rgba(191,58,28,0.25)); }
-    .mkt-pin { position:absolute; top:50%; width:2px; height:26px; background:var(--muted); transform:translate(-50%,-50%); }
+    .mkt-band { position:absolute; top:0; bottom:0; border-radius:5px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55), rgba(191,58,28,0.25)); transform:scaleX(0); transform-origin:left center; transition:transform 1.1s cubic-bezier(0.2,0.8,0.2,1) 0.1s; }
+    .mkt-chart.live .mkt-band { transform:scaleX(1); }
+    .mkt-pin { position:absolute; top:50%; width:2px; height:26px; background:var(--muted); transform:translate(-50%,-50%) scaleY(0); opacity:0; transition:transform 0.55s cubic-bezier(0.2,0.8,0.2,1), opacity 0.4s; }
+    .mkt-chart.live .mkt-pin { transform:translate(-50%,-50%) scaleY(1); opacity:1; }
+    .mkt-chart.live .mkt-pin:nth-child(2) { transition-delay:0.9s; }
+    .mkt-chart.live .mkt-pin:nth-child(3) { transition-delay:1.05s; }
+    .mkt-chart.live .mkt-pin:nth-child(5) { transition-delay:1.2s; }
+    .mkt-chart.live .mkt-pin:nth-child(6) { transition-delay:1.35s; }
+    .mkt-chart.live .mkt-pin.ask { transition-delay:1.7s; animation:mktPulse 2.6s ease-in-out 2.4s infinite; }
+    @keyframes mktPulse { 0%,100%{box-shadow:0 0 18px rgba(201,168,117,0.5)} 50%{box-shadow:0 0 34px rgba(201,168,117,0.95)} }
+    .mkt-lbl { transition:opacity 0.5s 0.15s; }
     .mkt-pin.up .mkt-lbl { bottom:calc(100% + 6px); }
     .mkt-pin.down .mkt-lbl { top:calc(100% + 6px); }
     .mkt-lbl { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; text-align:center; font-size:10px; letter-spacing:0.06em; color:var(--muted); line-height:1.35; }
@@ -835,12 +844,19 @@
     .mkt-key { font-size:11px; color:var(--muted); line-height:1.6; margin-top:22px; }
     .mkt-key i { display:inline-block; width:22px; height:8px; border-radius:4px; vertical-align:middle; margin-right:6px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55)); }
     .mkt-bench { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:18px; }
-    .mkt-b { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; }
+    .mkt-b, .mkt-c { --mx:50%; --my:50%; background:radial-gradient(240px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-2); transition:border-color 0.3s, transform 0.25s, box-shadow 0.3s; }
+    .mkt-b:hover, .mkt-c:hover { border-color:rgba(201,168,117,0.4); transform:perspective(800px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-3px); box-shadow:0 14px 40px rgba(0,0,0,0.35); }
+    .mkt-b { border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; }
     .mkt-b .bv { font-size:26px; font-weight:800; line-height:1.1; }
     .mkt-b .bv.gold { color:var(--gold); }
     .mkt-b .bl { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-top:8px; line-height:1.5; }
     .mkt-comps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
-    .mkt-c { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; position:relative; }
+    .mkt-c { border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; position:relative; }
+    .mkt-bench .mkt-b.rv:nth-child(2), .mkt-comps .mkt-c.rv:nth-child(2) { transition-delay:0.08s; }
+    .mkt-bench .mkt-b.rv:nth-child(3), .mkt-comps .mkt-c.rv:nth-child(3) { transition-delay:0.16s; }
+    .mkt-comps .mkt-c.rv:nth-child(4) { transition-delay:0.24s; }
+    .mkt-comps .mkt-c.rv:nth-child(5) { transition-delay:0.32s; }
+    .mkt-comps .mkt-c.rv:nth-child(6) { transition-delay:0.40s; }
     .mkt-c.hi { border-color:rgba(201,168,117,0.35); }
     .mkt-tag { position:absolute; top:14px; right:14px; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; padding:4px 8px; border-radius:4px; border:1px solid var(--border); color:var(--muted); }
     .mkt-tag.sold { color:var(--gold); border-color:rgba(201,168,117,0.4); }
@@ -858,6 +874,8 @@
     .mkt-verdict .vn { font-size:34px; font-weight:900; color:var(--gold); line-height:1; display:block; }
     .mkt-verdict .vl { font-size:9px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); display:block; margin-top:8px; line-height:1.5; }
     .mkt-verdict .vs { font-size:11px; color:var(--dim); margin-top:14px; padding-top:12px; border-top:1px solid var(--border); line-height:1.5; }
+    .mkt-verdict .btn { margin-top:16px; font-size:12px; padding:11px 22px; }
+    @media (prefers-reduced-motion: reduce) { .mkt-band, .mkt-pin { transition:none; transform:translate(-50%,-50%) scaleX(1) scaleY(1); opacity:1; } .mkt-band { transform:scaleX(1); } .mkt-chart.live .mkt-pin.ask { animation:none; } }
     .mkt-notes { margin-top:26px; font-size:11px; color:var(--muted); line-height:1.65; max-width:760px; }
     .mkt-notes p { margin-bottom:4px; }
     .mkt-notes sup { color:var(--gold); }
@@ -2098,7 +2116,7 @@
   <div class="container">
     <div class="eyebrow rv">Recent Market Data</div>
     <h2 class="sh rv">Where $59,900 Sits</h2>
-    <p class="sp rv">Researched September 2026 and reproduced here so you do not have to take the price on faith. Every figure below links to its source at the bottom of this section.</p>
+    <p class="sp rv">Most listings ask you to trust the price. This one shows its work. Every figure below was researched in September 2026 and links to its source at the bottom of this section, so you can check the math before you call.</p>
     <p class="mkt-basis rv"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
 
     <div class="mkt-chart rv">
@@ -2121,32 +2139,33 @@
       <div class="mkt-key"><i></i>Shaded band: 2026 Tiptronic 996 Turbo auction sales, $39,400 to $70,000 (per-lot mileage not stated for most lots). Benchmarks are market-wide figures, not tied to a single mileage. The $139,995 Zanzibar Red dealer ask sits off this chart to the right.</div>
     </div>
 
-    <div class="mkt-bench rv">
-      <div class="mkt-b"><div class="bv">$52,506</div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, Tiptronic</div></div>
-      <div class="mkt-b"><div class="bv">$72,357</div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, manual</div></div>
-      <div class="mkt-b"><div class="bv gold">$19,851</div><div class="bl">Manual premium, about 38 percent<br>The gap this ask is priced under</div></div>
+    <div class="mkt-bench">
+      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB1">0</span></div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, Tiptronic</div></div>
+      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB2">0</span></div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, manual</div></div>
+      <div class="mkt-b rv js-glow"><div class="bv gold">$<span id="mktB3">0</span></div><div class="bl">Manual premium, about 38 percent<br>The gap this ask is priced under</div></div>
     </div>
 
-    <div class="mkt-comps rv">
-      <div class="mkt-c"><span class="mkt-tag sold">Sold</span><div class="cv">$70,000</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">34,000 miles. Bring a Trailer, September 8, 2026. The high-water mark for a 2026 Tiptronic sale.</div></div>
-      <div class="mkt-c hi"><span class="mkt-tag sold">Sold</span><div class="cv">$65,100</div><div class="ct">2001 Turbo, Zanzibar Red<sup>2</sup></div><div class="cm">27,000 miles. September 2024, Hagerty sale record. The only other Zanzibar Red Turbo sale found in the archives.</div></div>
-      <div class="mkt-c hi"><span class="mkt-tag ask">Asking, unsold</span><div class="cv">$139,995</div><div class="ct">2003 Turbo, Tiptronic, Zanzibar Red</div><div class="cm">56,094 miles, one owner. A current dealer ask, not a sale, and an outlier. It is the only other US-spec car in this color and transmission.</div></div>
-      <div class="mkt-c"><span class="mkt-tag ask">Asking</span><div class="cv">$66,398</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">94,224 miles. Auto Assets, Powell, Ohio. Reduced from $69,996 and still above this price. The nearest active listing to this car in mileage.</div></div>
-      <div class="mkt-c"><span class="mkt-tag sold">Sold</span><div class="cv">$46,000</div><div class="ct">2002 Turbo, Tiptronic</div><div class="cm">96,534 miles. PCarMarket, October 2023. The closest verified high-mileage sale; directional only, given its age.</div></div>
-      <div class="mkt-c"><span class="mkt-tag">Range</span><div class="cv">$42,250 to $67,008</div><div class="ct">US Bring a Trailer Tiptronic sales, 2026</div><div class="cm">Mileage not stated. Autoblog, September 2026: stock examples trade from close to $45,000 into the $70,000s.</div></div>
+    <div class="mkt-comps">
+      <div class="mkt-c rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$70,000</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">34,000 miles. Bring a Trailer, September 8, 2026. The 2026 high-water mark for a Tiptronic: $10,100 more than this car, for 61,000 fewer miles.</div></div>
+      <div class="mkt-c hi rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$65,100</div><div class="ct">2001 Turbo, Zanzibar Red<sup>2</sup></div><div class="cm">27,000 miles. September 2024, Hagerty sale record. The only other Zanzibar Red Turbo sale on record, two years ago, in a market that has risen since.</div></div>
+      <div class="mkt-c hi rv js-glow"><span class="mkt-tag ask">Asking, unsold</span><div class="cv">$139,995</div><div class="ct">2003 Turbo, Tiptronic, Zanzibar Red</div><div class="cm">56,094 miles, one owner. A dealer ask, not a sale, and an outlier. It is also the only other US-spec car in this color and gearbox, and it is priced $80,095 above this one.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag ask">Asking</span><div class="cv">$66,398</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">94,224 miles. Auto Assets, Powell, Ohio. Same year, same gearbox, same mileage. Already cut from $69,996, and still $6,498 above this car.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$46,000</div><div class="ct">2002 Turbo, Tiptronic</div><div class="cm">96,534 miles. PCarMarket, October 2023. Three years old and before the run-up. That is the floor, not the market.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag">Range</span><div class="cv">$42,250 to $67,008</div><div class="ct">US Bring a Trailer Tiptronic sales, 2026</div><div class="cm">Mileage not stated. Autoblog, September 2026: stock examples trade from close to $45,000 into the $70,000s. This car sits in the upper third of that band, with the receipts to justify it.</div></div>
     </div>
 
     <div class="mkt-why rv">
       <div>
         <h3>Why <em>$59,900</em></h3>
-        <p>This ask sits near the upper end of the documented range, and deliberately so. The benchmark cars do not have Zanzibar Red paint, $24,332 in fresh documented service, or a clean Texas title. The nearest active comp with similar miles is asking $66,398, above this price. The only other car in this color and transmission is asking $139,995.</p>
-        <p>At a no-reserve auction this car would most likely land between $48,000 and $62,000. As a private sale with the color story and the service receipts up front, $59,900 is firm but fair, with room for a serious buyer to negotiate into the mid-50s.</p>
+        <p>The two cars closest to this one are asking $66,398 and $139,995. The Tiptronic benchmark is $52,506, but benchmark cars do not come with Zanzibar Red paint, $24,332 in fresh documented service, replaced interior trim, or a clean Texas title. $59,900 sits near the top of the documented range on purpose.</p>
+        <p>At a no-reserve auction this car would most likely hammer between $48,000 and $62,000, and the winner would add a 5 percent buyer&rsquo;s premium on top, after bidding without ever opening the service file. Buying it here, the receipts, the color research, and the PPI invitation are all in front of you first, and the price is the price.</p>
         <p class="mkt-claim">Priced under the manual premium, above the deferred-maintenance cars, and $80,095 under the only other one like it.</p>
       </div>
       <div class="mkt-verdict">
-        <span class="vn">$59,900</span>
+        <span class="vn">$<span id="mktV">0</span></span>
         <span class="vl">Asking<br>Serious offers considered</span>
-        <div class="vs">Likely no-reserve auction result:<br>$48,000 to $62,000</div>
+        <div class="vs">No-reserve auction estimate:<br>$48,000 to $62,000 hammer, plus buyer&rsquo;s premium</div>
+        <a class="btn btn-red" href="mailto:mberenji@gmail.com?subject=Offer%20on%20the%20Zanzibar%20Red%20996%20Turbo%20(WP0AB29983S687118)">Make an Offer</a>
       </div>
     </div>
 
@@ -2926,6 +2945,18 @@ function countUp(el, target, prefix, suffix, duration) {
   }
   requestAnimationFrame(frame);
 }
+
+/* Market chart: band draws, pins drop, numbers count up, once */
+(function marketLive(){
+  const chart = document.querySelector('.mkt-chart'); if (!chart) return;
+  let fired = false;
+  new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting || fired) return;
+    fired = true; chart.classList.add('live');
+    const nums = [['mktB1',52506],['mktB2',72357],['mktB3',19851],['mktV',59900]];
+    nums.forEach(([id,v],i) => { const el = document.getElementById(id); if (el) setTimeout(() => countUp(el, v, '', '', 1500), 250 + i*120); });
+  }, { threshold: 0.35 }).observe(chart);
+})();
 
 const ctrTotal  = document.getElementById('ctrTotal');
 const ctrVisits = document.getElementById('ctrVisits');
