@@ -843,7 +843,13 @@
     .mkt-legend li.ask i { background:var(--gold); box-shadow:0 0 8px rgba(201,168,117,0.6); }
     .mkt-key { font-size:11px; color:var(--muted); line-height:1.6; margin-top:22px; }
     .mkt-key i { display:inline-block; width:22px; height:8px; border-radius:4px; vertical-align:middle; margin-right:6px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55)); }
-    .mkt-bench { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-bottom:18px; }
+    .mkt-eq { display:grid; grid-template-columns:1fr auto 1fr auto 1fr auto 1.15fr; gap:12px; align-items:stretch; margin-bottom:18px; }
+    .mkt-op { display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:300; color:var(--muted); padding:0 2px; }
+    .mkt-op.gold { color:var(--gold); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+    .mkt-b.result { border-color:rgba(201,168,117,0.45); background:linear-gradient(135deg, #16110a 0%, #0a0805 100%); }
+    .ref { font-size:9px; color:var(--gold); vertical-align:super; margin-left:3px; text-decoration:none; letter-spacing:0; }
+    .ref::before { content:'['; } .ref::after { content:']'; }
+    .ref:hover { text-decoration:underline; }
     .mkt-b, .mkt-c { --mx:50%; --my:50%; background:radial-gradient(240px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-2); transition:border-color 0.3s, transform 0.25s, box-shadow 0.3s; }
     .mkt-b:hover, .mkt-c:hover { border-color:rgba(201,168,117,0.4); transform:perspective(800px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-3px); box-shadow:0 14px 40px rgba(0,0,0,0.35); }
     .mkt-b { border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; }
@@ -852,8 +858,9 @@
     .mkt-b .bl { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-top:8px; line-height:1.5; }
     .mkt-comps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
     .mkt-c { border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; position:relative; }
-    .mkt-bench .mkt-b.rv:nth-child(2), .mkt-comps .mkt-c.rv:nth-child(2) { transition-delay:0.08s; }
-    .mkt-bench .mkt-b.rv:nth-child(3), .mkt-comps .mkt-c.rv:nth-child(3) { transition-delay:0.16s; }
+    .mkt-eq .mkt-b.rv:nth-child(3), .mkt-comps .mkt-c.rv:nth-child(2) { transition-delay:0.10s; }
+    .mkt-eq .mkt-b.rv:nth-child(5), .mkt-comps .mkt-c.rv:nth-child(3) { transition-delay:0.20s; }
+    .mkt-eq .mkt-b.rv:nth-child(7) { transition-delay:0.34s; }
     .mkt-comps .mkt-c.rv:nth-child(4) { transition-delay:0.24s; }
     .mkt-comps .mkt-c.rv:nth-child(5) { transition-delay:0.32s; }
     .mkt-comps .mkt-c.rv:nth-child(6) { transition-delay:0.40s; }
@@ -881,17 +888,22 @@
     .mkt-notes sup { color:var(--gold); }
     .mkt-src { margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
     .mkt-src h5 { font-size:10px; text-transform:uppercase; letter-spacing:2.5px; color:var(--muted); margin-bottom:10px; }
-    .mkt-src ul { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; }
-    .mkt-src li { font-size:11px; color:var(--muted); line-height:1.5; }
+    .mkt-src ol { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; counter-reset:src; }
+    .mkt-src li { font-size:11px; color:var(--muted); line-height:1.5; padding-left:18px; position:relative; }
+    .mkt-src li::before { counter-increment:src; content:counter(src); position:absolute; left:0; top:0; color:var(--gold); font-weight:700; }
+    .mkt-src li:target { color:var(--text); }
     .mkt-src a { color:var(--dim); text-decoration:underline; text-underline-offset:2px; }
     .mkt-src a:hover { color:var(--gold); }
-    @media (max-width:900px) { .mkt-comps, .mkt-bench { grid-template-columns:1fr 1fr; } .mkt-why { grid-template-columns:1fr; padding:30px 24px; } .mkt-src ul { grid-template-columns:1fr; } }
+    @media (max-width:900px) { .mkt-comps { grid-template-columns:1fr 1fr; } .mkt-eq { grid-template-columns:1fr auto 1fr; } .mkt-eq .mkt-op:nth-child(4) { display:none; } .mkt-eq .mkt-b:nth-child(5) { grid-column:1 / -1; } .mkt-eq .mkt-op.gold { grid-column:1 / -1; padding:2px 0; } .mkt-eq .mkt-b.result { grid-column:1 / -1; } .mkt-why { grid-template-columns:1fr; padding:30px 24px; } .mkt-src ol { grid-template-columns:1fr; } }
     @media (max-width:600px) {
       .mkt-comps { grid-template-columns:1fr; }
-      .mkt-bench { grid-template-columns:repeat(3,1fr); gap:8px; }
-      .mkt-b { padding:14px 10px; }
-      .mkt-b .bv { font-size:17px; }
-      .mkt-b .bl { font-size:7.5px; letter-spacing:1px; margin-top:6px; }
+      .mkt-eq { grid-template-columns:1fr; gap:6px; }
+      .mkt-eq .mkt-op:nth-child(4) { display:flex; }
+      .mkt-eq .mkt-b, .mkt-eq .mkt-op, .mkt-eq .mkt-b.result { grid-column:auto; }
+      .mkt-op { padding:0; font-size:20px; }
+      .mkt-b { padding:16px 18px; }
+      .mkt-b .bv { font-size:22px; }
+      .mkt-b .bl { font-size:8.5px; letter-spacing:1.2px; margin-top:6px; }
       .mkt-chart { padding:48px 16px 26px; }
       .mkt-scale { margin:30px 0 22px; }
       .mkt-pin:not(.ask) .mkt-lbl { display:none; }
@@ -2115,78 +2127,83 @@
 <section class="mkt-section" id="recent-market-data">
   <div class="container">
     <div class="eyebrow rv">Recent Market Data</div>
-    <h2 class="sh rv">Where $59,900 Sits</h2>
-    <p class="sp rv">Most listings ask you to trust the price. This one shows its work. Every figure below was researched in September 2026 and links to its source at the bottom of this section, so you can check the math before you call.</p>
+    <h2 class="sh rv">Do the Math on $59,900</h2>
+    <p class="sp rv">Most listings ask you to trust the price. This one shows its work. Every figure below was researched in September 2026 and carries a numbered reference to its source at the bottom of this section, so you can check the math before you call.</p>
     <p class="mkt-basis rv"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
+
+    <div class="mkt-eq">
+      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB1">0</span></div><div class="bl">A typical Tiptronic 996 Turbo<br>Classic.com benchmark<a class="ref" href="#src-1">1</a></div></div>
+      <div class="mkt-op">+</div>
+      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB2">0</span></div><div class="bl">Service already done on this car<br>Water pump, AC, suspension, heater core<a class="ref" href="#sec-20-407-invested-all-documented">&uarr;</a></div></div>
+      <div class="mkt-op">=</div>
+      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB3">0</span></div><div class="bl">What it costs to build this car<br>from a typical one</div></div>
+      <div class="mkt-op gold">vs</div>
+      <div class="mkt-b result rv js-glow"><div class="bv gold">$<span id="mktB4">0</span></div><div class="bl">This car, asking<br>$16,938 less, with the work done</div></div>
+    </div>
 
     <div class="mkt-chart rv">
       <div class="mkt-scale">
         <div class="mkt-band" style="left:9.78%;right:22.22%"></div>
-        <div class="mkt-pin up" style="left:38.90%"><div class="mkt-lbl"><b>$52,506</b>Tiptronic benchmark</div></div>
-        <div class="mkt-pin down" style="left:24.44%"><div class="mkt-lbl"><b>$46,000</b>96,534 mi Tiptronic, sold 2023</div></div>
-        <div class="mkt-pin ask" style="left:55.33%"><div class="mkt-lbl"><b>$59,900</b>This car, ~94,900 mi</div></div>
-        <div class="mkt-pin down" style="left:69.77%"><div class="mkt-lbl"><b>$66,398</b>94,224 mi Tiptronic, asking</div></div>
-        <div class="mkt-pin up" style="left:83.02%"><div class="mkt-lbl"><b>$72,357</b>Manual benchmark</div></div>
+        <div class="mkt-pin up" style="left:38.90%"><div class="mkt-lbl"><b>$52,506</b>Typical Tiptronic</div></div>
+        <div class="mkt-pin down" style="left:24.44%"><div class="mkt-lbl"><b>$46,000</b>96,534 mi, sold 2023</div></div>
+        <div class="mkt-pin ask" style="left:55.33%"><div class="mkt-lbl"><b>$59,900</b>This car, work done</div></div>
+        <div class="mkt-pin down" style="left:69.77%"><div class="mkt-lbl"><b>$66,398</b>94,224 mi, asking</div></div>
+        <div class="mkt-pin up" style="left:92.97%"><div class="mkt-lbl"><b>$76,838</b>Typical car + this service</div></div>
       </div>
       <div class="mkt-ends"><span>$35,000</span><span>$80,000</span></div>
       <ul class="mkt-legend">
         <li><i></i><b>$46,000</b><span>96,534 mi Tiptronic, sold 2023</span></li>
-        <li><i></i><b>$52,506</b><span>Tiptronic benchmark</span></li>
-        <li class="ask"><i></i><b>$59,900</b><span>This car, ~94,900 mi</span></li>
-        <li><i></i><b>$66,398</b><span>94,224 mi Tiptronic, asking</span></li>
-        <li><i></i><b>$72,357</b><span>Manual benchmark</span></li>
+        <li><i></i><b>$52,506</b><span>Typical Tiptronic, Classic.com</span></li>
+        <li class="ask"><i></i><b>$59,900</b><span>This car, work done</span></li>
+        <li><i></i><b>$66,398</b><span>94,224 mi Tiptronic, asking now</span></li>
+        <li><i></i><b>$76,838</b><span>Typical car plus this car&rsquo;s service</span></li>
       </ul>
-      <div class="mkt-key"><i></i>Shaded band: 2026 Tiptronic 996 Turbo auction sales, $39,400 to $70,000 (per-lot mileage not stated for most lots). Benchmarks are market-wide figures, not tied to a single mileage. The $139,995 Zanzibar Red dealer ask sits off this chart to the right.</div>
-    </div>
-
-    <div class="mkt-bench">
-      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB1">0</span></div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, Tiptronic</div></div>
-      <div class="mkt-b rv js-glow"><div class="bv">$<span id="mktB2">0</span></div><div class="bl">Classic.com benchmark<br>996 Turbo coupe, manual</div></div>
-      <div class="mkt-b rv js-glow"><div class="bv gold">$<span id="mktB3">0</span></div><div class="bl">Manual premium, about 38 percent<br>The gap this ask is priced under</div></div>
+      <div class="mkt-key"><i></i>Shaded band: 2026 Tiptronic 996 Turbo auction sales, $39,400 to $70,000 (per-lot mileage not stated for most lots).<a class="ref" href="#src-5">5</a> Benchmarks are market-wide figures, not tied to a single mileage. Manual cars average $72,357.<a class="ref" href="#src-2">2</a> The $139,995 Zanzibar Red dealer ask sits off this chart to the right.</div>
     </div>
 
     <div class="mkt-comps">
-      <div class="mkt-c rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$70,000</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">34,000 miles. Bring a Trailer, September 8, 2026. The 2026 high-water mark for a Tiptronic: $10,100 more than this car, for 61,000 fewer miles.</div></div>
-      <div class="mkt-c hi rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$65,100</div><div class="ct">2001 Turbo, Zanzibar Red<sup>2</sup></div><div class="cm">27,000 miles. September 2024, Hagerty sale record. The only other Zanzibar Red Turbo sale on record, two years ago, in a market that has risen since.</div></div>
-      <div class="mkt-c hi rv js-glow"><span class="mkt-tag ask">Asking, unsold</span><div class="cv">$139,995</div><div class="ct">2003 Turbo, Tiptronic, Zanzibar Red</div><div class="cm">56,094 miles, one owner. A dealer ask, not a sale, and an outlier. It is also the only other US-spec car in this color and gearbox, and it is priced $80,095 above this one.</div></div>
-      <div class="mkt-c rv js-glow"><span class="mkt-tag ask">Asking</span><div class="cv">$66,398</div><div class="ct">2003 Turbo, Tiptronic</div><div class="cm">94,224 miles. Auto Assets, Powell, Ohio. Same year, same gearbox, same mileage. Already cut from $69,996, and still $6,498 above this car.</div></div>
-      <div class="mkt-c rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$46,000</div><div class="ct">2002 Turbo, Tiptronic</div><div class="cm">96,534 miles. PCarMarket, October 2023. Three years old and before the run-up. That is the floor, not the market.</div></div>
-      <div class="mkt-c rv js-glow"><span class="mkt-tag">Range</span><div class="cv">$42,250 to $67,008</div><div class="ct">US Bring a Trailer Tiptronic sales, 2026</div><div class="cm">Mileage not stated. Autoblog, September 2026: stock examples trade from close to $45,000 into the $70,000s. This car sits in the upper third of that band, with the receipts to justify it.</div></div>
+      <div class="mkt-c hi rv js-glow"><span class="mkt-tag ask">Asking, unsold</span><div class="cv">$139,995</div><div class="ct">2003 Turbo, Tiptronic, Zanzibar Red<a class="ref" href="#src-4">4</a></div><div class="cm">56,094 miles, one owner. The only other US-spec car in this color and gearbox, and it is priced $80,095 above this one. A dealer ask, not a sale, but it tells you what the color is worth to someone.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$70,000</div><div class="ct">2003 Turbo, Tiptronic<a class="ref" href="#src-5">5</a></div><div class="cm">34,000 miles. Bring a Trailer, September 8, 2026. The 2026 high-water mark for a Tiptronic: $10,100 more than this car, and it did not come with $24,332 of fresh receipts.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag ask">Asking</span><div class="cv">$66,398</div><div class="ct">2003 Turbo, Tiptronic<a class="ref" href="#src-7">7</a></div><div class="cm">94,224 miles. Auto Assets, Powell, Ohio. Same year, same gearbox, same mileage. Already cut from $69,996 and still $6,498 above this car.</div></div>
+      <div class="mkt-c hi rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$65,100</div><div class="ct">2001 Turbo, Zanzibar Red<sup>2</sup><a class="ref" href="#src-3">3</a></div><div class="cm">27,000 miles. September 2024, Hagerty sale record. The only other Zanzibar Red Turbo sale on record: $5,200 more than this ask, two years ago, in a market that has risen since.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag">Range</span><div class="cv">$42,250 to $67,008</div><div class="ct">US Bring a Trailer Tiptronic sales, 2026<a class="ref" href="#src-5">5</a></div><div class="cm">Mileage not stated. Autoblog, September 2026: stock examples trade from close to $45,000 into the $70,000s.<a class="ref" href="#src-8">8</a> Cars at the top of that band do not arrive with the water pump, AC, and suspension already done.</div></div>
+      <div class="mkt-c rv js-glow"><span class="mkt-tag sold">Sold</span><div class="cv">$46,000</div><div class="ct">2002 Turbo, Tiptronic<a class="ref" href="#src-6">6</a></div><div class="cm">96,534 miles. PCarMarket, October 2023, before the run-up. That is what a high-mile car brought three years ago with the work still ahead of it. Add three years and $24,332 of receipts and it is not a comparison.</div></div>
     </div>
 
     <div class="mkt-why rv">
       <div>
-        <h3>Why <em>$59,900</em></h3>
-        <p>The two cars closest to this one are asking $66,398 and $139,995. The Tiptronic benchmark is $52,506, but benchmark cars do not come with Zanzibar Red paint, $24,332 in fresh documented service, replaced interior trim, or a clean Texas title. $59,900 sits near the top of the documented range on purpose.</p>
-        <p>At a no-reserve auction this car would most likely hammer between $48,000 and $62,000, and the winner would add a 5 percent buyer&rsquo;s premium on top, after bidding without ever opening the service file. Buying it here, the receipts, the color research, and the PPI invitation are all in front of you first, and the price is the price.</p>
-        <p class="mkt-claim">Priced under the manual premium, above the deferred-maintenance cars, and $80,095 under the only other one like it.</p>
+        <h3>Why $59,900 Is <em>the Cheap Way In</em></h3>
+        <p>Buy the typical Tiptronic at $52,506 and you inherit its list: water pump, AC condenser, suspension, heater core, chalky interior trim. That list has already been paid for on this car, $24,332 of it, at a Porsche specialist with itemized invoices. Do the arithmetic and a typical car costs $76,838 to bring to where this one already is, and it still is not Zanzibar Red.</p>
+        <p>Every other reference point lands above this number. The nearest car at this mileage is asking $66,398 after a price cut. The best 2026 Tiptronic sale was $70,000. Manual cars average $72,357. The only other Zanzibar Red Tiptronic in the country is asking $139,995. This is the one under all of them, with the work done, the color documented, and the receipts in front of you.</p>
+        <p class="mkt-claim">$16,938 under what it costs to build one. $80,095 under the only other one like it.</p>
       </div>
       <div class="mkt-verdict">
         <span class="vn">$<span id="mktV">0</span></span>
         <span class="vl">Asking<br>Serious offers considered</span>
-        <div class="vs">No-reserve auction estimate:<br>$48,000 to $62,000 hammer, plus buyer&rsquo;s premium</div>
+        <div class="vs">$16,938 under replication cost<br>Work done. Receipts included.</div>
         <a class="btn btn-red" href="mailto:mberenji@gmail.com?subject=Offer%20on%20the%20Zanzibar%20Red%20996%20Turbo%20(WP0AB29983S687118)">Make an Offer</a>
       </div>
     </div>
 
     <div class="mkt-notes rv">
       <p><sup>1</sup> No confirmed 2026 Zanzibar Red sold comp was found, so the color premium is directional, not proven.</p>
-      <p><sup>2</sup> The 2024 Zanzibar Red sale's transmission was not recorded.</p>
+      <p><sup>2</sup> The 2024 Zanzibar Red sale&rsquo;s transmission was not recorded.</p>
+      <p><sup>3</sup> For reference, a no-reserve auction of this car would most likely hammer between $48,000 and $62,000, before a 5 percent buyer&rsquo;s premium and without the buyer seeing the service file.</p>
     </div>
 
     <div class="mkt-src rv">
-      <h5>Sources</h5>
-      <ul>
-        <li><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-automatic/" target="_blank" rel="noopener">Classic.com, 996 Turbo Tiptronic market</a> (benchmark $52,506, market-wide)</li>
-        <li><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-manual/year-2003/" target="_blank" rel="noopener">Classic.com, 996 Turbo manual market</a> (benchmark $72,357, market-wide)</li>
-        <li><a href="https://www.hagerty.com/valuation-tools/past-sales/2001-porsche-911/WP0AB29901S685862/37556d9c-6fe2-4341-90d6-12d0d8440211" target="_blank" rel="noopener">Hagerty past sales, 2001 Turbo, Zanzibar Red</a> (27,000 mi, sold $65,100, Sept 2024)</li>
-        <li><a href="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" target="_blank" rel="noopener">Classic.com listing, 2003 Zanzibar Red Tiptronic</a> (56,094 mi, asking $139,995)</li>
-        <li><a href="https://bringatrailer.com/porsche/996-turbo/" target="_blank" rel="noopener">Bring a Trailer, 996 Turbo results archive</a> (2026 Tiptronic sales $42,250 to $67,008; 34,000 mi 2003 sold $70,000, Sept 8, 2026)</li>
-        <li><a href="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" target="_blank" rel="noopener">PCarMarket auction, 2002 Turbo Tiptronic</a> (96,534 mi, sold $46,000, Oct 2023)</li>
-        <li><a href="https://www.autoassets.com/porsche" target="_blank" rel="noopener">Auto Assets, Powell, OH, dealer inventory</a> (2003 Turbo Tiptronic, 94,224 mi, reduced from $69,996 to $66,398, Sept 2026)</li>
-        <li><a href="https://www.autoblog.com/carbuying/2002-porsche-911-turbo-for-sale-with-112600-miles" target="_blank" rel="noopener">Autoblog, September 2026</a> (market context: stock examples $45,000 into the $70,000s)</li>
-        <li><a href="https://www.theautopian.com/the-unloved-996-porsche-911-turbo-used-to-be-cheap-now-pristine-ones-sell-for-more-than-new-911s/" target="_blank" rel="noopener">The Autopian, August 2026</a> (market trend: flat to rising)</li>
-      </ul>
+      <h5>References</h5>
+      <ol>
+        <li id="src-1"><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-automatic/" target="_blank" rel="noopener">Classic.com, 996 Turbo Tiptronic market</a> (benchmark $52,506, market-wide)</li>
+        <li id="src-2"><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-manual/year-2003/" target="_blank" rel="noopener">Classic.com, 996 Turbo manual market</a> (benchmark $72,357, market-wide)</li>
+        <li id="src-3"><a href="https://www.hagerty.com/valuation-tools/past-sales/2001-porsche-911/WP0AB29901S685862/37556d9c-6fe2-4341-90d6-12d0d8440211" target="_blank" rel="noopener">Hagerty past sales, 2001 Turbo, Zanzibar Red</a> (27,000 mi, sold $65,100, Sept 2024)</li>
+        <li id="src-4"><a href="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" target="_blank" rel="noopener">Classic.com listing, 2003 Zanzibar Red Tiptronic</a> (56,094 mi, asking $139,995)</li>
+        <li id="src-5"><a href="https://bringatrailer.com/porsche/996-turbo/" target="_blank" rel="noopener">Bring a Trailer, 996 Turbo results archive</a> (2026 Tiptronic sales $42,250 to $67,008; 34,000 mi 2003 sold $70,000, Sept 8, 2026)</li>
+        <li id="src-6"><a href="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" target="_blank" rel="noopener">PCarMarket auction, 2002 Turbo Tiptronic</a> (96,534 mi, sold $46,000, Oct 2023)</li>
+        <li id="src-7"><a href="https://www.autoassets.com/porsche" target="_blank" rel="noopener">Auto Assets, Powell, OH, dealer inventory</a> (2003 Turbo Tiptronic, 94,224 mi, reduced from $69,996 to $66,398, Sept 2026)</li>
+        <li id="src-8"><a href="https://www.autoblog.com/carbuying/2002-porsche-911-turbo-for-sale-with-112600-miles" target="_blank" rel="noopener">Autoblog, September 2026</a> (market context: stock examples $45,000 into the $70,000s)</li>
+        <li id="src-9"><a href="https://www.theautopian.com/the-unloved-996-porsche-911-turbo-used-to-be-cheap-now-pristine-ones-sell-for-more-than-new-911s/" target="_blank" rel="noopener">The Autopian, August 2026</a> (market trend: flat to rising)</li>
+      </ol>
     </div>
   </div>
 </section>
@@ -2948,14 +2965,29 @@ function countUp(el, target, prefix, suffix, duration) {
 
 /* Market chart: band draws, pins drop, numbers count up, once */
 (function marketLive(){
-  const chart = document.querySelector('.mkt-chart'); if (!chart) return;
-  let fired = false;
-  new IntersectionObserver(entries => {
-    if (!entries[0].isIntersecting || fired) return;
-    fired = true; chart.classList.add('live');
-    const nums = [['mktB1',52506],['mktB2',72357],['mktB3',19851],['mktV',59900]];
-    nums.forEach(([id,v],i) => { const el = document.getElementById(id); if (el) setTimeout(() => countUp(el, v, '', '', 1500), 250 + i*120); });
-  }, { threshold: 0.35 }).observe(chart);
+  /* Equation numbers count up as soon as the equation row is on screen
+     (on phones it arrives well before the chart). */
+  const eq = document.querySelector('.mkt-eq');
+  if (eq) {
+    let eqFired = false;
+    new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting || eqFired) return;
+      eqFired = true;
+      [['mktB1',52506],['mktB2',24332],['mktB3',76838],['mktB4',59900]].forEach(([id,v],i) => {
+        const el = document.getElementById(id); if (el) setTimeout(() => countUp(el, v, '', '', 1400), 200 + i*180);
+      });
+    }, { threshold: 0.3 }).observe(eq);
+  }
+  /* Chart draws itself when it is in view; the verdict price counts with it. */
+  const chart = document.querySelector('.mkt-chart');
+  if (chart) {
+    let chartFired = false;
+    new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting || chartFired) return;
+      chartFired = true; chart.classList.add('live');
+      const v = document.getElementById('mktV'); if (v) setTimeout(() => countUp(v, 59900, '', '', 1500), 300);
+    }, { threshold: 0.35 }).observe(chart);
+  }
 })();
 
 const ctrTotal  = document.getElementById('ctrTotal');
