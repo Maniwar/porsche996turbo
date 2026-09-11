@@ -845,6 +845,9 @@
     .mkt-key i { display:inline-block; width:22px; height:8px; border-radius:4px; vertical-align:middle; margin-right:6px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55)); }
     .mkt-eq { display:grid; grid-template-columns:1fr auto 1fr auto 1fr auto 1.15fr; gap:12px; align-items:stretch; margin-bottom:18px; }
     .mkt-op { display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:300; color:var(--muted); padding:0 2px; }
+    .mkt-eqk { font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:var(--gold); margin:30px 0 12px; }
+    .mkt-eqcap { font-size:11.5px; color:var(--muted); line-height:1.65; margin:12px 0 0; max-width:860px; }
+    .mkt-eqcap b { color:var(--dim); font-weight:600; }
     .mkt-op.gold { color:var(--gold); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
     .mkt-b.result { border-color:rgba(201,168,117,0.45); background:linear-gradient(135deg, #16110a 0%, #0a0805 100%); }
     .ref { font-size:9px; color:var(--gold); vertical-align:super; margin-left:3px; text-decoration:none; letter-spacing:0; }
@@ -2389,13 +2392,13 @@
     <p class="mkt-basis rv-repeat"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
 
     <div class="mkt-eq">
-      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB1">0</span></div><div class="bl">A typical Tiptronic 996 Turbo<br>Classic.com benchmark<a class="ref" href="#src-1">1</a></div></div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB1" data-count="52506">0</span></div><div class="bl">A typical Tiptronic 996 Turbo<br>Classic.com benchmark<a class="ref" href="#src-1">1</a></div></div>
       <div class="mkt-op">+</div>
-      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB2">0</span></div><div class="bl">Service already done on this car<br>Water pump, AC, suspension, heater core<a class="ref" href="#sec-20-407-invested-all-documented">&uarr;</a></div></div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB2" data-count="24332">0</span></div><div class="bl">Service already done on this car<br>Water pump, AC, suspension, heater core<a class="ref" href="#sec-20-407-invested-all-documented">&uarr;</a></div></div>
       <div class="mkt-op">=</div>
-      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB3">0</span></div><div class="bl">What it costs to build this car<br>from a typical one</div></div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB3" data-count="76838">0</span></div><div class="bl">What it costs to build this car<br>from a typical one</div></div>
       <div class="mkt-op gold">vs</div>
-      <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span id="mktB4">0</span></div><div class="bl">This car, asking<br>$16,938 less, with the work done</div></div>
+      <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span id="mktB4" data-count="59900">0</span></div><div class="bl">This car, asking<br>$16,938 less, with the work done</div></div>
     </div>
 
     <div class="mkt-chart rv-repeat">
@@ -2545,7 +2548,7 @@
       <div>
         <h3>Why $59,900 Is <em>the Cheap Way In</em></h3>
         <p>Buy the typical Tiptronic at $52,506 and the usual list is still ahead of you: water pump, AC condenser, suspension, heater core, chalky interior trim. That list has already been paid for on this car, $24,332 of it, at a Porsche specialist with itemized invoices. Do the arithmetic and a typical car costs $76,838 to bring to where this one already is, and it still is not Zanzibar Red.</p>
-        <p>The one number that looks like a ceiling is the 2024 Zanzibar Red sale: $62,000 for a 27,000-mile car. It is not a ceiling, for two reasons. First, it is a 2024 price. In August 2026, Bring a Trailer sold a 27,000-mile 2001 Turbo for $119,500. That car was a 6-speed, and even after the roughly 38 percent manual premium the benchmarks show, it works out to about $87,000 for a Tiptronic. Second, it is a 27,000-mile price. This car has 95,000 and is priced for it, and the parts that fail on age rather than miles, the water pump, AC condenser, heater core and suspension, are already done.</p>
+        <p>The one number that looks like a ceiling is the 2024 Zanzibar Red sale: $62,000 for a 27,000-mile car. It is not a ceiling, for two reasons. First, it is a 2024 price. In August 2026, Bring a Trailer sold a 27,000-mile 2001 Turbo for $119,500. That car was a 6-speed, and even after the roughly 38 percent manual premium the benchmarks show, it works out to about $87,000 for a Tiptronic. Second, it is a 27,000-mile price. This car has 95,000 and is priced for it, and the parts that fail on age rather than miles, the water pump, AC condenser, heater core and suspension, are already done. The arithmetic is worked out below: even charging a harsh $0.35 for every extra mile, that car lands at $63,200 in 2026 money, $3,300 above this ask.</p>
         <p>The closest comparisons all land above this number. The nearest car at this mileage is asking $64,398 after a price cut. The best 2026 Tiptronic sale was $70,000. Manual cars average $72,357. The only other Zanzibar Red Tiptronic in the country is asking $149,995. This is the one under all of them, with the work done, the color documented, and the receipts in front of you.</p>
         <p class="mkt-claim">$16,938 under what it costs to build one. $90,095 under the only other one like it.</p>
       </div>
@@ -2556,6 +2559,18 @@
         <a class="btn btn-red" href="mailto:mberenji@gmail.com?subject=Offer%20on%20the%20Zanzibar%20Red%20996%20Turbo%20(WP0AB29983S687118)">Make an Offer</a>
       </div>
     </div>
+
+    <div class="mkt-eqk rv-repeat">The 2024 Zanzibar Red sale, brought to 2026 and to this car&rsquo;s miles</div>
+    <div class="mkt-eq mkt-eq2">
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span data-count="87000">0</span></div><div class="bl">That car at 2026 prices, still 27,000 mi<br>$119,500 6-speed sale, less the 38 percent manual premium<a class="ref" href="#src-10">10</a></div></div>
+      <div class="mkt-op">&minus;</div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span data-count="23800">0</span></div><div class="bl">68,000 extra miles at $0.35 per mile<br>A deliberately harsh rate, see below</div></div>
+      <div class="mkt-op">=</div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span data-count="63200">0</span></div><div class="bl">That car, at this car&rsquo;s miles,<br>in 2026 money</div></div>
+      <div class="mkt-op gold">vs</div>
+      <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span data-count="59900">0</span></div><div class="bl">This car, asking<br>$3,300 under, with the work done</div></div>
+    </div>
+    <p class="mkt-eqcap rv-repeat"><b>Why $0.35 a mile is harsh:</b> the only 2026 Tiptronic pair in this section, $70,000 at 34,000 miles and $64,398 at 94,224 miles, implies about $0.09 a mile. At that rate the 2024 car adjusts to about $80,700, not $63,200. The heavier rate is used so nobody can say the miles were waved away, and this car still comes in under it.</p>
 
     <div class="mkt-notes rv-repeat">
       <p><sup>1</sup> No confirmed 2026 Zanzibar Red sold comp was found, so the color premium is directional, not proven.</p>
@@ -3253,11 +3268,12 @@ function countUp(el, target, prefix, suffix, duration) {
       if (e.isIntersecting) onEnter(); else onLeave();
     }, { threshold: 0 }).observe(el);
   }
-  const EQ = [['mktB1',52506],['mktB2',24332],['mktB3',76838],['mktB4',59900]];
-  const eq = document.querySelector('.mkt-eq');
-  watch(eq,
-    () => { eq.classList.add('in'); EQ.forEach(([id,v],i) => { const el = document.getElementById(id); if (el) setTimeout(() => { if (eq.classList.contains('in')) count(el, v, 1400); }, 150 + i*180); }); },
-    () => { eq.classList.remove('in'); EQ.forEach(([id]) => { const el = document.getElementById(id); if (el) zero(el); }); });
+  document.querySelectorAll('.mkt-eq').forEach(eq => {
+    const nums = Array.from(eq.querySelectorAll('[data-count]'));
+    watch(eq,
+      () => { eq.classList.add('in'); nums.forEach((el,i) => setTimeout(() => { if (eq.classList.contains('in')) count(el, parseInt(el.dataset.count, 10), 1400); }, 150 + i*180)); },
+      () => { eq.classList.remove('in'); nums.forEach(zero); });
+  });
   const chart = document.querySelector('.mkt-chart');
   watch(chart, () => chart.classList.add('live'), () => chart.classList.remove('live'));
   const why = document.querySelector('.mkt-why'), v = document.getElementById('mktV');
