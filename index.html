@@ -876,6 +876,48 @@
     .mkt-check { margin-top:10px; align-self:flex-start; display:inline-flex; align-items:center; gap:7px; background:var(--gold); color:#0a0705; font-weight:800; font-size:11.5px; letter-spacing:0.02em; padding:9px 15px; border-radius:100px; text-decoration:none; transition:transform 0.2s, box-shadow 0.25s; }
     .mkt-check:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(201,168,117,0.35); }
     .mkt-c.flipped::after { display:none; }
+    .mkt-check { border:none; font-family:inherit; cursor:pointer; }
+    /* ── LISTING MODAL ── */
+    .mkt-modal { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(7,5,5,0.74); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); opacity:0; pointer-events:none; transition:opacity 0.28s; }
+    .mkt-modal.open { opacity:1; pointer-events:auto; }
+    .mm-dialog { position:relative; width:min(980px,100%); max-height:92vh; overflow:auto; background:var(--bg-1); border:1px solid rgba(201,168,117,0.32); border-radius:16px; box-shadow:0 40px 120px rgba(0,0,0,0.75), 0 0 70px rgba(201,168,117,0.08); transform:translateY(30px) scale(0.96); opacity:0; transition:transform 0.5s cubic-bezier(0.2,0.8,0.2,1), opacity 0.3s; display:grid; grid-template-columns:1.35fr 1fr; }
+    .mkt-modal.open .mm-dialog { transform:none; opacity:1; }
+    .mm-frame { background:#0b0808; border-right:1px solid var(--border); display:flex; flex-direction:column; min-width:0; }
+    .mm-bar { display:flex; align-items:center; gap:7px; padding:11px 14px; border-bottom:1px solid var(--border); }
+    .mm-bar i { width:10px; height:10px; border-radius:50%; background:#3b2a27; flex-shrink:0; }
+    .mm-url { flex:1; min-width:0; margin-left:6px; background:var(--bg-3); border:1px solid var(--border); border-radius:7px; padding:5px 10px; display:flex; align-items:center; gap:7px; font-size:11px; color:var(--dim); font-family:ui-monospace, SFMono-Regular, Menlo, monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mm-url svg { flex-shrink:0; color:var(--gold); }
+    .mm-shot { position:relative; flex:1; min-height:440px; overflow:hidden; background:#0b0808; }
+    .mm-shot img { width:100%; display:block; opacity:0; transition:opacity 0.5s; }
+    .mm-shot img.ready { opacity:1; animation:mmPan 16s ease-in-out 1.4s infinite alternate; }
+    @keyframes mmPan { from { transform:translateY(0); } to { transform:translateY(calc(-100% + 440px)); } }
+    .mm-ph { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; padding:30px; color:var(--muted); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; background:radial-gradient(420px circle at 50% 40%, rgba(201,168,117,0.07), transparent 65%); }
+    .mm-ph b { font-size:20px; font-weight:800; color:var(--dim); letter-spacing:0; text-transform:none; }
+    .mm-ph .mm-ring { width:54px; height:54px; border-radius:50%; border:1px solid rgba(201,168,117,0.35); display:flex; align-items:center; justify-content:center; color:var(--gold); margin-bottom:6px; animation:kvBreathe 3s ease-in-out infinite; }
+    .mm-side { padding:26px 26px 22px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+    .mm-kicker { font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:var(--gold); }
+    .mm-title { font-size:28px; font-weight:800; line-height:1.05; }
+    .mm-title span { display:block; font-size:13px; font-weight:600; color:var(--dim); margin-top:6px; }
+    .mm-rows { margin-top:6px; }
+    .mm-row { display:flex; justify-content:space-between; gap:14px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--border); padding:7px 0; line-height:1.4; }
+    .mm-row b { color:var(--text); font-weight:600; text-align:right; }
+    .mm-note { font-size:11.5px; color:var(--muted); line-height:1.55; }
+    .mm-open { margin-top:auto; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--gold); color:#0a0705; font-weight:800; font-size:13px; padding:13px 18px; border-radius:100px; text-decoration:none; transition:transform 0.2s, box-shadow 0.25s; box-shadow:0 8px 26px rgba(201,168,117,0.22); }
+    .mm-open:hover { transform:translateY(-2px); box-shadow:0 14px 40px rgba(201,168,117,0.4); }
+    .mm-foot { font-size:10px; color:var(--muted); line-height:1.5; letter-spacing:0.02em; }
+    .mm-close { position:absolute; top:12px; right:12px; z-index:2; width:34px; height:34px; border-radius:50%; border:1px solid rgba(255,255,255,0.18); background:rgba(7,5,5,0.7); color:rgba(255,255,255,0.85); font-size:18px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit; }
+    .mm-close:hover { border-color:var(--gold); color:var(--gold); }
+    @media (max-width:760px) {
+      .mkt-modal { padding:0; align-items:flex-end; }
+      .mm-dialog { grid-template-columns:1fr; width:100%; max-height:94vh; border-radius:18px 18px 0 0; transform:translateY(100%); }
+      .mm-frame { border-right:none; border-bottom:1px solid var(--border); }
+      .mm-shot { min-height:250px; height:250px; flex:none; }
+      .mm-shot img.ready { animation-name:mmPanM; }
+      @keyframes mmPanM { from { transform:translateY(0); } to { transform:translateY(calc(-100% + 250px)); } }
+      .mm-side { padding:20px 20px 24px; }
+      .mm-title { font-size:24px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .mm-dialog { transition:none; } .mm-shot img.ready { animation:none; } .mm-ph .mm-ring { animation:none; } }
     @media (prefers-reduced-motion: reduce) { .mkt-flip { transition:none; } }
     .mkt-c::after { content:''; position:absolute; top:-10%; bottom:-10%; width:70px; left:-110px; background:linear-gradient(105deg, transparent, rgba(201,168,117,0.22), transparent); transform:skewX(-20deg); pointer-events:none; }
     .mkt-c.in::after { animation:mktSheen 1.1s ease-out 0.3s 1; }
@@ -2361,7 +2403,7 @@
     </div>
 
     <div class="mkt-comps">
-      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" data-shot="comps/classic-139995.jpg" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag ask">Asking, unsold</span>
@@ -2377,11 +2419,11 @@
             <div class="bk-row"><span>Result</span><b>Asking $139,995, unsold</b></div>
             <div class="bk-row"><span>Date</span><b>Live, September 2026</b></div>
             <div class="bk-note">One owner. VIN WP0AB29983S686616.</div>
-            <a class="mkt-check" href="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" target="_blank" rel="noopener" onclick="event.stopPropagation()">Check the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/porsche/996-turbo/" data-shot="comps/bat-996-turbo.jpg" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag sold">Sold</span>
@@ -2397,11 +2439,11 @@
             <div class="bk-row"><span>Result</span><b>Sold $70,000</b></div>
             <div class="bk-row"><span>Date</span><b>September 8, 2026</b></div>
             <div class="bk-note">Highest 2026 Tiptronic result found. Search the archive by date.</div>
-            <a class="mkt-check" href="https://bringatrailer.com/porsche/996-turbo/" target="_blank" rel="noopener" onclick="event.stopPropagation()">Check the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.autoassets.com/porsche" data-shot="comps/autoassets-66398.jpg" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag ask">Asking</span>
@@ -2417,11 +2459,11 @@
             <div class="bk-row"><span>Result</span><b>Asking $66,398</b></div>
             <div class="bk-row"><span>Date</span><b>Reduced from $69,996, Sept 2026</b></div>
             <div class="bk-note">Nearest active listing to this car in year, gearbox, and mileage.</div>
-            <a class="mkt-check" href="https://www.autoassets.com/porsche" target="_blank" rel="noopener" onclick="event.stopPropagation()">Check the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
           </div>
         </div>
       </div>
-      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.hagerty.com/valuation-tools/past-sales/2001-porsche-911/WP0AB29901S685862/37556d9c-6fe2-4341-90d6-12d0d8440211" data-shot="comps/hagerty-65100.jpg" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag sold">Sold</span>
@@ -2437,11 +2479,11 @@
             <div class="bk-row"><span>Result</span><b>Sold $65,100</b></div>
             <div class="bk-row"><span>Date</span><b>September 2024</b></div>
             <div class="bk-note">Transmission not recorded on the sale record (footnote 2).</div>
-            <a class="mkt-check" href="https://www.hagerty.com/valuation-tools/past-sales/2001-porsche-911/WP0AB29901S685862/37556d9c-6fe2-4341-90d6-12d0d8440211" target="_blank" rel="noopener" onclick="event.stopPropagation()">Check the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/porsche/996-turbo/" data-shot="comps/bat-996-turbo.jpg" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag">Range</span>
@@ -2457,11 +2499,11 @@
             <div class="bk-row"><span>Result</span><b>$42,250 to $67,008</b></div>
             <div class="bk-row"><span>Date</span><b>January to September 2026</b></div>
             <div class="bk-note">Market-wide range, not one lot. Autoblog context linked in reference 8.</div>
-            <a class="mkt-check" href="https://bringatrailer.com/porsche/996-turbo/" target="_blank" rel="noopener" onclick="event.stopPropagation()">Check the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
           </div>
         </div>
       </div>
-      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" tabindex="0" aria-label="Show listing details">
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" data-shot="comps/pcarmarket-46000.jpg" tabindex="0" aria-label="Show listing details">
         <div class="mkt-flip">
           <div class="mkt-face front">
             <span class="mkt-tag sold">Sold</span>
@@ -2477,7 +2519,7 @@
             <div class="bk-row"><span>Result</span><b>Sold $46,000</b></div>
             <div class="bk-row"><span>Date</span><b>October 2023</b></div>
             <div class="bk-note">Directional only: three years old and pre-dates the 2025 to 2026 rise.</div>
-            <a class="mkt-check" href="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-7/" target="_blank" rel="noopener" onclick="event.stopPropagation()">Check the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
           </div>
         </div>
       </div>
@@ -2520,6 +2562,29 @@
     </div>
   </div>
 </section>
+
+<!-- ══ LISTING MODAL (opened from the market comp cards) ══ -->
+<div class="mkt-modal" id="mktModal" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
+  <div class="mm-dialog">
+    <button type="button" class="mm-close" onclick="mktClose()" aria-label="Close">&times;</button>
+    <div class="mm-frame">
+      <div class="mm-bar"><i></i><i></i><i></i><div class="mm-url"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span class="mm-domain"></span></div></div>
+      <div class="mm-shot">
+        <img alt="Screenshot of the listing page">
+        <div class="mm-ph"><div class="mm-ring"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 21h8"/></svg></div><b>Preview unavailable</b><span>Open the live listing below</span></div>
+      </div>
+    </div>
+    <div class="mm-side">
+      <div class="mm-kicker">The listing behind this number</div>
+      <div class="mm-title" id="mmTitle"></div>
+      <div class="mm-rows"></div>
+      <div class="mm-note"></div>
+      <a class="mm-open" href="#" target="_blank" rel="noopener">Open the live listing <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+      <div class="mm-foot">Preview captured September 2026. The live page may have changed since; the link above is the source of record.</div>
+    </div>
+  </div>
+</div>
+
 
 
 <!-- ══ SPECS ══ -->
@@ -3389,6 +3454,31 @@ document.querySelectorAll('.js-glow').forEach(card => {
 
 /* Condition tile 3D flip */
 function condFlip(el) { el.classList.toggle('flipped'); }
+/* Listing modal: opened from a comp card's back face */
+const mktModal = document.getElementById('mktModal');
+function mktOpen(btn) {
+  const card = btn.closest('.mkt-c');
+  const rows = Array.from(card.querySelectorAll('.bk-row')).map(r => [r.children[0].textContent, r.children[1].innerHTML]);
+  const noteEl = card.querySelector('.bk-note');
+  const url = card.dataset.url || '#', shot = card.dataset.shot || '';
+  let domain = ''; try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
+  mktModal.querySelector('.mm-domain').textContent = domain;
+  mktModal.querySelector('.mm-title').innerHTML = card.querySelector('.cv').textContent + '<span>' + (card.querySelector('.ct').childNodes[0].textContent || '') + '</span>';
+  mktModal.querySelector('.mm-rows').innerHTML = rows.map(([k, v]) => '<div class="mm-row"><span>' + k + '</span><b>' + v + '</b></div>').join('');
+  mktModal.querySelector('.mm-note').textContent = noteEl ? noteEl.textContent : '';
+  mktModal.querySelector('.mm-open').href = url;
+  const img = mktModal.querySelector('.mm-shot img'), ph = mktModal.querySelector('.mm-ph');
+  img.classList.remove('ready'); ph.style.display = 'flex';
+  img.onload  = () => { img.classList.add('ready'); ph.style.display = 'none'; };
+  img.onerror = () => { img.classList.remove('ready'); ph.style.display = 'flex'; };
+  img.src = shot;
+  mktModal.classList.add('open'); document.body.style.overflow = 'hidden';
+  mktModal.querySelector('.mm-close').focus();
+}
+function mktClose() { mktModal.classList.remove('open'); document.body.style.overflow = ''; }
+mktModal.addEventListener('click', e => { if (e.target === mktModal) mktClose(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && mktModal.classList.contains('open')) mktClose(); });
+
 /* Market comp card flip (click, tap, or Enter/Space) */
 function mktFlip(el) { el.classList.toggle('flipped'); }
 document.querySelectorAll('.mkt-c[role="button"]').forEach(c => c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); mktFlip(c); } }));
