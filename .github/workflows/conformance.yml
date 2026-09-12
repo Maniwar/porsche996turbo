@@ -56,13 +56,18 @@ jobs:
             echo "## Config conformance — the run crashed before producing a report" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # The report is already in the job summary above; the artifact is a
+      # download convenience. An account-wide artifact storage quota must not
+      # fail a conformance run that passed, so this step is non-fatal.
       - name: Upload report artifact
         if: always() && steps.harness.outputs.present == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: conformance-report
           path: conformance-report.md
           if-no-files-found: ignore
+          retention-days: 30
 
       - name: Fail the run if parameters do not conform
         if: env.CONFORMANCE_FAILED == '1'
