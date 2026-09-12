@@ -281,6 +281,23 @@
       line-height: 1.05;
       margin-bottom: 16px;
     }
+
+    /* ── SECTION ANCHORS (share links) ── */
+    section[id], header[id] { scroll-margin-top: 74px; }
+    .sec-link {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:0.62em; height:0.62em; min-width:26px; min-height:26px; margin-left:0.3em;
+      vertical-align:middle; border-radius:50%; border:1px solid var(--border);
+      color:var(--muted); background:rgba(255,255,255,0.03); text-decoration:none; cursor:pointer;
+      opacity:0; transform:translateY(3px);
+      transition:opacity 0.25s, transform 0.25s, color 0.25s, border-color 0.25s, box-shadow 0.25s;
+    }
+    .sec-link svg { width:52%; height:52%; }
+    .sh:hover .sec-link, .eyebrow:hover .sec-link, .sec-link:focus-visible, .sec-link.done { opacity:1; transform:none; }
+    .sec-link:hover, .sec-link:focus-visible { color:var(--gold); border-color:rgba(201,168,117,0.55); outline:none; }
+    .sec-link.done { color:var(--gold); border-color:var(--gold); box-shadow:0 0 16px rgba(201,168,117,0.45); }
+    .eyebrow .sec-link { min-width:22px; min-height:22px; margin-left:8px; }
+    @media (hover:none) { .sec-link { opacity:0.5; transform:none; } }
     .sp {
       font-size: 17px;
       color: var(--dim);
@@ -3771,13 +3788,63 @@ audioBtn.addEventListener('click', (e) => {
 ══════════════════════════════════ */
 const copyToast = document.getElementById('copyToast');
 let toastTimer;
-function copyEmail() {
-  navigator.clipboard.writeText('mberenji@gmail.com').then(() => {
-    clearTimeout(toastTimer);
-    copyToast.classList.add('show');
-    toastTimer = setTimeout(() => copyToast.classList.remove('show'), 2200);
-  });
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  copyToast.textContent = msg;
+  copyToast.classList.add('show');
+  toastTimer = setTimeout(() => copyToast.classList.remove('show'), 2200);
 }
+function copyEmail() {
+  navigator.clipboard.writeText('mberenji@gmail.com').then(() => showToast('Email copied!'));
+}
+
+/* ── SECTION ANCHORS: every section gets a share link (#market, #service, ...) ── */
+(function sectionLinks() {
+  const alias = {
+    'asking-price': 'price',
+    'every-angle-every-light': 'photos',
+    'the-cockpit': 'interior',
+    'sec-20-407-invested-all-documented': 'service',
+    'a-color-that-shifts-with-the-light': 'color',
+    'what-makes-it-special': 'special',
+    'recent-market-data': 'market',
+    'the-details': 'details',
+    'clean-record': 'record',
+    'the-mezger-sound': 'sound',
+    'interior-trim-condition': 'trim',
+    'serious-buyers-get-serious-answers': 'contact'
+  };
+  const canon = {};
+  Object.keys(alias).forEach(id => { canon[alias[id]] = id; });
+  function resolve() {
+    let h = ''; try { h = decodeURIComponent(location.hash.slice(1)); } catch (e) { h = location.hash.slice(1); }
+    if (!h) return;
+    const el = document.getElementById(canon[h] || h);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
+  window.addEventListener('hashchange', resolve);
+  window.addEventListener('load', () => { setTimeout(resolve, 80); setTimeout(resolve, 700); });
+  const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+  document.querySelectorAll('section[id]').forEach(sec => {
+    const short = alias[sec.id] || sec.id;
+    const host = sec.querySelector('.sh') || sec.querySelector('.eyebrow') || sec.querySelector('.int-title');
+    if (!host) return;
+    const a = document.createElement('a');
+    a.className = 'sec-link';
+    a.href = '#' + short;
+    a.title = 'Copy link to this section';
+    a.setAttribute('aria-label', 'Copy link to this section');
+    a.innerHTML = icon;
+    a.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const url = location.origin + location.pathname + '#' + short;
+      history.replaceState(null, '', '#' + short);
+      const done = () => { a.classList.add('done'); showToast('Link copied!'); setTimeout(() => a.classList.remove('done'), 1800); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, done); else done();
+    });
+    host.appendChild(a);
+  });
+})();
 </script>
 <!-- BEGIN concierge-kit embed (managed by `adopt stamp`; edits between markers are overwritten) -->
 <!-- ============================================================
