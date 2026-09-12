@@ -346,8 +346,14 @@ export function chooseBeatAction(
 
   // Give-first presence: every sales action is spent or resting, but silence
   // is not the only honest option — one small, unasked piece of TRUE house
-  // expertise (care, provenance, the box, the mending promise) keyed to where
-  // they are reading. Once per section per day; never an ask.
+  // expertise (care, provenance, delivery, what the house stands behind) keyed
+  // to where they are reading. Once per section per day; never an ask.
+  //
+  // The brief below is deliberately brand-NEUTRAL. It used to name this
+  // engine's own product ("the box, the mending promise", "general wool
+  // knowledge") and shipped that way to a car listing, because the coverage
+  // gate's literal scanner lost its place inside this very template literal.
+  // Every noun here must describe a SHAPE of fact, never a kind of goods.
   const warmKey = "KEEP_WARM:" + (l.section || "page");
   if (!enabled("KEEP_WARM")) fail("KEEP_WARM", "disabled by admin");
   else if (spent(warmKey)) {
@@ -362,7 +368,7 @@ export function chooseBeatAction(
       }' section. Name ONE and offer to show or arrange it. ONLY offer what the house has actually made shareable here: NEVER promise a document, image, record, or file (a CARFAX, service invoices, a PDF) is "ready to share" unless it is genuinely available to send in this chat — offering something that isn't set up is a false promise. NEVER recite specs, history, or the shopper's own data back at them, and never tally what is on file; offer to reveal it instead. Warm, brief, one light invitation, no pressure.`
       : `every sales door is spent or resting — GIVE FIRST instead of going quiet: one small, unasked piece of true house expertise keyed to the '${
         l.section || "page"
-      }' section (a care fact, the provenance, the box, the mending promise), warm and brief, no ask, no selling. ONLY a fact the house's own knowledge sections actually state — NEVER write care, washing, temperature, or durability instructions from general wool knowledge; if the house's knowledge is silent here, speak to provenance or the box instead, or hold`;
+      }' section (how it is cared for, where it came from, how it arrives, what the house stands behind), warm and brief, no ask, no selling. ONLY a fact the house's own knowledge sections actually state — NEVER write care, handling, condition, or durability guidance from general knowledge of the material or the category; if the house's knowledge is silent here, speak to provenance instead, or hold`;
     return pick(warmKey, warmDetail);
   }
 
@@ -1056,9 +1062,44 @@ export function chunkKeyFor(heading: string): string {
   return base || "section";
 }
 
+/**
+ * Count-up counters animate from a placeholder to a real figure in JavaScript,
+ * so the SERVED html carries the placeholder — almost always `0`:
+ *
+ *   <div class="bv">$<span id="mktB1" data-count="52506">0</span></div>
+ *
+ * Read as text that says "$0", and a listing's own market comparison went into
+ * a knowledge base as "$0", under the word "Asking". A concierge that quotes
+ * the asking price as zero is worse than one that says it does not know.
+ *
+ * The real number is right there in the attribute, so recover it rather than
+ * dropping the element: `data-count` is the common convention, and
+ * data-target/data-to/data-value/data-number cover the other count-up
+ * libraries. Only a numeric attribute is trusted, and only when the visible
+ * text is a bare zero-ish placeholder — an element whose text already says
+ * something real is left exactly as authored.
+ */
+const COUNTER_ATTR = /\sdata-(?:count|target|to|value|number)\s*=\s*["']([-\d.,]+)["']/i;
+
+export function fillCounterPlaceholders(html: string): string {
+  return html.replace(
+    /<(span|b|strong|em|i|div|td|p)\b([^>]*)>([\s\S]{0,24}?)<\/\1>/gi,
+    (whole, _tag, attrs, inner) => {
+      const at = COUNTER_ATTR.exec(String(attrs));
+      if (!at) return whole;
+      // only swap a placeholder: empty, or a bare 0 / 0.00 / 0,00
+      const bare = String(inner).replace(/<[^>]*>/g, "").trim();
+      if (bare && !/^0(?:[.,]0+)?$/.test(bare)) return whole;
+      const real = at[1].trim();
+      if (!real || /^0(?:[.,]0+)?$/.test(real)) return whole;
+      return `<span>${real}</span>`;
+    },
+  );
+}
+
 function stripTags(html: string): string {
   return decodeEntities(
-    html
+    fillCounterPlaceholders(html)
       // Block-level ends become spaces so "…done.</p><p>Next…" doesn't weld.
       .replace(/<\/(p|div|li|tr|h[1-6]|section|article|blockquote)>/gi, " ")
       .replace(/<br\s*\/?>/gi, " ")
