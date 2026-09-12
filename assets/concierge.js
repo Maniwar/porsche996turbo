@@ -1318,7 +1318,9 @@
               pb.disabled = true; /* spent in a past turn — visible in scrollback, never re-tappable */
             } else {
               pb.addEventListener('click', function () {
-                if (streaming) { return; }
+                /* spend the row only if the turn actually goes out — a tap that
+                   cannot be sent yet must leave the pills tappable */
+                if (!yieldToVisitor()) { return; }
                 row.classList.add('cx-replies-used');
                 var bs = row.querySelectorAll('button');
                 for (var bi = 0; bi < bs.length; bi++) { bs[bi].disabled = true; }
@@ -1378,7 +1380,8 @@
               nb.type = 'button';
               nb.setAttribute('aria-label', 'Rate ' + scoreVal + ' out of 10');
               nb.addEventListener('click', function () {
-                if (streaming) { return; }
+                /* the scale only leaves the screen if the score is really going */
+                if (!yieldToVisitor()) { return; }
                 /* the choice is made — the scale leaves the screen entirely */
                 if (rowEl.parentNode) { rowEl.parentNode.removeChild(rowEl); }
                 pendingNpsScore = scoreVal;
@@ -1710,7 +1713,7 @@
         var hb = el('button', 'cx-help-btn' + (idx === 2 ? ' cx-help-human' : ''), pair[0]);
         hb.type = 'button';
         hb.addEventListener('click', function () {
-          if (streaming) { return; }
+          if (!yieldToVisitor()) { return; } /* same rule the reply pills use */
           entryMode = 'help';
           sendMessage(pair[1]);
         });
@@ -2416,6 +2419,9 @@
     var b = el('button', 'cx-sbtn', 'Retry');
     b.type = 'button';
     b.addEventListener('click', function () {
+      /* the chip goes only if the retry is really going — otherwise a tap
+         during a proactive line would take their only way back with it */
+      if (!yieldToVisitor()) { return; }
       if (box.parentNode) { box.parentNode.removeChild(box); }
       resendLast();
     });
@@ -2943,35 +2949,71 @@
     demoTimers = [];
   }
 
+  /* Ends the current stream, whatever it was. The flag MUST come down with it:
+     aborting the request kills the fetch, but the completion handler that
+     normally lowers `streaming` never runs on an abort, so the flag used to
+     stay raised for the life of the page.
+
+     That was the real damage. Closing the panel while the concierge was
+     mid-beat — a beat can start a second after the panel opens, so this is the
+     ordinary way to close it — left `streaming` stuck true. From then on every
+     `!streaming` guard in the widget was wedged: no starter tap, no reply pill,
+     no help button, no Retry, and no further beat either. The visitor sees a
+     page whose concierge has quietly stopped accepting input, and only a reload
+     fixes it.
+
+     All three callers (closing the panel, resetting the conversation on an
+     identity change, standing the bot down for a visitor) want the stream
+     genuinely over, so the flag belongs here rather than at each call site.
+     Safe on focus: closePanel clears panelOpen first, and setStreaming only
+     pulls focus back to the composer while the panel is open. */
   function abortStream() {
     if (currentAbort) {
       try { currentAbort.abort(); } catch (e) { /* ignore */ }
       currentAbort = null;
     }
     clearDemoTimers();
+    if (streaming) { setStreaming(false); }
+  }
+
+  /* A visitor's own words outrank a line the bot started on its own.
+     Their OWN turn still landing is worth waiting for — two questions in flight
+     would interleave into nonsense — but a nudge or opener is not: the bot
+     steps aside mid-sentence and their turn goes.
+
+     This used to be inline in submitInput, so TYPING through a proactive line
+     worked while TAPPING one of the same questions was silently discarded: the
+     reply pills, the inline page starters, the NPS scale, the help buttons and
+     Retry each checked `streaming` and returned, with no message, no error and
+     no mark on the page. With the first nudge five seconds after the panel
+     opens, that is most of the taps.
+
+     Returns false when the turn is NOT going out, so a caller that spends UI
+     to send it (pills disable themselves, the rating scale leaves the screen)
+     can leave that UI alone and stay tappable. */
+  function yieldToVisitor() {
+    if (!streaming) { return true; }
+    if (!proactiveStream) { return false; }   /* their own turn is still landing */
+    abortStream();                            /* which lowers the flag */
+    return true;
   }
 
   function submitInput() {
     var text = (inputEl.value || '').replace(/^\s+|\s+$/g, '');
     if (!text) { return; }
-    if (streaming) {
-      /* their own turn is still landing — wait for it. But if the bot was just
-         speaking on its own (a nudge/opener), the visitor takes over: step aside
-         and send theirs. */
-      if (!proactiveStream) { return; }
-      abortStream();
-      setStreaming(false);
-    }
+    /* checked BEFORE the field is cleared, so a turn that cannot go out yet
+       leaves what they typed in place rather than swallowing it */
+    if (!yieldToVisitor()) { return; }
     inputEl.value = '';
     autogrow();
     sendMessage(text);
   }
 
   function sendMessage(text) {
-    if (streaming) { return; }
+    if (!yieldToVisitor()) { return false; }
     if (text && text.replace(/^\s+|\s+$/g, '').toLowerCase() === 'selftest') {
       pinned = true; hideNewPill(); runSelfTest();
-      return;
+      return true;
     }
     pinned = true;
     hideNewPill();
@@ -2993,10 +3035,11 @@
     if (quietMode) { setQuiet(false); }
     wrappedUp = false;
     clearNudge();
+    return true;
   }
 
   function resendLast() {
-    if (streaming) { return; }
+    if (!yieldToVisitor()) { return; }
     /* last user message is already in history — just re-run */
     var i, has = false;
     for (i = history.length - 1; i >= 0; i--) {
@@ -4097,7 +4140,11 @@
         b.addEventListener('click', function () { openPanel(question); });
         target.appendChild(b);
         roots.push(b);
-      })(INLINE_SECTIONS[i]);
+        /* list0, NOT INLINE_SECTIONS: the loop walks the admin's configured
+           placement list, so indexing the baked default instead put starters on
+           the wrong sections — and dropped them entirely past its length. Only
+           invisible while the two lists happened to be the same array. */
+      })(list0[i]);
     }
     syncReduced();
   }
@@ -4146,8 +4193,8 @@
        stuck true (e.g. a prior open threw before it finished), recover and open
        anyway rather than swallowing the click. */
     if (panelOpen && panel.classList.contains('cx-open')) {
-      if (typeof prefillQuestion === 'string' && prefillQuestion && !streaming) {
-        sendMessage(prefillQuestion);
+      if (typeof prefillQuestion === 'string' && prefillQuestion) {
+        sendMessage(prefillQuestion);   /* yields to the visitor on its own */
       }
       return;
     }
@@ -4173,7 +4220,10 @@
          at once; on touch, focus the panel so the keyboard doesn't spring up. */
       try { ((pointerFine() && inputEl && !inputEl.disabled) ? inputEl : panel).focus(); } catch (e) { /* ignore */ }
     }, REDUCED ? 0 : 80);
-    if (typeof prefillQuestion === 'string' && prefillQuestion && !streaming) {
+    /* An inline page starter carries a question. It goes even if a proactive
+       line is mid-flight (sendMessage stands the bot down); only the greeting
+       path below is conditional. */
+    if (typeof prefillQuestion === 'string' && prefillQuestion) {
       sendMessage(prefillQuestion);
     } else {
       maybeOpenerOnOpen();
@@ -4506,6 +4556,12 @@
         authFlag: remoteAuth,
         authLibLoaded: !!sbClient,
         panelOpen: panelOpen,
+        /* Is a reply landing right now, and is it one the bot started on its
+           own? Every visitor tap used to be dropped while this was true, with
+           nothing on screen to say so — the one flag that explained it was the
+           one this snapshot did not report. */
+        streaming: streaming,
+        proactiveStream: proactiveStream,
         checkoutOpen: checkoutOpen(),
         quietMode: quietMode,
         quietRemainingMs: quietMode ? Math.max(0, quietUntil - Date.now()) : 0,
