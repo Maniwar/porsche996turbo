@@ -1086,7 +1086,7 @@ export interface ExtractOpts {
  */
 export function extractPageChunks(html: string, opts: ExtractOpts = {}): PageChunk[] {
   const minChars = opts.minChars ?? 40;
-  const maxChars = opts.maxChars ?? 6000;
+  const maxChars = opts.maxChars ?? 12000;
   const maxChunks = opts.maxChunks ?? 80;
   if (typeof html !== "string" || !html.trim()) return [];
 

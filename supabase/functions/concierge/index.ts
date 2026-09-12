@@ -9331,7 +9331,16 @@ async function handleSupportAlertsPost(req: Request): Promise<Response> {
 
 const SITEWATCH_URL_CAP = 6;        // pages per sweep
 const SITEWATCH_BYTES_CAP = 3_000_000;
-const SITEWATCH_DRAFT_CAP = 8;      // model-written proposals per sweep
+const SITEWATCH_DRAFT_BATCH = 8;    // proposals per model call
+const SITEWATCH_DRAFT_CEILING = 40; // proposals per sweep, across batches — a
+                                    // rewrite of thirty sections should land in
+                                    // one pass, not five presses of "Check now"
+// How much of a section the drafter is SHOWN. This was 2,500 characters, which
+// covers a typical section three times over and a serious one not at all: the
+// 996 listing's pricing argument runs to 6,800, and a drafter handed its first
+// third would faithfully summarise the wrong thing. Haiku reads 8k without
+// blinking; the cost is in the noise next to a wrong knowledge entry.
+const SITEWATCH_DRAFT_CTX = 8000;
 const SITEWATCH_FETCH_MS = 20000;
 
 interface SiteWatchCfg { enabled: boolean; urls: string[] }
@@ -9389,14 +9398,14 @@ interface SiteDraftRow {
 async function draftSiteKbEntries(url: string, drafts: SiteDraftRow[]): Promise<number> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
   if (!apiKey || !drafts.length) return 0;
-  const batch = drafts.slice(0, SITEWATCH_DRAFT_CAP);
+  const batch = drafts.slice(0, SITEWATCH_DRAFT_BATCH);
   const block = batch.map((d, i) => {
     const head = `${i}. [${d.change_kind.toUpperCase()}] section "${d.heading || d.chunk_key}"`;
     if (d.change_kind === "removed") {
-      return `${head}\nTHIS SECTION IS GONE FROM THE PAGE. It used to say:\n${(d.old_text || "").slice(0, 2500)}`;
+      return `${head}\nTHIS SECTION IS GONE FROM THE PAGE. It used to say:\n${(d.old_text || "").slice(0, SITEWATCH_DRAFT_CTX)}`;
     }
-    const was = d.old_text ? `\nPREVIOUSLY:\n${d.old_text.slice(0, 1500)}` : "";
-    return `${head}${was}\nNOW SAYS:\n${(d.new_text || "").slice(0, 2500)}`;
+    const was = d.old_text ? `\nPREVIOUSLY:\n${d.old_text.slice(0, SITEWATCH_DRAFT_CTX / 2)}` : "";
+    return `${head}${was}\nNOW SAYS:\n${(d.new_text || "").slice(0, SITEWATCH_DRAFT_CTX)}`;
   }).join("\n\n---\n\n");
 
   let items: Array<Record<string, unknown>> = [];
@@ -9406,7 +9415,7 @@ async function draftSiteKbEntries(url: string, drafts: SiteDraftRow[]): Promise<
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
-        model: BEAT_JUDGE_MODEL, max_tokens: 2000, temperature: 0,
+        model: BEAT_JUDGE_MODEL, max_tokens: 8000, temperature: 0,
         system:
           "You convert CHANGED WEBSITE COPY into draft knowledge-base entries for a sales concierge. " +
           "A human reviews everything you write before it goes live.\n\n" +
@@ -9422,7 +9431,11 @@ async function draftSiteKbEntries(url: string, drafts: SiteDraftRow[]): Promise<
           "so it offers to find out instead of inventing an answer.\n\n" +
           "Strip the persuasion. Marketing copy is written to move someone; a knowledge entry is " +
           "written to answer someone. Keep the facts, drop the adjectives.\n\n" +
-          "content_md: 2-8 short markdown bullets, plain and factual. title: merchant-facing, under " +
+          "content_md: plain, factual markdown — normally 2-8 short bullets. BUT a section dense " +
+          "with figures (comparable sales, prices, dates, mileages, lot numbers, references) is DATA, " +
+          "not prose: keep EVERY figure with its qualifier, in as many bullets or a table as it takes. " +
+          "Length follows the facts. A pricing argument reduced to eight bullets has lost the argument, " +
+          "and the concierge will then invent the comps it cannot see. title: merchant-facing, under " +
           "70 characters. For a REMOVED section, write the entry as a CORRECTION — the page no " +
           "longer offers this — because stale knowledge promising a withdrawn offer is the " +
           "expensive kind of wrong. Set kind='skip' for a section that is pure decoration, " +
@@ -9469,7 +9482,16 @@ async function draftSiteKbEntries(url: string, drafts: SiteDraftRow[]): Promise<
   for (const it of items) {
     const n = typeof it.num === "number" ? it.num : -1;
     if (n < 0 || n >= batch.length) continue;
-    if (String(it.kind ?? "") === "skip") continue;
+    if (String(it.kind ?? "") === "skip") {
+      // Record the verdict, or the next sweep asks the model about this exact
+      // caption again, forever. A title with no body cannot be published (the
+      // RPC refuses an empty entry), so the only thing it does is stop the
+      // re-asking and tell the reviewer what the drafter thought.
+      await pgPatch(`site_kb_drafts?id=eq.${batch[n].id}&status=eq.pending`, {
+        proposed_title: "Cosmetic change — nothing to teach (dismiss, or write it yourself)",
+      });
+      continue;
+    }
     const title = String(it.title ?? "").trim().slice(0, 120);
     const md = String(it.content_md ?? "").trim().slice(0, 6000);
     if (!title || !md) continue;
@@ -9512,8 +9534,12 @@ async function runSiteWatch(): Promise<Record<string, unknown>> {
       continue;
     }
     const open = (Array.isArray(rec.drafts) ? rec.drafts : []) as SiteDraftRow[];
-    if (open.length && drafted < SITEWATCH_DRAFT_CAP) {
-      drafted += await draftSiteKbEntries(url, open.slice(0, SITEWATCH_DRAFT_CAP - drafted));
+    // The RPC hands back the undrafted sections longest-first, so the market
+    // argument is proposed before the photo captions. Batches advance whether
+    // or not a call wrote anything — a batch of pure "skip" verdicts is a
+    // legitimate outcome, not a reason to stall on it.
+    for (let at = 0; at < open.length && drafted < SITEWATCH_DRAFT_CEILING; at += SITEWATCH_DRAFT_BATCH) {
+      drafted += await draftSiteKbEntries(url, open.slice(at, at + SITEWATCH_DRAFT_BATCH));
     }
     pages.push({
       url, ok: true, baseline: rec.baseline, sections: rec.sections,
