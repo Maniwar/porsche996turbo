@@ -281,6 +281,23 @@
       line-height: 1.05;
       margin-bottom: 16px;
     }
+
+    /* ── SECTION ANCHORS (share links) ── */
+    section[id], header[id] { scroll-margin-top: 74px; }
+    .sec-link {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:0.62em; height:0.62em; min-width:26px; min-height:26px; margin-left:0.3em;
+      vertical-align:middle; border-radius:50%; border:1px solid var(--border);
+      color:var(--muted); background:rgba(255,255,255,0.03); text-decoration:none; cursor:pointer;
+      opacity:0; transform:translateY(3px);
+      transition:opacity 0.25s, transform 0.25s, color 0.25s, border-color 0.25s, box-shadow 0.25s;
+    }
+    .sec-link svg { width:52%; height:52%; }
+    .sh:hover .sec-link, .eyebrow:hover .sec-link, .sec-link:focus-visible, .sec-link.done { opacity:1; transform:none; }
+    .sec-link:hover, .sec-link:focus-visible { color:var(--gold); border-color:rgba(201,168,117,0.55); outline:none; }
+    .sec-link.done { color:var(--gold); border-color:var(--gold); box-shadow:0 0 16px rgba(201,168,117,0.45); }
+    .eyebrow .sec-link { min-width:22px; min-height:22px; margin-left:8px; }
+    @media (hover:none) { .sec-link { opacity:0.5; transform:none; } }
     .sp {
       font-size: 17px;
       color: var(--dim);
@@ -447,10 +464,12 @@
     .cond-photo:hover .cond-face img { transform:scale(1.04); }
     .cond-face > span { position:absolute; bottom:0; left:0; right:0; padding:8px 12px; background:linear-gradient(transparent,rgba(0,0,0,0.82)); font-size:11px; color:rgba(255,255,255,0.75); letter-spacing:0.04em; }
     .cond-flip-hint { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.7); font-size:12px; display:flex; align-items:center; justify-content:center; pointer-events:none; }
-    .cond-back { transform:rotateY(180deg); background:var(--bg-2); border-color:rgba(191,58,28,0.35); display:flex; flex-direction:column; justify-content:space-between; padding:14px; }
+    .cond-back { transform:rotateY(180deg); background:var(--bg-2); border-color:rgba(191,58,28,0.35); display:flex; flex-direction:column; gap:10px; padding:14px; }
+    /* text block flexes and scrolls; the button is pinned so it can never be clipped */
+    .cond-back > div { flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     .cond-back h5 { font-size:12px; font-weight:700; color:var(--red-b); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:8px; }
     .cond-back p { font-size:11.5px; line-height:1.55; color:var(--dim); }
-    .cond-back button { align-self:flex-start; background:none; border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:rgba(255,255,255,0.8); font-size:10.5px; letter-spacing:0.06em; padding:6px 12px; cursor:pointer; font-family:inherit; }
+    .cond-back button { flex:0 0 auto; align-self:flex-start; background:none; border:1px solid rgba(255,255,255,0.2); border-radius:6px; color:rgba(255,255,255,0.8); font-size:10.5px; letter-spacing:0.06em; padding:6px 12px; cursor:pointer; font-family:inherit; }
     .cond-back button:hover { border-color:var(--red-b); color:#fff; }
     @media (max-width:700px) { .cond-grid { grid-template-columns:repeat(2,1fr); } .cond-back p { font-size:10.5px; line-height:1.45; } }
     @media (prefers-reduced-motion: reduce) { .cond-flip { transition:none; } }
@@ -669,6 +688,11 @@
       max-height: 600px;
       margin-top: 12px;
     }
+    /* optional narrative block — collapses with the tag list */
+    .svc-detail { max-height:0; overflow:hidden; transition:max-height 0.4s ease; }
+    .svc-item.expanded .svc-detail { max-height:400px; margin-top:12px; }
+    .svc-detail p { font-size:12.5px; line-height:1.7; color:var(--dim); }
+    .svc-detail p + p { margin-top:9px; color:var(--muted); }
     .svc-tag {
       font-size: 11px;
       background: var(--bg-3);
@@ -802,6 +826,259 @@
     }
     .pts-stat .pn { font-size:30px; font-weight:900; line-height:1.1; color:var(--gold); display:block; }
     .pts-stat .pl { font-size:9px; text-transform:uppercase; letter-spacing:1.8px; color:var(--muted); display:block; margin-top:7px; line-height:1.5; }
+
+    /* ── RECENT MARKET DATA ── */
+    .mkt-section { background: var(--bg-1); }
+    .mkt-basis { font-size:12px; color:var(--muted); letter-spacing:0.02em; line-height:1.7; margin:-28px 0 36px; max-width:720px; }
+    .mkt-basis strong { color:var(--dim); font-weight:600; }
+    .mkt-chart { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:56px 40px 40px; margin-bottom:18px; }
+    .mkt-scale { position:relative; height:10px; border-radius:5px; background:var(--bg-3); margin:34px 0 64px; }
+    .mkt-band { position:absolute; top:0; bottom:0; border-radius:5px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55), rgba(191,58,28,0.25)); transform:scaleX(0); transform-origin:left center; transition:transform 1.1s cubic-bezier(0.2,0.8,0.2,1) 0.1s; }
+    .mkt-chart.live .mkt-band { transform:scaleX(1); }
+    .mkt-pin { position:absolute; top:50%; width:2px; height:26px; background:var(--muted); transform:translate(-50%,-50%) scaleY(0); opacity:0; transition:transform 0.55s cubic-bezier(0.2,0.8,0.2,1), opacity 0.4s; }
+    .mkt-chart.live .mkt-pin { transform:translate(-50%,-50%) scaleY(1); opacity:1; }
+    .mkt-chart.live .mkt-pin:nth-child(2) { transition-delay:0.9s; }
+    .mkt-chart.live .mkt-pin:nth-child(3) { transition-delay:1.05s; }
+    .mkt-chart.live .mkt-pin:nth-child(5) { transition-delay:1.2s; }
+    .mkt-chart.live .mkt-pin:nth-child(6) { transition-delay:1.35s; }
+    .mkt-chart.live .mkt-pin.ask { transition-delay:1.7s; animation:mktPulse 2.6s ease-in-out 2.4s infinite; }
+    @keyframes mktPulse { 0%,100%{box-shadow:0 0 18px rgba(201,168,117,0.5)} 50%{box-shadow:0 0 34px rgba(201,168,117,0.95)} }
+    .mkt-lbl { transition:opacity 0.5s 0.15s; }
+    .mkt-pin.up .mkt-lbl { bottom:calc(100% + 6px); }
+    .mkt-pin.down .mkt-lbl { top:calc(100% + 6px); }
+    .mkt-lbl { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; text-align:center; font-size:10px; letter-spacing:0.06em; color:var(--muted); line-height:1.35; }
+    .mkt-lbl b { display:block; font-size:12px; font-weight:700; color:var(--dim); letter-spacing:0; }
+    .mkt-pin.ask { width:3px; height:44px; background:var(--gold); box-shadow:0 0 18px rgba(201,168,117,0.5); z-index:2; }
+    .mkt-pin.ask .mkt-lbl { color:var(--gold); bottom:calc(100% + 8px); }
+    .mkt-pin.ask .mkt-lbl b { font-size:17px; color:var(--gold); }
+    .mkt-ends { display:flex; justify-content:space-between; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-top:0; padding-top:10px; border-top:1px dashed var(--border); }
+    .mkt-legend { display:none; list-style:none; margin:18px 0 0; padding:0; }
+    .mkt-legend li { display:flex; gap:10px; align-items:baseline; font-size:11.5px; color:var(--muted); line-height:1.6; }
+    .mkt-legend b { color:var(--dim); min-width:64px; font-size:12.5px; }
+    .mkt-legend li.ask b, .mkt-legend li.ask span { color:var(--gold); }
+    .mkt-legend i { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; position:relative; top:-1px; }
+    .mkt-legend li.ask i { background:var(--gold); box-shadow:0 0 8px rgba(201,168,117,0.6); }
+    .mkt-key { font-size:11px; color:var(--muted); line-height:1.6; margin-top:22px; }
+    .mkt-key i { display:inline-block; width:22px; height:8px; border-radius:4px; vertical-align:middle; margin-right:6px; background:linear-gradient(to right, rgba(191,58,28,0.25), rgba(191,58,28,0.55)); }
+    .mkt-eq { display:grid; grid-template-columns:1fr auto 1fr auto 1fr auto 1.15fr; gap:12px; align-items:stretch; margin-bottom:18px; }
+    .mkt-op { display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:300; color:var(--muted); padding:0 2px; }
+    .mkt-eqk { font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:var(--gold); margin:30px 0 12px; }
+    .mkt-census { background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:6px 22px 10px; margin-bottom:18px; }
+    .cz-row { display:grid; grid-template-columns:1.1fr 0.7fr 1.6fr 1.2fr; gap:14px; padding:12px 0; border-bottom:1px solid var(--border); font-size:12.5px; color:var(--muted); line-height:1.5; align-items:baseline; }
+    .cz-row:last-child { border-bottom:none; }
+    .cz-row.head { font-size:9.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--muted); padding:10px 0 6px; }
+    .cz-row b { color:var(--text); font-weight:600; }
+    .cz-row .r { color:var(--text); font-weight:600; }
+    .cz-row.me { background:linear-gradient(90deg, rgba(201,168,117,0.10), transparent 70%); margin:0 -22px; padding-left:22px; padding-right:22px; }
+    .cz-row.me b, .cz-row.me .r { color:var(--gold); }
+    .cz-cap { font-size:12px; color:var(--dim); line-height:1.65; margin:12px 0 0; max-width:860px; }
+    @media (max-width:700px) { .cz-row { grid-template-columns:1fr 1fr; row-gap:4px; } .cz-row.head { display:none; } .cz-row > span:nth-child(3), .cz-row > span:nth-child(4) { grid-column:1 / -1; } }
+    .mkt-eqcap { font-size:11.5px; color:var(--muted); line-height:1.65; margin:12px 0 0; max-width:860px; }
+    .mkt-eqcap b { color:var(--dim); font-weight:600; }
+    .mkt-math { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; max-width:860px; }
+    .mkt-math > div { --mx:50%; --my:50%; background:radial-gradient(240px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-2); border:1px solid var(--border); border-radius:12px; padding:18px 20px 16px; transition:border-color 0.3s, transform 0.25s; }
+    .mkt-math > div:hover { border-color:rgba(201,168,117,0.4); transform:translateY(-2px); }
+    .mkt-math h6 { font-size:10px; letter-spacing:2.2px; text-transform:uppercase; color:var(--gold); margin:0 0 10px; font-weight:700; }
+    .mrow { display:grid; grid-template-columns:16px 104px 1fr; gap:10px; align-items:baseline; padding:5px 0; font-size:12px; color:var(--muted); line-height:1.4; }
+    .mrow .op { color:var(--gold); font-weight:700; text-align:center; font-size:14px; }
+    .mrow .v { font-variant-numeric:tabular-nums; text-align:right; color:var(--text); font-weight:600; font-size:13.5px; white-space:nowrap; }
+    .mrow.sum { border-top:1px solid var(--border); margin-top:3px; padding-top:8px; }
+    .mrow.res { border-top:1px solid rgba(201,168,117,0.4); margin-top:6px; padding-top:10px; }
+    .mrow.res .v { color:var(--gold); font-size:19px; font-weight:800; }
+    .mrow.res .l { color:var(--dim); }
+    @media (max-width:600px) { .mrow { grid-template-columns:14px 92px 1fr; font-size:11.5px; } }
+    @media (max-width:600px) { .mkt-math { grid-template-columns:1fr; } }
+    .mkt-op.gold { color:var(--gold); font-size:13px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+    .mkt-b.result { border-color:rgba(201,168,117,0.45); background:linear-gradient(135deg, #16110a 0%, #0a0805 100%); }
+    .ref { font-size:9px; color:var(--gold); vertical-align:super; margin-left:3px; text-decoration:none; letter-spacing:0; }
+    .ref::before { content:'['; } .ref::after { content:']'; }
+
+    /* ── MARKET SECTION: TOUCH-FIRST MOTION ── */
+    .mkt-shimmer { background:linear-gradient(90deg, var(--gold) 0%, #fff1cf 45%, var(--gold) 60%, #b8935f 100%); background-size:220% auto; -webkit-background-clip:text; background-clip:text; color:transparent; animation:mktShimmer 3.2s linear infinite; }
+    @keyframes mktShimmer { to { background-position:-220% center; } }
+    .mkt-op { opacity:0; transform:scale(0.4); transition:opacity 0.35s, transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+    .mkt-eq.in .mkt-op { opacity:1; transform:none; }
+    .mkt-eq.in .mkt-op:nth-child(2) { transition-delay:0.35s; }
+    .mkt-eq.in .mkt-op:nth-child(4) { transition-delay:0.65s; }
+    .mkt-eq.in .mkt-op:nth-child(6) { transition-delay:1.0s; }
+    .mkt-eq.in .mkt-b.result { animation:mktLand 0.9s cubic-bezier(0.2,0.8,0.2,1) 1.15s both; }
+    @keyframes mktLand { 0%{transform:scale(0.9);box-shadow:0 0 0 rgba(201,168,117,0)} 55%{transform:scale(1.035);box-shadow:0 0 44px rgba(201,168,117,0.6)} 100%{transform:scale(1);box-shadow:0 0 18px rgba(201,168,117,0.28)} }
+    .mkt-c { overflow:hidden; cursor:pointer; perspective:1000px; }
+    .mkt-flip { display:grid; transform-style:preserve-3d; transition:transform 0.65s cubic-bezier(0.4,0.1,0.2,1); }
+    .mkt-c.flipped .mkt-flip { transform:rotateY(180deg); }
+    .mkt-face { grid-area:1 / 1; backface-visibility:hidden; -webkit-backface-visibility:hidden; }
+    .mkt-face.front { display:flex; flex-direction:column; }
+    .mkt-face.front .mkt-more { margin-top:auto; padding-top:12px; }
+    .mkt-face.back { transform:rotateY(180deg); display:flex; flex-direction:column; gap:6px; }
+    .mkt-more { margin-top:0; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); display:flex; align-items:center; gap:6px; opacity:0.85; }
+    .mkt-more svg { flex-shrink:0; }
+    .bk-head { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--gold); margin-bottom:2px; }
+    .bk-row { display:flex; justify-content:space-between; gap:12px; font-size:11.5px; color:var(--muted); border-bottom:1px solid var(--border); padding:4px 0; line-height:1.4; }
+    .bk-row b { color:var(--text); font-weight:600; text-align:right; }
+    .bk-note { font-size:11px; color:var(--muted); line-height:1.5; margin-top:2px; }
+    .mkt-check { margin-top:10px; align-self:flex-start; display:inline-flex; align-items:center; gap:7px; background:var(--gold); color:#0a0705; font-weight:800; font-size:11.5px; letter-spacing:0.02em; padding:9px 15px; border-radius:100px; text-decoration:none; transition:transform 0.2s, box-shadow 0.25s; }
+    .mkt-check:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(201,168,117,0.35); }
+    /* flipped: the listing screenshot becomes a blurred, darkened backdrop that drifts and breathes */
+    .mkt-c::before { content:''; position:absolute; inset:-14%; z-index:0; pointer-events:none;
+      background-image:linear-gradient(180deg, rgba(10,7,5,0.80) 0%, rgba(10,7,5,0.62) 45%, rgba(10,7,5,0.88) 100%), var(--shot, none);
+      background-size:cover; background-position:center top; filter:blur(7px) saturate(1.15);
+      opacity:0; transform:scale(1.04); transition:opacity 0.7s ease 0.25s; }
+    .mkt-c.flipped::before { opacity:1; animation:bkDrift 22s ease-in-out infinite alternate; }
+    @keyframes bkDrift { 0%{transform:scale(1.04) translate3d(0,0,0);filter:blur(7px) saturate(1.15)} 50%{filter:blur(9px) saturate(1.3)} 100%{transform:scale(1.13) translate3d(-2%,-3%,0);filter:blur(6px) saturate(1.1)} }
+    .mkt-flip { position:relative; z-index:1; }
+    /* flipped: the reveal sheen becomes a slow looping sweep over the backdrop */
+    .mkt-c.flipped::after { display:block; z-index:2; background:linear-gradient(105deg, transparent, rgba(201,168,117,0.16), rgba(255,255,255,0.10), transparent); animation:mktSheenLoop 4.8s ease-in-out 0.9s infinite; }
+    @keyframes mktSheenLoop { 0%{left:-110px;opacity:0} 8%{opacity:1} 55%{left:calc(100% + 110px);opacity:1} 56%{opacity:0} 100%{left:calc(100% + 110px);opacity:0} }
+    .mkt-c.flipped .bk-row { border-bottom-color:rgba(255,255,255,0.10); }
+    .mkt-c.flipped .bk-row span, .mkt-c.flipped .bk-note { color:rgba(255,255,255,0.62); }
+    /* no browser focus ring on tap or click; keyboard focus keeps a gold one */
+    .mkt-c:focus { outline:none; }
+    .mkt-c:focus-visible { outline:2px solid var(--gold); outline-offset:3px; }
+    @media (prefers-reduced-motion: reduce) { .mkt-c.flipped::before { animation:none; } .mkt-c.flipped::after { animation:none; display:none; } }
+    .mkt-check { border:none; font-family:inherit; cursor:pointer; }
+    /* ── LISTING MODAL ── */
+    .mkt-modal { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(7,5,5,0.74); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); opacity:0; pointer-events:none; transition:opacity 0.28s; }
+    .mkt-modal.open { opacity:1; pointer-events:auto; }
+    .mm-dialog { position:relative; width:min(980px,100%); max-height:92vh; overflow:auto; background:var(--bg-1); border:1px solid rgba(201,168,117,0.32); border-radius:16px; box-shadow:0 40px 120px rgba(0,0,0,0.75), 0 0 70px rgba(201,168,117,0.08); transform:translateY(30px) scale(0.96); opacity:0; transition:transform 0.5s cubic-bezier(0.2,0.8,0.2,1), opacity 0.3s; display:grid; grid-template-columns:1.35fr 1fr; }
+    .mkt-modal.open .mm-dialog { transform:none; opacity:1; }
+    .mm-frame { background:#0b0808; border-right:1px solid var(--border); display:flex; flex-direction:column; min-width:0; }
+    .mm-bar { display:flex; align-items:center; gap:7px; padding:11px 14px; border-bottom:1px solid var(--border); }
+    .mm-bar i { width:10px; height:10px; border-radius:50%; background:#3b2a27; flex-shrink:0; }
+    .mm-url { flex:1; min-width:0; margin-left:6px; background:var(--bg-3); border:1px solid var(--border); border-radius:7px; padding:5px 10px; display:flex; align-items:center; gap:7px; font-size:11px; color:var(--dim); font-family:ui-monospace, SFMono-Regular, Menlo, monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mm-url svg { flex-shrink:0; color:var(--gold); }
+    .mm-shot { position:relative; flex:1; min-height:440px; overflow:hidden; background:#0b0808; }
+    .mm-shot img { width:100%; display:block; opacity:0; transition:opacity 0.5s; }
+    .mm-shot img.ready { opacity:1; animation:mmPan 16s ease-in-out 1.4s infinite alternate; }
+    @keyframes mmPan { from { transform:translateY(0); } to { transform:translateY(calc(-100% + 440px)); } }
+    .mm-ph { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; padding:30px; color:var(--muted); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; background:radial-gradient(420px circle at 50% 40%, rgba(201,168,117,0.07), transparent 65%); }
+    .mm-ph b { font-size:20px; font-weight:800; color:var(--dim); letter-spacing:0; text-transform:none; }
+    .mm-ph .mm-ring { width:54px; height:54px; border-radius:50%; border:1px solid rgba(201,168,117,0.35); display:flex; align-items:center; justify-content:center; color:var(--gold); margin-bottom:6px; animation:kvBreathe 3s ease-in-out infinite; }
+    .mm-side { padding:26px 26px 22px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+    .mm-kicker { font-size:10px; letter-spacing:2.5px; text-transform:uppercase; color:var(--gold); }
+    .mm-title { font-size:28px; font-weight:800; line-height:1.05; }
+    .mm-title span { display:block; font-size:13px; font-weight:600; color:var(--dim); margin-top:6px; }
+    .mm-rows { margin-top:6px; }
+    .mm-row { display:flex; justify-content:space-between; gap:14px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--border); padding:7px 0; line-height:1.4; }
+    .mm-row b { color:var(--text); font-weight:600; text-align:right; }
+    .mm-note { font-size:11.5px; color:var(--muted); line-height:1.55; }
+    .mm-open { margin-top:auto; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--gold); color:#0a0705; font-weight:800; font-size:13px; padding:13px 18px; border-radius:100px; text-decoration:none; transition:transform 0.2s, box-shadow 0.25s; box-shadow:0 8px 26px rgba(201,168,117,0.22); }
+    .mm-open:hover { transform:translateY(-2px); box-shadow:0 14px 40px rgba(201,168,117,0.4); }
+    .mm-foot { font-size:10px; color:var(--muted); line-height:1.5; letter-spacing:0.02em; }
+    .mm-close { position:absolute; top:12px; right:12px; z-index:2; width:34px; height:34px; border-radius:50%; border:1px solid rgba(255,255,255,0.18); background:rgba(7,5,5,0.7); color:rgba(255,255,255,0.85); font-size:18px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit; }
+    .mm-close:hover { border-color:var(--gold); color:var(--gold); }
+    @media (max-width:760px) {
+      .mkt-modal { padding:0; align-items:flex-end; }
+      .mm-dialog { grid-template-columns:1fr; width:100%; max-height:94vh; border-radius:18px 18px 0 0; transform:translateY(100%); }
+      .mm-frame { border-right:none; border-bottom:1px solid var(--border); }
+      .mm-shot { min-height:250px; height:250px; flex:none; }
+      .mm-shot img.ready { animation-name:mmPanM; }
+      @keyframes mmPanM { from { transform:translateY(0); } to { transform:translateY(calc(-100% + 250px)); } }
+      .mm-side { padding:20px 20px 24px; }
+      .mm-title { font-size:24px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .mm-dialog { transition:none; } .mm-shot img.ready { animation:none; } .mm-ph .mm-ring { animation:none; } }
+    @media (prefers-reduced-motion: reduce) { .mkt-flip { transition:none; } }
+    .mkt-c::after { content:''; position:absolute; top:-10%; bottom:-10%; width:70px; left:-110px; background:linear-gradient(105deg, transparent, rgba(201,168,117,0.22), transparent); transform:skewX(-20deg); pointer-events:none; }
+    .mkt-c.in::after { animation:mktSheen 1.1s ease-out 0.3s 1; }
+    @keyframes mktSheen { to { left:calc(100% + 110px); } }
+    .mkt-tag { opacity:0; transform:scale(0.55); transition:transform 0.45s cubic-bezier(0.34,1.56,0.64,1) 0.5s, opacity 0.3s 0.5s; }
+    .mkt-c.in .mkt-tag { opacity:1; transform:none; }
+    .mkt-c .cv { transform:scale(0.9); transform-origin:left center; transition:transform 0.6s cubic-bezier(0.2,0.8,0.2,1) 0.15s; }
+    .mkt-c.in .cv { transform:none; }
+    .mkt-legend li { opacity:0; transform:translateX(-14px); transition:opacity 0.4s, transform 0.5s cubic-bezier(0.2,0.8,0.2,1); }
+    .mkt-chart.live .mkt-legend li { opacity:1; transform:none; }
+    .mkt-chart.live .mkt-legend li:nth-child(1) { transition-delay:1.05s; }
+    .mkt-chart.live .mkt-legend li:nth-child(2) { transition-delay:0.9s; }
+    .mkt-chart.live .mkt-legend li:nth-child(3) { transition-delay:1.7s; }
+    .mkt-chart.live .mkt-legend li:nth-child(4) { transition-delay:1.2s; }
+    .mkt-chart.live .mkt-legend li:nth-child(5) { transition-delay:1.35s; }
+    .mkt-chart.live .mkt-legend li.ask b { animation:mktGlowText 2.6s ease-in-out 2.4s infinite; }
+    @keyframes mktGlowText { 0%,100%{text-shadow:0 0 0 rgba(201,168,117,0)} 50%{text-shadow:0 0 14px rgba(201,168,117,0.9)} }
+    .mkt-verdict .btn { animation:mktCta 2.8s ease-in-out infinite; }
+    @keyframes mktCta { 0%,100%{box-shadow:0 8px 24px rgba(191,58,28,0.25)} 50%{box-shadow:0 12px 40px rgba(191,58,28,0.65)} }
+    /* touch: cards press under the finger since there is no hover */
+    .js-glow.pressed { transform:scale(0.982) !important; transition:transform 0.12s !important; }
+    /* replay: when a block leaves view its children reset instantly, so the next entry animates from zero */
+    .mkt-c:not(.in) .mkt-tag, .mkt-c:not(.in) .cv, .mkt-eq:not(.in) .mkt-op,
+    .mkt-chart:not(.live) .mkt-band, .mkt-chart:not(.live) .mkt-pin, .mkt-chart:not(.live) .mkt-legend li { transition:none !important; }
+    @media (max-width:600px) {
+      .mkt-comps .mkt-c.rv-repeat:nth-child(odd)  { transform:translateX(-30px); }
+      .mkt-comps .mkt-c.rv-repeat:nth-child(even) { transform:translateX(30px); }
+      .mkt-comps .mkt-c.rv-repeat.in { transform:none; }
+      .mkt-comps .mkt-c.rv-repeat { transition-delay:0s !important; }
+      .mkt-eq .mkt-b.rv-repeat { transition-delay:0s !important; }
+      .mkt-eq.in .mkt-op:nth-child(2) { transition-delay:0.25s; }
+      .mkt-eq.in .mkt-op:nth-child(4) { transition-delay:0.5s; }
+      .mkt-eq.in .mkt-op:nth-child(6) { transition-delay:0.75s; }
+      .mkt-eq.in .mkt-b.result { animation-delay:0.9s; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .mkt-shimmer, .mkt-eq.in .mkt-b.result, .mkt-c.in::after, .mkt-chart.live .mkt-legend li.ask b, .mkt-verdict .btn { animation:none; }
+      .mkt-op, .mkt-tag, .mkt-c .cv, .mkt-legend li { opacity:1; transform:none; transition:none; }
+    }
+    .ref:hover { text-decoration:underline; }
+    .mkt-b, .mkt-c { --mx:50%; --my:50%; background:radial-gradient(240px circle at var(--mx) var(--my), rgba(201,168,117,0.07), transparent 60%), var(--bg-2); transition:border-color 0.3s, transform 0.25s, box-shadow 0.3s; }
+    .mkt-b:hover, .mkt-c:hover { border-color:rgba(201,168,117,0.4); transform:perspective(800px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-3px); box-shadow:0 14px 40px rgba(0,0,0,0.35); }
+    .mkt-b { border:1px solid var(--border); border-radius:var(--radius); padding:22px 24px; }
+    .mkt-b .bv { font-size:26px; font-weight:800; line-height:1.1; }
+    .mkt-b .bv.gold { color:var(--gold); }
+    .mkt-b .bl { font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-top:8px; line-height:1.5; }
+    .mkt-comps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+    .mkt-c { border:1px solid var(--border); border-radius:var(--radius); padding:20px 22px; position:relative; }
+    .mkt-eq .mkt-b.rv-repeat:nth-child(3), .mkt-comps .mkt-c.rv-repeat:nth-child(2) { transition-delay:0.10s; }
+    .mkt-eq .mkt-b.rv-repeat:nth-child(5), .mkt-comps .mkt-c.rv-repeat:nth-child(3) { transition-delay:0.20s; }
+    .mkt-eq .mkt-b.rv-repeat:nth-child(7) { transition-delay:0.34s; }
+    .mkt-comps .mkt-c.rv-repeat:nth-child(4) { transition-delay:0.24s; }
+    .mkt-comps .mkt-c.rv-repeat:nth-child(5) { transition-delay:0.32s; }
+    .mkt-comps .mkt-c.rv-repeat:nth-child(6) { transition-delay:0.40s; }
+    .mkt-c.hi { border-color:rgba(201,168,117,0.35); }
+    .mkt-tag { position:absolute; top:14px; right:14px; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; padding:4px 8px; border-radius:4px; border:1px solid var(--border); color:var(--muted); }
+    .mkt-tag.sold { color:var(--gold); border-color:rgba(201,168,117,0.4); }
+    .mkt-tag.ask  { color:var(--red-b); border-color:rgba(191,58,28,0.45); }
+    .mkt-c .cv { font-size:24px; font-weight:800; margin-bottom:6px; }
+    .mkt-c .ct { font-size:13px; font-weight:600; color:var(--text); line-height:1.4; }
+    .mkt-c .cm { font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.55; }
+    .mkt-c sup { color:var(--gold); font-size:9px; }
+    .mkt-why { margin-top:6px; background:linear-gradient(135deg, #160808 0%, #0a0404 100%); border:1px solid rgba(191,58,28,0.22); border-radius:14px; padding:44px 48px; display:grid; grid-template-columns:1fr auto; gap:44px; align-items:center; }
+    .mkt-why h3 { font-size:24px; font-weight:800; margin-bottom:12px; }
+    .mkt-why h3 em { font-style:normal; color:var(--gold); }
+    .mkt-why p { color:var(--dim); font-size:14.5px; line-height:1.8; margin-bottom:10px; }
+    .mkt-why .mkt-claim { color:var(--gold); font-weight:600; margin-top:4px; }
+    .mkt-verdict { text-align:center; padding:26px 30px; border:1px solid rgba(201,168,117,0.3); border-radius:12px; min-width:190px; }
+    .mkt-verdict .vn { font-size:34px; font-weight:900; color:var(--gold); line-height:1; display:block; }
+    .mkt-verdict .vl { font-size:9px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); display:block; margin-top:8px; line-height:1.5; }
+    .mkt-verdict .vs { font-size:11px; color:var(--dim); margin-top:14px; padding-top:12px; border-top:1px solid var(--border); line-height:1.5; }
+    .mkt-verdict .btn { margin-top:16px; font-size:12px; padding:11px 22px; }
+    @media (prefers-reduced-motion: reduce) { .mkt-band, .mkt-pin { transition:none; transform:translate(-50%,-50%) scaleX(1) scaleY(1); opacity:1; } .mkt-band { transform:scaleX(1); } .mkt-chart.live .mkt-pin.ask { animation:none; } }
+    .mkt-notes { margin-top:26px; font-size:11px; color:var(--muted); line-height:1.65; max-width:760px; }
+    .mkt-notes p { margin-bottom:4px; }
+    .mkt-notes sup { color:var(--gold); }
+    .mkt-src { margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+    .mkt-src h5 { font-size:10px; text-transform:uppercase; letter-spacing:2.5px; color:var(--muted); margin-bottom:10px; }
+    .mkt-src ol { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 24px; counter-reset:src; }
+    .mkt-src li { font-size:11px; color:var(--muted); line-height:1.5; padding-left:18px; position:relative; }
+    .mkt-src li::before { counter-increment:src; content:counter(src); position:absolute; left:0; top:0; color:var(--gold); font-weight:700; }
+    .mkt-src li:target { color:var(--text); }
+    .mkt-src a { color:var(--dim); text-decoration:underline; text-underline-offset:2px; }
+    .mkt-src a:hover { color:var(--gold); }
+    @media (max-width:900px) { .mkt-comps { grid-template-columns:1fr 1fr; } .mkt-eq { grid-template-columns:1fr auto 1fr; } .mkt-eq .mkt-op:nth-child(4) { display:none; } .mkt-eq .mkt-b:nth-child(5) { grid-column:1 / -1; } .mkt-eq .mkt-op.gold { grid-column:1 / -1; padding:2px 0; } .mkt-eq .mkt-b.result { grid-column:1 / -1; } .mkt-why { grid-template-columns:1fr; padding:30px 24px; } .mkt-src ol { grid-template-columns:1fr; } }
+    @media (max-width:600px) {
+      .mkt-comps { grid-template-columns:1fr; }
+      .mkt-eq { grid-template-columns:1fr; gap:6px; }
+      .mkt-eq .mkt-op:nth-child(4) { display:flex; }
+      .mkt-eq .mkt-b, .mkt-eq .mkt-op, .mkt-eq .mkt-b.result { grid-column:auto; }
+      .mkt-op { padding:0; font-size:20px; }
+      .mkt-b { padding:16px 18px; }
+      .mkt-b .bv { font-size:22px; }
+      .mkt-b .bl { font-size:8.5px; letter-spacing:1.2px; margin-top:6px; }
+      .mkt-chart { padding:48px 16px 26px; }
+      .mkt-scale { margin:30px 0 22px; }
+      .mkt-pin:not(.ask) .mkt-lbl { display:none; }
+      .mkt-pin:not(.ask) { height:18px; }
+      .mkt-pin.ask .mkt-lbl b { font-size:15px; }
+      .mkt-legend { display:block; }
+      .mkt-key { font-size:10.5px; }
+    }
 
     /* ── HIGHLIGHTS ── */
     .hl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
@@ -1531,13 +1808,13 @@
   <div id="heroBg"><canvas id="heroCanvas"></canvas></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="hero-pill"><span class="hero-dot"></span> Exceptionally Rare &mdash; Likely 1-of-1 US Spec</div>
+    <div class="hero-pill"><span class="hero-dot"></span> Exceptionally Rare &mdash; One of Three Known Zanzibar Red Tiptronics in the US</div>
     <h1>2003 Porsche<br>911 <em>Turbo</em></h1>
     <p class="hero-sub">Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; Tiptronic S &nbsp;&middot;&nbsp; McKinney, TX</p>
     <div class="hero-img-mobile" role="presentation" aria-hidden="true"></div>
     <div class="hero-stats">
       <div class="hs"><div class="hs-l">Asking</div><div class="hs-v">$59,900</div></div>
-      <div class="hs"><div class="hs-l">Mileage</div><div class="hs-v">~94,600</div></div>
+      <div class="hs"><div class="hs-l">Mileage</div><div class="hs-v">~94,900</div></div>
       <div class="hs"><div class="hs-l">Engine</div><div class="hs-v">Mezger 3.6TT</div></div>
       <div class="hs"><div class="hs-l">Transmission</div><div class="hs-v">Tiptronic S</div></div>
       <div class="hs"><div class="hs-l">Drivetrain</div><div class="hs-v">AWD</div></div>
@@ -1568,11 +1845,11 @@
       </div>
       <div class="snap-grid rv">
         <div class="snap-cell"><div class="snap-l">Year</div><div class="snap-v">2003</div></div>
-        <div class="snap-cell"><div class="snap-l">Mileage</div><div class="snap-v">~94,600</div></div>
+        <div class="snap-cell"><div class="snap-l">Mileage</div><div class="snap-v">~94,900</div></div>
         <div class="snap-cell"><div class="snap-l">Color</div><div class="snap-v gold">Zanzibar Red</div></div>
         <div class="snap-cell"><div class="snap-l">Paint Code</div><div class="snap-v gold">L1A8 / 00501</div></div>
         <div class="snap-cell"><div class="snap-l">Engine</div><div class="snap-v">Mezger Flat-6</div></div>
-        <div class="snap-cell"><div class="snap-l">Output</div><div class="snap-v">420 hp</div></div>
+        <div class="snap-cell"><div class="snap-l">Output</div><div class="snap-v">415 hp</div></div>
         <div class="snap-cell"><div class="snap-l">Transmission</div><div class="snap-v">Tiptronic S</div></div>
         <div class="snap-cell"><div class="snap-l">Location</div><div class="snap-v">McKinney, TX</div></div>
       </div>
@@ -1593,7 +1870,7 @@
       <div class="invest-stats">
         <div class="is-item">
           <div class="is-n"><span id="ctrVisits">0</span></div>
-          <div class="is-l">Service Visits<br>Mar 2025 &ndash; May 2026</div>
+          <div class="is-l">Service Visits<br>Mar 2025 &ndash; Jul 2026</div>
         </div>
         <div class="is-item">
           <div class="is-n">RAC</div>
@@ -1618,12 +1895,12 @@
   <div class="container">
     <div class="eyebrow rv">Gallery</div>
     <h2 class="sh rv">Every Angle, Every Light</h2>
-    <p class="sp rv">21 photos &mdash; click any image to open the full viewer. The shot at the top captures the color perfectly at golden sunset. Swipe or use arrow keys to navigate.</p>
+    <p class="sp rv">25 photos &mdash; click any image to open the full viewer. The shot at the top captures the color perfectly at golden sunset. Swipe or use arrow keys to navigate.</p>
 
     <div class="gallery-grid rv">
       <!-- Slot 1: Samsung Frame TV sunset — full width, tall -->
       <div class="gi" onclick="openLb(0)">
-        <img src="samsung-frame-tv-image%20%281%29.png" alt="Zanzibar Red at golden sunset — cinematic side profile">
+        <img src="sunset-side-profile.jpg" alt="Zanzibar Red at golden sunset — cinematic side profile">
         <div class="gi-cap">
           <span class="gi-cap-label">The Color at Golden Hour</span>
           <span class="gi-cap-title">Zanzibar Red in Perfect Light</span>
@@ -1675,7 +1952,7 @@
         <div class="gi-over"><div class="gi-zoom"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></div></div>
       </div>
     </div>
-    <div class="gallery-more rv" onclick="openLb(11)">+ 17 more photos &mdash; click to browse all 28</div>
+    <div class="gallery-more rv" onclick="openLb(11)">+ 14 more photos &mdash; click to browse all 25</div>
   </div>
 </section>
 
@@ -1686,7 +1963,7 @@
       <img src="interior-steering.jpg" alt="996 Turbo cockpit — Porsche crest steering wheel" class="int-img" id="intWheel">
       <div class="int-overlay">
         <div class="int-label">The Cockpit</div>
-        <div class="int-title">All Factory.<br>Never Modified.</div>
+        <div class="int-title">Factory Cabin.<br>Upgraded Head Unit.</div>
       </div>
     </div>
     <div class="int-panel">
@@ -1695,7 +1972,7 @@
       <div class="int-scan"></div>
       <div class="int-overlay">
         <div class="int-label">Odometer &mdash; Photographed In Situ</div>
-        <div class="int-title">94,702 Miles<span class="int-sub">Matches the listing. Every number real.</span></div>
+        <div class="int-title">94,702 Miles<span class="int-sub">Photographed at 94,702. Last documented reading: 94,890 on the July 2026 invoice.</span></div>
       </div>
     </div>
   </div>
@@ -1705,15 +1982,15 @@
 <section class="service-section" id="sec-20-407-invested-all-documented">
   <div class="container">
     <div class="eyebrow rv">Verified Service History</div>
-    <h2 class="sh rv">$20,407 Invested. All Documented.</h2>
+    <h2 class="sh rv">$24,332 Invested. All Documented.</h2>
     <p class="sp rv">Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice with OEM Porsche part numbers. This is not a car that was deferred — it was driven by someone who maintained it properly.</p>
 
     <!-- Summary blocks -->
     <div class="service-total-block rv">
       <div class="stb featured">
         <span class="stb-tag">Total Documented Service</span>
-        <div class="stb-num">$20,407</div>
-        <div class="stb-sub">6 RAC invoices + OEM windshield<br>Mar 2025 &ndash; May 2026</div>
+        <div class="stb-num">$24,332</div>
+        <div class="stb-sub">8 RAC invoices + OEM windshield<br>Mar 2025 &ndash; Jul 2026</div>
       </div>
       <div class="stb">
         <span class="stb-tag">Last Major Service</span>
@@ -1744,7 +2021,8 @@
           <div class="svc-items">
             <span class="svc-tag key">Full Suspension Overhaul &mdash; All 4 Corners</span>
             <span class="svc-tag key">B4 Rear Struts (New)</span>
-            <span class="svc-tag key">Front Struts + Mounts (New)</span>
+            <span class="svc-tag key">Front Struts &mdash; Bilstein B4 (New)</span>
+            <span class="svc-tag key">Front Top Mounts, Bearings, Stops &amp; Bellows (New)</span>
             <span class="svc-tag key">Trailing Arms (Both)</span>
             <span class="svc-tag key">Lower Control Arms (Both)</span>
             <span class="svc-tag key">Tiptronic ATF Service</span>
@@ -1868,13 +2146,13 @@
         </div>
       </div>
 
-      <!-- Visit 7: Most recent -->
+      <!-- Visit 7 -->
       <div class="svc-item">
         <div class="svc-dot-col"><div class="svc-dot"></div></div>
         <div class="svc-card">
           <div class="svc-meta">
             <div>
-              <div class="svc-date">MAY 2026 &nbsp;&middot;&nbsp; 94,585 MILES &nbsp;&middot;&nbsp; MOST RECENT</div>
+              <div class="svc-date">MAY 2026 &nbsp;&middot;&nbsp; 94,585 MILES</div>
               <div class="svc-title">Oil Service + Alignment</div>
             </div>
             <div class="svc-total">$653</div>
@@ -1885,7 +2163,59 @@
             <span class="svc-tag">OEM Oil Filter</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
-          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051923 &nbsp;&middot;&nbsp; Ready to drive</div>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051923</div>
+        </div>
+      </div>
+
+      <!-- Visit 8: Water pump — most recent -->
+      <div class="svc-item featured">
+        <div class="svc-dot-col"><div class="svc-dot"></div></div>
+        <div class="svc-card">
+          <div class="svc-meta">
+            <div>
+              <div class="svc-date">JULY 10, 2026 &nbsp;&middot;&nbsp; 94,890 MILES</div>
+              <div class="svc-title">Water Pump + Turbo Oil Line</div>
+            </div>
+            <div class="svc-total">$2,707</div>
+          </div>
+          <div class="svc-items">
+            <span class="svc-tag key">Water Pump &mdash; OEM 996 106 011 77 (New)</span>
+            <span class="svc-tag key">Turbo Oil Line (New)</span>
+            <span class="svc-tag key">Seized Oil Line Removed From Cooling Manifold</span>
+            <span class="svc-tag">Turbo Oil Line O-Rings &mdash; OEM 999 701 789 40 (x2)</span>
+            <span class="svc-tag">Porsche Coolant (x2)</span>
+            <span class="svc-tag">Rusted Exhaust Strap Bolts Cut &amp; Removed</span>
+          </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <div class="svc-detail">
+            <p>The water pump is the 996 Turbo&rsquo;s known wear item, and it has now been replaced with the OEM unit rather than deferred to the next owner. Ten hours of labor went into this visit: five on the pump itself, one extra for rust, and four removing an oil line seized into the cooling manifold &mdash; the kind of job that gets skipped on a car being prepped to flip.</p>
+            <p>Noted on the invoice in the interest of full disclosure: the shop was unable to remove the heat shields, so those remain original.</p>
+          </div>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #052064</div>
+        </div>
+      </div>
+
+      <!-- Visit 9: AC condenser — most recent -->
+      <div class="svc-item">
+        <div class="svc-dot-col"><div class="svc-dot"></div></div>
+        <div class="svc-card">
+          <div class="svc-meta">
+            <div>
+              <div class="svc-date">JULY 22, 2026 &nbsp;&middot;&nbsp; 94,890 MILES &nbsp;&middot;&nbsp; MOST RECENT</div>
+              <div class="svc-title">AC Condenser + System Recharge</div>
+            </div>
+            <div class="svc-total">$1,217</div>
+          </div>
+          <div class="svc-items">
+            <span class="svc-tag key">AC Condenser &mdash; OEM 997 573 911 05 (New)</span>
+            <span class="svc-tag key">AC System Evacuated &amp; Recharged</span>
+            <span class="svc-tag">R-134a Refrigerant</span>
+          </div>
+          <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <div class="svc-detail">
+            <p>Twelve days after the water pump, the car went back in for a new OEM condenser with a full evacuate-and-recharge. Texas summers are the real test of a 23-year-old AC system, and this one now blows cold on fresh hardware.</p>
+          </div>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #052087 &nbsp;&middot;&nbsp; Ready to drive</div>
         </div>
       </div>
 
@@ -1898,7 +2228,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
         </div>
         <h4>Complete Suspension Rebuild</h4>
-        <p>Every corner. New B4 rear struts, front strut mounts, bearings, bellows, both trailing arms, both lower control arms &mdash; fresh four-wheel alignment. The car drives on new suspension geometry.</p>
+        <p>Every corner. New Bilstein B4 struts front and rear, new top mounts, bearings, bump stops and bellows, both trailing arms, both lower control arms &mdash; fresh four-wheel alignment. The car drives on new suspension geometry.</p>
       </div>
       <div class="svh js-glow">
         <div class="svh-icon">
@@ -1968,7 +2298,7 @@
     <p class="sp rv">Zanzibar Red (L1A8) was a factory <em>Sonderfarbe</em> &mdash; an upcharge Special Color ordered in Zuffenhausen. It contains deep copper and burgundy undertones that read completely differently at noon, golden hour, and dusk.</p>
     <div class="color-trio rv">
       <div class="cs-shot" onclick="openLb(0)">
-        <img src="samsung-frame-tv-image%20%281%29.png" alt="Golden sunset — the color at its most cinematic">
+        <img src="sunset-side-profile.jpg" alt="Golden sunset — the color at its most cinematic">
         <div class="cs-cap"><span class="cs-cap-l">Golden Sunset</span><span class="cs-cap-d">The color at its most cinematic</span></div>
       </div>
       <div class="cs-shot" onclick="openLb(2)">
@@ -1988,7 +2318,7 @@
       </div>
       <div class="cc">
         <h4>The Research Behind the Claim</h4>
-        <p>Searches spanning Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and Porsche enthusiast forums have found no other Zanzibar Red 996 Turbo Tiptronic in US specification. Factory documentation is on the build sheet. Paint code L1A8 is confirmed VIN-to-paint.</p>
+        <p>Searches spanning Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and Porsche enthusiast forums have found two other Zanzibar Red 996 Turbo Tiptronics in US specification: a one-owner 2003 with 56,094 miles that a dealer is currently asking $149,995 for, and a 27,000-mile 2001 that sold on Bring a Trailer for $62,000 in September 2024. Factory documentation is on the build sheet. Paint code L1A8 is confirmed VIN-to-paint.</p>
       </div>
     </div>
 
@@ -1998,7 +2328,7 @@
         <h3>Paint to Sample, <em>Before It Had a Name</em></h3>
         <p>Porsche&rsquo;s bespoke-color program is now one of the most coveted options in the catalog. Ordered through Porsche Exclusive Manufaktur, Paint to Sample adds $12,830 to a new 911 Turbo &mdash; and for a color outside the catalog, up to $25,660 plus a factory feasibility study that can run eleven months. Buyers pay it gladly, because special-color Porsches occupy a different tier of the market: they are the cars collectors search for by name, and the ones that draw the crowd at auction.</p>
         <p>In 2003, the same program was called <em>Farbe nach Wahl</em> &mdash; &ldquo;color of choice.&rdquo; There was no waitlist and no hashtag. It was simply an expensive box almost nobody ticked, requiring a buyer who knew exactly what they wanted and a factory willing to paint one car one color. That is what option 00501 on this build sheet records: someone paid real money, two decades before it was fashionable, to make a Zanzibar Red Turbo exist.</p>
-        <p class="pts-claim">The paint isn&rsquo;t a feature of this car. It&rsquo;s the reason there is likely only one.</p>
+        <p class="pts-claim">The paint isn&rsquo;t a feature of this car. It&rsquo;s the reason only three are known in the United States with this gearbox.</p>
       </div>
       <div class="pts-stats">
         <div class="pts-stat"><span class="pn">$12,830</span><span class="pl">Paint to Sample upcharge<br>on a new 911 Turbo</span></div>
@@ -2017,13 +2347,13 @@
     <div class="hl-grid">
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
-        <h4>Likely 1-of-1 in US Spec</h4>
-        <p>Zero other Zanzibar Red 996 Turbo Tiptronics have appeared in any US auction archive, registry, or marketplace after extensive research. Factory code 00501 is on the build sheet.</p>
+        <h4>One of Three Known in This Color and Gearbox</h4>
+        <p>Two other Zanzibar Red 996 Turbo Tiptronics have surfaced in US auction archives and marketplaces after extensive research: a 2003 a dealer is asking $149,995 for, and a 27,000-mile 2001 that sold on Bring a Trailer for $62,000 in 2024. Factory code 00501 is on the build sheet.</p>
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
         <h4>The Mezger Engine</h4>
-        <p>GT1 Le Mans-derived 3.6L twin-turbo flat-six. No IMS bearing. No intermediate shaft. The same block architecture as the GT3 and GT2 of the era &mdash; legendary for durability at high mileage.</p>
+        <p>GT1 Le Mans-derived 3.6L twin-turbo flat-six. No M96-style IMS bearing to fail &mdash; its intermediate shaft runs on pressure-fed bearings. The same block architecture as the GT3 and GT2 of the era &mdash; legendary for durability at high mileage.</p>
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
@@ -2032,8 +2362,8 @@
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
-        <h4>$20,407 Documented Service</h4>
-        <p>Seven itemized service visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX. Every invoice, every OEM part number, available to serious buyers.</p>
+        <h4>$24,332 Documented Service</h4>
+        <p>Eight itemized visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX, plus an insurance-documented OEM windshield. Every invoice, every OEM part number, available to serious buyers.</p>
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
@@ -2053,7 +2383,7 @@
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="22"/><line x1="2" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="22" y2="12"/></svg></div>
         <h4>Factory Hollow-Spoke Turbo Twists</h4>
-        <p>Option #408: 18-inch hollow-spoke Turbo Twist wheels, manufactured by BBS. Specific to the 996 Turbo, among the lightest 18-inch wheels Porsche ever offered, and among the rarest. Complete sets trade at $4,000+ when they surface at all.</p>
+        <p>The 18-inch hollow-spoke Turbo Twist, manufactured by BBS and fitted only to the 996 Turbo &mdash; Carreras got a solid-spoke lookalike. Among the lightest 18-inch wheels Porsche ever offered, and among the rarest. Complete sets trade at $4,000+ when they surface at all.</p>
       </div>
     </div>
 
@@ -2082,16 +2412,280 @@
       <div>
         <h3>The Rarity Argument</h3>
         <p>Porsche built approximately 3,700 examples of the 996 Turbo worldwide in 2003. A fraction were Tiptronics. A smaller fraction were ordered in factory Special Colors. Of those, Zanzibar Red was among the rarest choices &mdash; a complex, light-shifting color that required a factory surcharge.</p>
-        <p>After searching Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and every major Porsche enthusiast community, <strong class="rarity-em">not one other Zanzibar Red 996 Turbo Tiptronic has surfaced in the United States.</strong></p>
-        <p class="rarity-claim">This car may genuinely not exist anywhere else.</p>
+        <p>After searching Bring a Trailer, PCarMarket, Classic.com, Rennbow, ElferSpot, and every major Porsche enthusiast community, <strong class="rarity-em">only two other Zanzibar Red 996 Turbo Tiptronics have surfaced in the United States: one sold for $62,000 in 2024, and the other is priced at $149,995.</strong></p>
+        <p class="rarity-claim">Three known. This is the one priced to sell.</p>
       </div>
       <div class="rarity-badge">
-        <span class="rn">1</span>
-        <span class="rl">Known US-Spec<br>Zanzibar Red<br>996 Turbo Tip</span>
+        <span class="rn">3</span>
+        <span class="rl">Known US-Spec<br>Zanzibar Red<br>996 Turbo Tips</span>
       </div>
     </div>
   </div>
 </section>
+
+<!-- ══ RECENT MARKET DATA ══ -->
+<section class="mkt-section" id="recent-market-data">
+  <div class="container">
+    <div class="eyebrow rv-repeat">Recent Market Data</div>
+    <h2 class="sh rv-repeat">Do the Math on <span class="mkt-shimmer">$59,900</span></h2>
+    <p class="sp rv-repeat">Most listings ask you to trust the price. This one shows its work. Every figure below was researched in September 2026 and carries a numbered reference to its source at the bottom of this section, so you can check the math before you call. Every sale below is a dated auction lot with a link. No figure is estimated or adjusted; where two numbers are added, both are shown.</p>
+    <p class="mkt-basis rv-repeat"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
+
+    <div class="mkt-eq">
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB1" data-count="52506">0</span></div><div class="bl">A typical Tiptronic 996 Turbo<br>Classic.com benchmark, all mileages<a class="ref" href="#src-1">1</a></div></div>
+      <div class="mkt-op">+</div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB2" data-count="24332">0</span></div><div class="bl">The 996 Turbo list, if it has not been done<br>Water pump, AC condenser, suspension, heater core<a class="ref" href="#sec-20-407-invested-all-documented">&uarr;</a></div></div>
+      <div class="mkt-op">=</div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB3" data-count="76838">0</span></div><div class="bl">What you would spend<br>to get a typical car to where this one is</div></div>
+      <div class="mkt-op gold">vs</div>
+      <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span id="mktB4" data-count="59900">0</span></div><div class="bl">This car, list done<br>$16,938 less to spend</div></div>
+    </div>
+    <p class="mkt-eqcap rv-repeat">Service does not add to resale dollar for dollar. It subtracts dollar for dollar from what you spend next. That is the only claim this row makes.</p>
+
+    <div class="mkt-chart rv-repeat">
+      <div class="mkt-scale">
+        <div class="mkt-band" style="left:16.11%;right:28.87%"></div>
+        <div class="mkt-pin down" style="left:36.67%"><div class="mkt-lbl"><b>$51,500</b>74k mi, sold Apr 2026</div></div>
+        <div class="mkt-pin down" style="left:57.78%"><div class="mkt-lbl"><b>$61,000</b>64k mi, sold Jan 2026</div></div>
+        <div class="mkt-pin ask" style="left:55.33%"><div class="mkt-lbl"><b>$59,900</b>This car, 94,900 mi</div></div>
+        <div class="mkt-pin up" style="left:65.33%"><div class="mkt-lbl"><b>$64,398</b>94k mi, asking</div></div>
+        <div class="mkt-pin down" style="left:71.13%"><div class="mkt-lbl"><b>$67,008</b>55k mi, sold Mar 2026</div></div>
+      </div>
+      <div class="mkt-ends"><span>$35,000</span><span>$80,000</span></div>
+      <ul class="mkt-legend">
+        <li><i></i><b>$51,500</b><span>74,000 mi Tiptronic, sold Apr 2026</span></li>
+        <li class="ask"><i></i><b>$59,900</b><span>This car, 94,900 mi, work done</span></li>
+        <li><i></i><b>$61,000</b><span>64,000 mi Tiptronic, sold Jan 2026</span></li>
+        <li><i></i><b>$64,398</b><span>94,224 mi Tiptronic, asking now</span></li>
+        <li><i></i><b>$67,008</b><span>55,000 mi Tiptronic, sold Mar 2026</span></li>
+      </ul>
+      <div class="mkt-key"><i></i>Shaded band: every Tiptronic 996 Turbo sold on Bring a Trailer in 2026, six lots, $42,250 to $67,008.<a class="ref" href="#src-5">5</a> The three coupes with comparable mileage are pinned. Manual cars average $72,357.<a class="ref" href="#src-2">2</a> The $149,995 Zanzibar Red dealer ask sits off this chart to the right.</div>
+    </div>
+
+    <div class="mkt-comps">
+      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" data-shot="comps/classic-149995.jpg" style="--shot:url('comps/classic-149995.jpg')" tabindex="0" aria-label="Show listing details">
+        <div class="mkt-flip">
+          <div class="mkt-face front">
+            <span class="mkt-tag ask">Asking, unsold</span>
+            <div class="cv">$149,995</div>
+            <div class="ct">2003 Turbo, Tiptronic, Zanzibar Red<a class="ref" href="#src-4" onclick="event.stopPropagation()">4</a></div>
+            <div class="cm">56,094 miles, one owner. The only other car in this color and gearbox for sale anywhere, and it is priced $90,095 above this one. A dealer ask, not a sale, but it tells you what the color is worth to someone.<sup>1</sup></div>
+            <div class="mkt-more"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Tap to see the listing</div>
+          </div>
+          <div class="mkt-face back">
+            <div class="bk-head">The listing</div>
+            <div class="bk-row"><span>Venue</span><b>Classic.com dealer listing</b></div>
+            <div class="bk-row"><span>Mileage</span><b>56,094</b></div>
+            <div class="bk-row"><span>Result</span><b>Asking $149,995, unsold</b></div>
+            <div class="bk-row"><span>Date</span><b>Listed September 6, 2026</b></div>
+            <div class="bk-note">One owner. Exotic Knights, Orlando, FL. VIN WP0AB29983S686616.</div>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/listing/2002-porsche-911-turbo-coupe-92/" data-shot="comps/bat-67008.jpg" style="--shot:url('comps/bat-67008.jpg')" tabindex="0" aria-label="Show listing details">
+        <div class="mkt-flip">
+          <div class="mkt-face front">
+            <span class="mkt-tag sold">Sold</span>
+            <div class="cv">$67,008</div>
+            <div class="ct">2002 Turbo, Tiptronic<a class="ref" href="#src-6" onclick="event.stopPropagation()">6</a></div>
+            <div class="cm">55,000 miles. Sold on Bring a Trailer, March 4, 2026, Lot #232,190. The highest price any Tiptronic 996 Turbo brought on Bring a Trailer in 2026. Orient Red Metallic, clean Carfax, clean Arizona title. This car is priced $7,108 under it, with about 40,000 more miles and the service list done.</div>
+            <div class="mkt-more"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Tap to see the listing</div>
+          </div>
+          <div class="mkt-face back">
+            <div class="bk-head">The listing</div>
+            <div class="bk-row"><span>Venue</span><b>Bring a Trailer, Lot #232,190</b></div>
+            <div class="bk-row"><span>Mileage</span><b>55,000</b></div>
+            <div class="bk-row"><span>Result</span><b>Sold $67,008</b></div>
+            <div class="bk-row"><span>Date</span><b>March 4, 2026</b></div>
+            <div class="bk-note">Five-speed Tiptronic per the listing. The top 2026 Tiptronic result in the Bring a Trailer archive.</div>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://www.autoassets.com/porsche" data-shot="comps/autoassets-64398.jpg" style="--shot:url('comps/autoassets-64398.jpg')" tabindex="0" aria-label="Show listing details">
+        <div class="mkt-flip">
+          <div class="mkt-face front">
+            <span class="mkt-tag ask">Asking</span>
+            <div class="cv">$64,398</div>
+            <div class="ct">2003 Turbo, Tiptronic<a class="ref" href="#src-7" onclick="event.stopPropagation()">7</a></div>
+            <div class="cm">94,224 miles. Auto Assets, Powell, Ohio. Same year, same gearbox, same mileage. Already cut from $69,996 and still $4,498 above this car.</div>
+            <div class="mkt-more"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Tap to see the listing</div>
+          </div>
+          <div class="mkt-face back">
+            <div class="bk-head">The listing</div>
+            <div class="bk-row"><span>Venue</span><b>Auto Assets, Powell, OH</b></div>
+            <div class="bk-row"><span>Mileage</span><b>94,224</b></div>
+            <div class="bk-row"><span>Result</span><b>Sale price $64,398, fees included</b></div>
+            <div class="bk-row"><span>Date</span><b>Reduced from $69,996, Sept 2026</b></div>
+            <div class="bk-note">Nearest active listing to this car in year, gearbox, and mileage. VIN WP0AB299X3S686598.</div>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="mkt-c hi rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/listing/2001-porsche-911-turbo-coupe-74/" data-shot="comps/bat-2001-zanzibar.jpg" style="--shot:url('comps/bat-2001-zanzibar.jpg')" tabindex="0" aria-label="Show listing details">
+        <div class="mkt-flip">
+          <div class="mkt-face front">
+            <span class="mkt-tag sold">Sold</span>
+            <div class="cv">$62,000</div>
+            <div class="ct">2001 Turbo, Tiptronic, Zanzibar Red<a class="ref" href="#src-3" onclick="event.stopPropagation()">3</a></div>
+            <div class="cm">27,000 miles. Bring a Trailer, September 24, 2024: $62,000 hammer, $65,100 with the buyer&rsquo;s premium. A Tiptronic, like this car, and the only other Zanzibar Red Tiptronic ever sold at auction. A 2024 price for a low-mileage car, before the 2025 to 2026 rise in 996 Turbo values. We show it as it is and do not convert it into a value for this car; see footnote 4.<a class="ref" href="#src-10" onclick="event.stopPropagation()">10</a></div>
+            <div class="mkt-more"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Tap to see the listing</div>
+          </div>
+          <div class="mkt-face back">
+            <div class="bk-head">The listing</div>
+            <div class="bk-row"><span>Venue</span><b>Bring a Trailer, Lot #163,912</b></div>
+            <div class="bk-row"><span>Mileage</span><b>27,000</b></div>
+            <div class="bk-row"><span>Result</span><b>Sold $62,000 hammer, $65,100 all-in</b></div>
+            <div class="bk-row"><span>Date</span><b>September 24, 2024</b></div>
+            <div class="bk-note">Five-speed Tiptronic. Zanzibar Red over black leather, tourist delivery. Sold before the 2025 to 2026 rise in 996 Turbo values; see footnote 4.</div>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/listing/2002-porsche-911-turbo-coupe-90/" data-shot="comps/bat-61000.jpg" style="--shot:url('comps/bat-61000.jpg')" tabindex="0" aria-label="Show listing details">
+        <div class="mkt-flip">
+          <div class="mkt-face front">
+            <span class="mkt-tag sold">Sold</span>
+            <div class="cv">$61,000</div>
+            <div class="ct">2002 Turbo, Tiptronic<a class="ref" href="#src-17" onclick="event.stopPropagation()">17</a></div>
+            <div class="cm">64,000 miles. Sold at no reserve on Bring a Trailer, January 15, 2026, Lot #226,593. Arctic Silver, clean Carfax, clean Montana title. Its listing shows spark plugs and coils in December 2025 and a cracked charge pipe retainer. $1,100 above this car, with about 31,000 fewer miles. Compare that service note to $24,332 of receipts here.</div>
+            <div class="mkt-more"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Tap to see the listing</div>
+          </div>
+          <div class="mkt-face back">
+            <div class="bk-head">The listing</div>
+            <div class="bk-row"><span>Venue</span><b>Bring a Trailer, Lot #226,593</b></div>
+            <div class="bk-row"><span>Mileage</span><b>64,000</b></div>
+            <div class="bk-row"><span>Result</span><b>Sold $61,000, no reserve</b></div>
+            <div class="bk-row"><span>Date</span><b>January 15, 2026</b></div>
+            <div class="bk-note">Five-speed Tiptronic per the listing. Dealer consignment, New York.</div>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="mkt-c rv-repeat js-glow" onclick="mktFlip(this)" role="button" data-url="https://bringatrailer.com/listing/2003-porsche-911-turbo-coupe-107/" data-shot="comps/bat-51500.jpg" style="--shot:url('comps/bat-51500.jpg')" tabindex="0" aria-label="Show listing details">
+        <div class="mkt-flip">
+          <div class="mkt-face front">
+            <span class="mkt-tag sold">Sold</span>
+            <div class="cv">$51,500</div>
+            <div class="ct">2003 Turbo, Tiptronic<a class="ref" href="#src-18" onclick="event.stopPropagation()">18</a></div>
+            <div class="cm">74,000 miles. Sold on Bring a Trailer, April 24, 2026, Lot #239,305. The closest 2026 sale to this car in miles, and the honest floor of this comparison. A Canadian-market car with H&amp;R lowering springs, a water pump replaced in March 2026, and a 2022 minor-damage entry on its Carfax. It brought $8,400 less than this car&rsquo;s ask, with about 21,000 fewer miles and that history.</div>
+            <div class="mkt-more"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Tap to see the listing</div>
+          </div>
+          <div class="mkt-face back">
+            <div class="bk-head">The listing</div>
+            <div class="bk-row"><span>Venue</span><b>Bring a Trailer, Lot #239,305</b></div>
+            <div class="bk-row"><span>Mileage</span><b>74,000</b></div>
+            <div class="bk-row"><span>Result</span><b>Sold $51,500</b></div>
+            <div class="bk-row"><span>Date</span><b>April 24, 2026</b></div>
+            <div class="bk-note">Five-speed Tiptronic per the listing. Canadian-market example, dealer consignment, California. Carfax notes minor damage in August 2022.</div>
+            <button type="button" class="mkt-check" onclick="event.stopPropagation();mktOpen(this)">See the listing <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mkt-eqk rv-repeat">Every Tiptronic 996 Turbo sold on Bring a Trailer in 2026</div>
+    <div class="mkt-census rv-repeat">
+      <div class="cz-row head"><span>Car</span><span>Miles</span><span>Sold</span><span>Price</span></div>
+      <div class="cz-row"><span><b>2002 coupe, Tiptronic</b></span><span>55,000</span><span>March 4, 2026, Lot #232,190<a class="ref" href="#src-6">6</a></span><span class="r">$67,008</span></div>
+      <div class="cz-row"><span><b>2004 cabriolet X50, Tiptronic</b></span><span>23,000</span><span>March 1, 2026, Lot #231,780<a class="ref" href="#src-19">19</a></span><span class="r">$65,000</span></div>
+      <div class="cz-row"><span><b>2005 Turbo S coupe, Tiptronic</b></span><span>52,000</span><span>May 12, 2026, Lot #242,246<a class="ref" href="#src-20">20</a></span><span class="r">$61,500</span></div>
+      <div class="cz-row"><span><b>2002 coupe, Tiptronic, no reserve</b></span><span>64,000</span><span>January 15, 2026, Lot #226,593<a class="ref" href="#src-17">17</a></span><span class="r">$61,000</span></div>
+      <div class="cz-row me"><span><b>2003 coupe, Tiptronic, Zanzibar Red</b></span><span>94,900</span><span>McKinney, TX, for sale now</span><span class="r">This car, $59,900 asking</span></div>
+      <div class="cz-row"><span><b>2003 coupe, Tiptronic, Canadian-market</b></span><span>74,000</span><span>April 24, 2026, Lot #239,305<a class="ref" href="#src-18">18</a></span><span class="r">$51,500</span></div>
+      <div class="cz-row"><span><b>2003 coupe, Tiptronic, modified, no reserve</b></span><span>79,000 shown, TMU</span><span>April 30, 2026, Lot #240,423<a class="ref" href="#src-21">21</a></span><span class="r">$42,250</span></div>
+    </div>
+    <p class="cz-cap rv-repeat">Every five-speed Tiptronic 996 Turbo sold on Bring a Trailer between January 1 and September 11, 2026, out of 64 sold lots. Mileage is from each listing. This car is placed where its price falls. There is no Tiptronic sale above $67,008 in the 2026 archive; see footnote 3.</p>
+
+    <div class="mkt-eqk rv-repeat">Every Zanzibar Red 996 Turbo we could find in the United States</div>
+    <div class="mkt-census rv-repeat">
+      <div class="cz-row head"><span>Car</span><span>Miles</span><span>Where and when</span><span>What happened</span></div>
+      <div class="cz-row me"><span><b>2003, Tiptronic</b></span><span>94,900</span><span>McKinney, TX, for sale now</span><span class="r">This car, $59,900 asking</span></div>
+      <div class="cz-row"><span><b>2003, Tiptronic</b></span><span>56,094</span><span>Orlando dealer, listed Sept 2026<a class="ref" href="#src-4">4</a></span><span class="r">Asking $149,995, unsold</span></div>
+      <div class="cz-row"><span><b>2001, Tiptronic</b></span><span>27,000</span><span>Bring a Trailer, Sept 2024<a class="ref" href="#src-3">3</a></span><span class="r">Sold $62,000</span></div>
+      <div class="cz-row"><span><b>2001, 6-speed</b></span><span>28,235</span><span>Pennsylvania dealer, Dec 2018<a class="ref" href="#src-13">13</a>; later a Miami dealer<a class="ref" href="#src-14">14</a></span><span class="r">Asked $69,900 in 2018</span></div>
+      <div class="cz-row"><span><b>2002, 6-speed, modified</b></span><span>99,217</span><span>PCarMarket, Oct 2024<a class="ref" href="#src-12">12</a></span><span class="r">Bid to $46,000, did not sell</span></div>
+    </div>
+    <p class="cz-cap rv-repeat">Five cars found in eight years of auction archives and dealer listings. Three are Tiptronics. Porsche Club of America features Zanzibar Red in its 986 and 996 unicorn colors piece,<a class="ref" href="#src-15">15</a> and Rennbow, the Porsche color wiki, calls it inexplicably rare for such a stunning color.<a class="ref" href="#src-16">16</a></p>
+
+    <div class="mkt-why rv-repeat">
+      <div>
+        <h3>Why $59,900 <em>Holds Up</em></h3>
+        <p><b>Start with what sold.</b> Six Tiptronic 996 Turbos sold on Bring a Trailer in 2026, from $42,250 to $67,008. Three were coupes with mileage close enough to compare: 55,000 miles brought $67,008, 64,000 brought $61,000, and 74,000 brought $51,500. Every one is linked in the table above. This car is priced inside that band, not above it.</p>
+        <p><b>The hard part, said plainly.</b> This car has about 94,900 miles, more than any of those three. Price it on miles alone and you land under $59,900. We know that. A 23-year-old Turbo is not priced on miles alone, and the next two points are why.</p>
+        <p><b>The bill after the sale.</b> On a 996 Turbo this age, the real price is the car plus the list that follows it: water pump, AC condenser, suspension, heater core, interior trim. On this car that list was done in 2025 and 2026 at a Porsche specialist, $24,332 of it, invoices included. Of the three auction coupes, one listed a new water pump and one sold with a cracked charge pipe retainer. Buy any of them and the rest of the list is yours to find out about. Here it is done.</p>
+        <p><b>The nearest car in miles.</b> A 94,224-mile 2003 Tiptronic at an Ohio dealer is asking $64,398 today, after a cut from $69,996. It is the only car close to this one in year, gearbox, and miles, and it is an asking price, not a sale. This car is $4,498 under it. Outside the auctions, Autoblog in September 2026 put stock 996 Turbos from about $45,000 into the $70,000s.<a class="ref" href="#src-8">8</a></p>
+        <p><b>The color.</b> Three Zanzibar Red Tiptronics are known in the United States. One sold in 2024 for $62,000 with 27,000 miles. One is asking $149,995 in Orlando today. This is the third. We do not put a number on the color. The census is above so you can.</p>
+        <p class="mkt-claim">Inside the 2026 sold band. $4,498 under the same-mileage ask. The $24,332 list already done.</p>
+      </div>
+      <div class="mkt-verdict">
+        <span class="vn">$<span id="mktV">0</span></span>
+        <span class="vl">Asking<br>Serious offers considered</span>
+        <div class="vs">Inside the 2026 sold band<br>Work done. Receipts included.</div>
+        <a class="btn btn-red" href="mailto:mberenji@gmail.com?subject=Offer%20on%20the%20Zanzibar%20Red%20996%20Turbo%20(WP0AB29983S687118)">Make an Offer</a>
+      </div>
+    </div>
+
+    <div class="mkt-notes rv-repeat">
+      <p><sup>1</sup> No Zanzibar Red 996 Turbo has a confirmed sale in 2025 or 2026. The last recorded sale is the September 2024 Bring a Trailer Tiptronic at $62,000 (footnote 2). A heavily modified 2002 Zanzibar Red six-speed with 99,217 miles, converted to rear-wheel drive, bid to $46,000 on PCarMarket in October 2024 and did not sell.<a class="ref" href="#src-12">12</a> The only 2026 data point for the color is the unsold $149,995 dealer ask, so the color premium is directional, not proven.</p>
+      <p><sup>2</sup> The 2024 Zanzibar Red sale, Bring a Trailer Lot #163,912, is confirmed as a five-speed Tiptronic by its listing. Hagerty records the same sale at $65,100, which is the $62,000 hammer plus the 5 percent buyer&rsquo;s premium.</p>
+      <p><sup>3</sup> How the 2026 set was built: the Bring a Trailer 996 Turbo results archive was read on September 11, 2026. It shows 64 lots sold in 2026. Six are five-speed Tiptronic cars, as stated in each listing; the other 58 are six-speed manuals. Mileage for each is taken from its listing, not estimated. No Tiptronic sale above $67,008 was found. Sales on other venues are not included unless linked.</p>
+      <p><sup>4</sup> The September 2024 Zanzibar Red sale predates the 2025 to 2026 rise in 996 Turbo values. Bring a Trailer Lot #259,968, a 27,000-mile 2001 Turbo 6-Speed, sold for $119,500 on August 27, 2026.<a class="ref" href="#src-10">10</a> CarGurus lists the average 2003 911 up 36.8 percent year over year.<a class="ref" href="#src-11">11</a> That is context for the 2024 price, not a valuation. This page does not convert the 2024 sale into a number for this car, because no 2026 Tiptronic sale supports one above $67,008.</p>
+    </div>
+
+    <div class="mkt-src rv-repeat">
+      <h5>References</h5>
+      <ol>
+        <li id="src-1"><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-automatic/" target="_blank" rel="noopener">Classic.com, 996 Turbo Tiptronic market</a> (benchmark $52,506, market-wide)</li>
+        <li id="src-2"><a href="https://www.classic.com/m/porsche/911/996/9962/turbo/coupe-manual/" target="_blank" rel="noopener">Classic.com, 996 Turbo manual market</a> (benchmark $72,357, market-wide)</li>
+        <li id="src-3"><a href="https://bringatrailer.com/listing/2001-porsche-911-turbo-coupe-74/" target="_blank" rel="noopener">Bring a Trailer Lot #163,912, 2001 Turbo Tiptronic, Zanzibar Red</a> (27,000 mi, sold $62,000, Sept 24, 2024; <a href="https://www.hagerty.com/valuation-tools/past-sales/2001-porsche-911/WP0AB29901S685862/37556d9c-6fe2-4341-90d6-12d0d8440211" target="_blank" rel="noopener">Hagerty record</a> $65,100 with premium)</li>
+        <li id="src-4"><a href="https://www.classic.com/veh/2003-porsche-911-wp0ab29983s686616-pdQlOZ4/" target="_blank" rel="noopener">Classic.com listing, 2003 Zanzibar Red Tiptronic</a> (56,094 mi, asking $149,995)</li>
+        <li id="src-5"><a href="https://bringatrailer.com/porsche/996-turbo/" target="_blank" rel="noopener">Bring a Trailer, 996 Turbo results archive</a> (64 lots sold in 2026; six five-speed Tiptronic, $42,250 to $67,008; read Sept 11, 2026)</li>
+        <li id="src-6"><a href="https://bringatrailer.com/listing/2002-porsche-911-turbo-coupe-92/" target="_blank" rel="noopener">Bring a Trailer Lot #232,190, 2002 Turbo Coupe, Tiptronic</a> (55,000 mi, sold $67,008, March 4, 2026)</li>
+        <li id="src-7"><a href="https://www.autoassets.com/porsche" target="_blank" rel="noopener">Auto Assets, Powell, OH, dealer inventory</a> (2003 Turbo Tiptronic, 94,224 mi, reduced from $69,996 to $64,398, Sept 2026)</li>
+        <li id="src-8"><a href="https://www.autoblog.com/carbuying/2002-porsche-911-turbo-for-sale-with-112600-miles" target="_blank" rel="noopener">Autoblog, September 2026</a> (market context: stock examples $45,000 into the $70,000s)</li>
+        <li id="src-9"><a href="https://www.theautopian.com/the-unloved-996-porsche-911-turbo-used-to-be-cheap-now-pristine-ones-sell-for-more-than-new-911s/" target="_blank" rel="noopener">The Autopian, August 2026</a> (market trend: flat to rising)</li>
+        <li id="src-10"><a href="https://bringatrailer.com/listing/2001-porsche-911-turbo-coupe-135/" target="_blank" rel="noopener">Bring a Trailer Lot #259,968, 27k-Mile 2001 Turbo Coupe 6-Speed</a> (sold $119,500, Aug 27, 2026)</li>
+        <li id="src-11"><a href="https://www.cargurus.com/Cars/l-Used-2003-Porsche-911-c3389" target="_blank" rel="noopener">CarGurus, used 2003 Porsche 911</a> (average price up 36.8 percent year over year, Sept 2026)</li>
+        <li id="src-12"><a href="https://www.pcarmarket.com/auction/2002-porsche-996-turbo-9/" target="_blank" rel="noopener">PCarMarket Lot V-0048511-MP, 2002 Turbo 6-Speed Modified, Zanzibar Red Metallic</a> (99,217 mi, bid to $46,000, unsold, Oct 2024)</li>
+        <li id="src-13"><a href="https://germancarsforsaleblog.com/zanzibar-red-2001-porsche-911-turbo-coupe/" target="_blank" rel="noopener">German Cars For Sale Blog, Zanzibar Red 2001 911 Turbo Coupe</a> (6-speed, 28,235 mi, $69,900, UDrive Automobiles, Dec 27, 2018)</li>
+        <li id="src-14"><a href="https://www.mildcollection.com/2001-porsche-911-turbo-paint-to-sample-c-184.htm" target="_blank" rel="noopener">Mild Collection, 2001 911 Turbo Paint To Sample, stock #5307</a> (same car: Savannah beige interior, HRE wheels, about 28,000 mi; price not shown)</li>
+        <li id="src-15"><a href="https://pca.org/news/unicorn-colors-the-porsche-986-996-edition" target="_blank" rel="noopener">Porsche Club of America, Unicorn Colors: The Porsche 986/996 Edition</a></li>
+        <li id="src-16"><a href="https://www.rennbow.org/porsche-colors/ZanzibarRed" target="_blank" rel="noopener">Rennbow, the Porsche Color Wiki: Zanzibar Red</a></li>
+        <li id="src-17"><a href="https://bringatrailer.com/listing/2002-porsche-911-turbo-coupe-90/" target="_blank" rel="noopener">Bring a Trailer Lot #226,593, 2002 Turbo Coupe, Tiptronic, no reserve</a> (64,000 mi, sold $61,000, January 15, 2026)</li>
+        <li id="src-18"><a href="https://bringatrailer.com/listing/2003-porsche-911-turbo-coupe-107/" target="_blank" rel="noopener">Bring a Trailer Lot #239,305, 2003 Turbo Coupe, Tiptronic, Canadian-market</a> (74,000 mi, sold $51,500, April 24, 2026)</li>
+        <li id="src-19"><a href="https://bringatrailer.com/listing/2004-porsche-911-turbo-cabriolet-216/" target="_blank" rel="noopener">Bring a Trailer Lot #231,780, 2004 Turbo Cabriolet X50, Tiptronic</a> (23,000 mi, sold $65,000, March 1, 2026)</li>
+        <li id="src-20"><a href="https://bringatrailer.com/listing/2005-porsche-911-turbo-s-coupe-26/" target="_blank" rel="noopener">Bring a Trailer Lot #242,246, 2005 Turbo S Coupe, Tiptronic</a> (52,000 mi, sold $61,500, May 12, 2026)</li>
+        <li id="src-21"><a href="https://bringatrailer.com/listing/2003-porsche-911-turbo-coupe-106/" target="_blank" rel="noopener">Bring a Trailer Lot #240,423, 2003 Turbo Coupe, Tiptronic, modified, no reserve</a> (79,000 mi shown, TMU, sold $42,250, April 30, 2026)</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ══ LISTING MODAL (opened from the market comp cards) ══ -->
+<div class="mkt-modal" id="mktModal" role="dialog" aria-modal="true" aria-labelledby="mmTitle">
+  <div class="mm-dialog">
+    <button type="button" class="mm-close" onclick="mktClose()" aria-label="Close">&times;</button>
+    <div class="mm-frame">
+      <div class="mm-bar"><i></i><i></i><i></i><div class="mm-url"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span class="mm-domain"></span></div></div>
+      <div class="mm-shot">
+        <img alt="Screenshot of the listing page">
+        <div class="mm-ph"><div class="mm-ring"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 21h8"/></svg></div><b>Preview unavailable</b><span>Open the live listing below</span></div>
+      </div>
+    </div>
+    <div class="mm-side">
+      <div class="mm-kicker">The listing behind this number</div>
+      <div class="mm-title" id="mmTitle"></div>
+      <div class="mm-rows"></div>
+      <div class="mm-note"></div>
+      <a class="mm-open" href="#" target="_blank" rel="noopener">Open the live listing <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+      <div class="mm-foot">Preview captured September 2026. The live page may have changed since; the link above is the source of record.</div>
+    </div>
+  </div>
+</div>
+
+
 
 <!-- ══ SPECS ══ -->
 <section id="the-details">
@@ -2107,7 +2701,7 @@
         <div class="sr"><span class="sr-k">Exterior Color</span><span class="sr-v g">Zanzibar Red (L1A8)</span></div>
         <div class="sr"><span class="sr-k">Factory Color Code</span><span class="sr-v g">00501 &mdash; Special Color</span></div>
         <div class="sr"><span class="sr-k">Interior</span><span class="sr-v">Black Full Leather</span></div>
-        <div class="sr"><span class="sr-k">Mileage</span><span class="sr-v">~94,600</span></div>
+        <div class="sr"><span class="sr-k">Mileage</span><span class="sr-v">~94,900</span></div>
         <div class="sr"><span class="sr-k">Title</span><span class="sr-v">Clean &mdash; Texas</span></div>
         <div class="sr"><span class="sr-k">Accident History</span><span class="sr-v">None on record</span></div>
         <div class="sr"><span class="sr-k">Location</span><span class="sr-v">McKinney, TX</span></div>
@@ -2115,7 +2709,7 @@
       <div class="rv">
         <div class="sg-head">Powertrain</div>
         <div class="sr"><span class="sr-k">Engine</span><span class="sr-v g">3.6L Twin-Turbo Flat-6 (Mezger)</span></div>
-        <div class="sr"><span class="sr-k">Horsepower</span><span class="sr-v">420 hp</span></div>
+        <div class="sr"><span class="sr-k">Horsepower</span><span class="sr-v">415 hp (420 PS)</span></div>
         <div class="sr"><span class="sr-k">Torque</span><span class="sr-v">415 lb-ft @ 2,700 rpm</span></div>
         <div class="sr"><span class="sr-k">Transmission</span><span class="sr-v">5-speed Tiptronic S</span></div>
         <div class="sr"><span class="sr-k">Drivetrain</span><span class="sr-v">All-Wheel Drive</span></div>
@@ -2131,8 +2725,8 @@
           <div class="sr"><span class="sr-k">Sunroof</span><span class="sr-v">Electric steel</span></div>
           <div class="sr"><span class="sr-k">Headlights</span><span class="sr-v">Xenon (Litronic)</span></div>
           <div class="sr"><span class="sr-k">Stability Control</span><span class="sr-v">PSM</span></div>
-          <div class="sr"><span class="sr-k">Audio</span><span class="sr-v">Bose Premium Sound</span></div>
-          <div class="sr"><span class="sr-k">Wheels</span><span class="sr-v">18&quot; Factory Turbo 5-Spoke</span></div>
+          <div class="sr"><span class="sr-k">Audio</span><span class="sr-v">Bose Premium (opt. 680) &middot; Sony XAV-9000ES head unit</span></div>
+          <div class="sr"><span class="sr-k">Wheels</span><span class="sr-v">18&quot; Hollow-Spoke Turbo (BBS)</span></div>
           <div class="sr"><span class="sr-k">Tires</span><span class="sr-v">Continental SportPlus</span></div>
           <div class="sr"><span class="sr-k">Brake Calipers</span><span class="sr-v">Factory Porsche red</span></div>
           <div class="sr"><span class="sr-k">Windshield</span><span class="sr-v g">New OEM (2025) &mdash; rain sensor, solar tint</span></div>
@@ -2145,8 +2739,10 @@
           <div class="sr"><span class="sr-k">Transmission</span><span class="sr-v g">ATF service Mar 2025</span></div>
           <div class="sr"><span class="sr-k">Brakes</span><span class="sr-v">Flushed Mar 2025</span></div>
           <div class="sr"><span class="sr-k">Heater Core</span><span class="sr-v g">New Nov 2025</span></div>
+          <div class="sr"><span class="sr-k">Water Pump</span><span class="sr-v g">New OEM Jul 2026</span></div>
+          <div class="sr"><span class="sr-k">AC Condenser</span><span class="sr-v g">New OEM Jul 2026</span></div>
           <div class="sr"><span class="sr-k">Accidents</span><span class="sr-v">None reported</span></div>
-          <div class="sr"><span class="sr-k">Service Records</span><span class="sr-v">All 7 invoices available</span></div>
+          <div class="sr"><span class="sr-k">Service Records</span><span class="sr-v">All 9 invoices available</span></div>
           <div class="sr"><span class="sr-k">PPI</span><span class="sr-v">Welcome &mdash; encouraged</span></div>
           <div class="sr"><span class="sr-k">Asking Price</span><span class="sr-v g">$59,900</span></div>
         </div>
@@ -2201,7 +2797,7 @@
   <div class="container">
     <div class="eyebrow rv-repeat">Cold Start</div>
     <h2 class="sh rv-repeat">The Mezger Sound</h2>
-    <p class="sp rv-repeat" style="max-width:520px;margin:0 auto 0;">420 hp, twin sequential turbos, 3.6-litre flat-six. Turn up the volume.</p>
+    <p class="sp rv-repeat" style="max-width:520px;margin:0 auto 0;">415 hp, twin KKK turbochargers, 3.6-litre flat-six. Turn up the volume.</p>
     <div class="sound-embed-wrap rv-repeat" id="ytWrap">
       <div class="yt-thumb" onclick="loadYtEmbed()" aria-label="Play cold start video">
         <img src="https://img.youtube.com/vi/FuedB67vqxo/maxresdefault.jpg"
@@ -2222,7 +2818,7 @@
   <div class="kb-overlay"></div>
   <div class="kb-content rv">
     <div class="kb-quote">Not just red.<br><em>Zanzibar Red.</em><br>Factory code 00501.</div>
-    <div class="kb-attr">Special Order &nbsp;&middot;&nbsp; Likely 1-of-1 in the United States</div>
+    <div class="kb-attr">Special Order &nbsp;&middot;&nbsp; One of Three Known Zanzibar Red Tiptronics in the US</div>
   </div>
 </div>
 
@@ -2246,49 +2842,31 @@
 <section class="cond-section" id="interior-trim-condition">
   <div class="container">
     <div class="eyebrow rv">Full Disclosure</div>
-    <h2 class="sh rv">Interior Trim Condition</h2>
-    <p class="sp rv">The mechanicals and paint are correct. The interior soft-touch plastic is not perfect. The factory soft-coat on several panels has broken down &mdash; a known issue on every 996 after two decades &mdash; leaving white residue on the switch surrounds and dash pieces. The driver&rsquo;s door panel has significant scratch marks. None of this affects how the car drives or any system function. All of these panels are available as used OEM replacements at modest cost. This section exists because serious buyers deserve to see it before they ask.</p>
+    <h2 class="sh rv">Interior Trim &mdash; Already Sorted</h2>
+    <p class="sp rv">Every 996 has the same interior flaw: the factory soft-coat on the switch surrounds, vent trim, and console pieces breaks down after two decades and leaves a chalky white residue. Almost every car you will look at still has it. <strong>This one doesn&rsquo;t &mdash; the affected trim has been replaced.</strong> The photos below are current, taken after the work. One honest note remains, and it is documented here rather than left for you to find.</p>
     <div class="cond-grid rv">
       <div class="cond-photo" onclick="condFlip(this)">
         <div class="cond-flip">
-          <div class="cond-face"><img src="trim-door-panel.jpg" loading="lazy" alt="Driver door panel scratches"><span>Driver&rsquo;s door panel</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Door Panel</h5><p>Significant scratch marks in the soft-touch surface. Used OEM panels are readily available and a straightforward swap.</p></div><button onclick="event.stopPropagation();openLb(21)">View Photo &#8599;</button></div>
+          <div class="cond-face"><img src="interior-refreshed-console.jpg" loading="lazy" alt="Center console and Sony head unit after trim replacement"><span>Console &amp; head unit</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Console &mdash; Replaced</h5><p>Switch surrounds, HVAC panel, and vent trim replaced. Clean black finish, no chalking.</p></div><button onclick="event.stopPropagation();openLb(21)">View Photo &#8599;</button></div>
         </div>
       </div>
       <div class="cond-photo" onclick="condFlip(this)">
         <div class="cond-flip">
-          <div class="cond-face"><img src="trim-mirror-control.jpg" loading="lazy" alt="Mirror control trim cracking"><span>Mirror control trim</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Mirror Control</h5><p>Soft-coat crazing on the switch surround &mdash; the classic 996 plastic issue. Cosmetic only; the switch works perfectly.</p></div><button onclick="event.stopPropagation();openLb(22)">View Photo &#8599;</button></div>
+          <div class="cond-face"><img src="interior-refreshed-dash.jpg" loading="lazy" alt="Dash and vent trim after replacement"><span>Dash &amp; vent trim</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Dash &mdash; Replaced</h5><p>Vent surrounds and dash trim carry a correct matte black finish again. Shot in daylight, nothing hidden by shadow.</p></div><button onclick="event.stopPropagation();openLb(22)">View Photo &#8599;</button></div>
         </div>
       </div>
       <div class="cond-photo" onclick="condFlip(this)">
         <div class="cond-flip">
-          <div class="cond-face"><img src="trim-switch-left.jpg" loading="lazy" alt="Switch panel soft-coat"><span>Window/seat switches</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Switch Panel</h5><p>Factory soft-coat breaking down, leaving white residue. Every function works; replacement surrounds are inexpensive.</p></div><button onclick="event.stopPropagation();openLb(23)">View Photo &#8599;</button></div>
+          <div class="cond-face"><img src="interior-refreshed-wide.jpg" loading="lazy" alt="Full cabin after trim replacement"><span>Full cabin</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Cabin &mdash; Context</h5><p>The whole interior in one frame so you can judge it yourself: seats, console, dash, and door trim together.</p></div><button onclick="event.stopPropagation();openLb(23)">View Photo &#8599;</button></div>
         </div>
       </div>
       <div class="cond-photo" onclick="condFlip(this)">
         <div class="cond-flip">
-          <div class="cond-face"><img src="trim-switch-right.jpg" loading="lazy" alt="PSM panel soft-coat"><span>PSM/seat panel</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>PSM / Seat Panel</h5><p>Same soft-coat wear as the left side. PSM and seat heat switches all function as they should.</p></div><button onclick="event.stopPropagation();openLb(24)">View Photo &#8599;</button></div>
-        </div>
-      </div>
-      <div class="cond-photo" onclick="condFlip(this)">
-        <div class="cond-flip">
-          <div class="cond-face"><img src="trim-vent-dash.jpg" loading="lazy" alt="Dash vent area soft-coat"><span>Dash vent surround</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Vent Surround</h5><p>Soft-coat wear around the dash vent. Known issue on every 996 after two decades &mdash; used OEM pieces are cheap.</p></div><button onclick="event.stopPropagation();openLb(25)">View Photo &#8599;</button></div>
-        </div>
-      </div>
-      <div class="cond-photo" onclick="condFlip(this)">
-        <div class="cond-flip">
-          <div class="cond-face"><img src="trim-ignition-surround.jpg" loading="lazy" alt="Ignition surround wear"><span>Ignition surround</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Ignition Surround</h5><p>Honest wear around the key from 23 years of starts. Purely cosmetic &mdash; replacement trim is available.</p></div><button onclick="event.stopPropagation();openLb(26)">View Photo &#8599;</button></div>
-        </div>
-      </div>
-      <div class="cond-photo" onclick="condFlip(this)">
-        <div class="cond-flip">
-          <div class="cond-face"><img src="trim-console-overview.jpg" loading="lazy" alt="Center console overview"><span>Center console</span><div class="cond-flip-hint">&#8635;</div></div>
-          <div class="cond-face cond-back"><div><h5>Console Overview</h5><p>The full context shot &mdash; nothing hidden. Everything you see is documented in the photos above.</p></div><button onclick="event.stopPropagation();openLb(27)">View Photo &#8599;</button></div>
+          <div class="cond-face"><img src="trim-seat-back.jpg" loading="lazy" alt="Seat back shell with scratch marks"><span>Seat back shell</span><div class="cond-flip-hint">&#8635;</div></div>
+          <div class="cond-face cond-back"><div><h5>Seat Back &mdash; Still Marked</h5><p>The one item not addressed: scratches in the plastic seat back shell. Cosmetic only, and out of sight when seated.</p></div><button onclick="event.stopPropagation();openLb(24)">View Photo &#8599;</button></div>
         </div>
       </div>
     </div>
@@ -2300,7 +2878,7 @@
   <div class="container">
     <div class="eyebrow rv">Get In Touch</div>
     <h2 class="sh rv">Serious Buyers Get Serious Answers</h2>
-    <p class="sp rv">All seven service invoices are available to qualified buyers. Pre-purchase inspections are welcome and encouraged. Cars in this exact configuration don&rsquo;t come up &mdash; when they do, they don&rsquo;t last.</p>
+    <p class="sp rv">All nine service invoices are available to qualified buyers. Pre-purchase inspections are welcome and encouraged. Cars in this exact configuration don&rsquo;t come up &mdash; when they do, they don&rsquo;t last.</p>
     <div class="contact-cards rv">
       <a href="tel:+14247991987" class="cc-card">
         <div class="cc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.27a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg></div>
@@ -2352,7 +2930,7 @@
 
 <footer>
   <div>2003 Porsche 911 Turbo &nbsp;&middot;&nbsp; VIN WP0AB29983S687118 &nbsp;&middot;&nbsp; McKinney, TX</div>
-  <div>Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; $20,407 Documented Service &nbsp;&middot;&nbsp; <a href="privacy.html" style="color:inherit;text-decoration:underline;text-underline-offset:2px">Privacy</a></div>
+  <div>Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; $24,332 Documented Service &nbsp;&middot;&nbsp; <a href="privacy.html" style="color:inherit;text-decoration:underline;text-underline-offset:2px">Privacy</a></div>
 </footer>
 
 <!-- ══ AUDIO PLAYER (the #audioBtn control lives in the top nav; see the <nav>) ══ -->
@@ -2731,6 +3309,44 @@ function countUp(el, target, prefix, suffix, duration) {
   requestAnimationFrame(frame);
 }
 
+/* Market chart: band draws, pins drop, numbers count up, once */
+(function marketLive(){
+  /* Replays on every visit in either direction. Each block owns its own
+     numbers: they start counting when the block enters the viewport and
+     reset only once the block is completely out of view, so a visible
+     number can never read zero. Count-ups are cancellable. */
+  const fmt = new Intl.NumberFormat();
+  function count(el, target, duration) {
+    const token = (el._tok = (el._tok || 0) + 1), start = performance.now();
+    (function frame(now) {
+      if (el._tok !== token) return;
+      const p = Math.min((now - start) / duration, 1), ease = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt.format(Math.round(ease * target));
+      if (p < 1) requestAnimationFrame(frame);
+    })(start);
+  }
+  function zero(el) { el._tok = (el._tok || 0) + 1; el.textContent = '0'; }
+  function watch(el, onEnter, onLeave) {
+    if (!el) return;
+    new IntersectionObserver(entries => {
+      const e = entries[0];
+      if (e.isIntersecting) onEnter(); else onLeave();
+    }, { threshold: 0 }).observe(el);
+  }
+  document.querySelectorAll('.mkt-eq').forEach(eq => {
+    const nums = Array.from(eq.querySelectorAll('[data-count]'));
+    watch(eq,
+      () => { eq.classList.add('in'); nums.forEach((el,i) => setTimeout(() => { if (eq.classList.contains('in')) count(el, parseInt(el.dataset.count, 10), 1400); }, 150 + i*180)); },
+      () => { eq.classList.remove('in'); nums.forEach(zero); });
+  });
+  const chart = document.querySelector('.mkt-chart');
+  watch(chart, () => chart.classList.add('live'), () => chart.classList.remove('live'));
+  const why = document.querySelector('.mkt-why'), v = document.getElementById('mktV');
+  watch(why,
+    () => { if (v) setTimeout(() => count(v, 59900, 1500), 250); },
+    () => { if (v) zero(v); });
+})();
+
 const ctrTotal  = document.getElementById('ctrTotal');
 const ctrVisits = document.getElementById('ctrVisits');
 const investStrip = document.querySelector('.invest-strip');
@@ -2739,8 +3355,8 @@ const ctrObs = new IntersectionObserver(entries => {
   if (entries[0].isIntersecting) {
     ctrTotal.textContent = '0';
     ctrVisits.textContent = '0';
-    countUp(ctrTotal,  20407, '', '', 2200);
-    countUp(ctrVisits, 7,     '', '', 1200);
+    countUp(ctrTotal,  24332, '', '', 2200);
+    countUp(ctrVisits, 9,     '', '', 1200);
   }
 }, { threshold: 0.3 });
 ctrObs.observe(investStrip);
@@ -2923,8 +3539,47 @@ document.querySelectorAll('.js-glow').forEach(card => {
   });
 });
 
+/* Touch: no hover on phones, so glow follows the finger and the card presses down */
+document.querySelectorAll('.js-glow').forEach(card => {
+  card.addEventListener('touchstart', e => {
+    const t = e.touches[0], r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', (t.clientX - r.left) + 'px');
+    card.style.setProperty('--my', (t.clientY - r.top)  + 'px');
+    card.classList.add('pressed');
+  }, { passive: true });
+  ['touchend','touchcancel'].forEach(ev => card.addEventListener(ev, () => card.classList.remove('pressed'), { passive: true }));
+});
+
 /* Condition tile 3D flip */
 function condFlip(el) { el.classList.toggle('flipped'); }
+/* Listing modal: opened from a comp card's back face */
+const mktModal = document.getElementById('mktModal');
+function mktOpen(btn) {
+  const card = btn.closest('.mkt-c');
+  const rows = Array.from(card.querySelectorAll('.bk-row')).map(r => [r.children[0].textContent, r.children[1].innerHTML]);
+  const noteEl = card.querySelector('.bk-note');
+  const url = card.dataset.url || '#', shot = card.dataset.shot || '';
+  let domain = ''; try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
+  mktModal.querySelector('.mm-domain').textContent = domain;
+  mktModal.querySelector('.mm-title').innerHTML = card.querySelector('.cv').textContent + '<span>' + (card.querySelector('.ct').childNodes[0].textContent || '') + '</span>';
+  mktModal.querySelector('.mm-rows').innerHTML = rows.map(([k, v]) => '<div class="mm-row"><span>' + k + '</span><b>' + v + '</b></div>').join('');
+  mktModal.querySelector('.mm-note').textContent = noteEl ? noteEl.textContent : '';
+  mktModal.querySelector('.mm-open').href = url;
+  const img = mktModal.querySelector('.mm-shot img'), ph = mktModal.querySelector('.mm-ph');
+  img.classList.remove('ready'); ph.style.display = 'flex';
+  img.onload  = () => { img.classList.add('ready'); ph.style.display = 'none'; };
+  img.onerror = () => { img.classList.remove('ready'); ph.style.display = 'flex'; };
+  img.src = shot;
+  mktModal.classList.add('open'); document.body.style.overflow = 'hidden';
+  mktModal.querySelector('.mm-close').focus();
+}
+function mktClose() { mktModal.classList.remove('open'); document.body.style.overflow = ''; }
+mktModal.addEventListener('click', e => { if (e.target === mktModal) mktClose(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && mktModal.classList.contains('open')) mktClose(); });
+
+/* Market comp card flip (click, tap, or Enter/Space) */
+function mktFlip(el) { el.classList.toggle('flipped'); }
+document.querySelectorAll('.mkt-c[role="button"]').forEach(c => c.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); mktFlip(c); } }));
 
 const tipTorqueEl = document.getElementById('tipTorqueV');
 if (tipTorqueEl) {
@@ -2941,7 +3596,7 @@ if (tipTorqueEl) {
    LIGHTBOX
 ══════════════════════════════════ */
 const PHOTOS = [
-  { src: 'samsung-frame-tv-image%20%281%29.png', cap: 'Zanzibar Red at golden sunset — cinematic side profile', rot: false },
+  { src: 'sunset-side-profile.jpg', cap: 'Zanzibar Red at golden sunset — cinematic side profile', rot: false },
   { src: '20260404_174336.jpg',    cap: 'Full side profile — spring roses background', rot: false },
   { src: '20250713_152957.jpg',    cap: 'Front 3/4 — midday sun', rot: false },
   { src: '20250706_210207.jpg',    cap: 'Side profile — garage, blue dusk', rot: false },
@@ -2962,13 +3617,10 @@ const PHOTOS = [
   { src: '20250621_173938(1).jpg',   cap: 'Front 3/4 — parking lot, midday', rot: false },
   { src: 'interior-steering.jpg',    cap: 'Steering wheel — Porsche crest, all original', rot: false },
   { src: 'interior-gauges.jpg',      cap: 'Gauge cluster — 94,702 miles documented in situ', rot: false },
-  { src: 'trim-door-panel.jpg',      cap: 'Condition — driver\'s door panel: significant scratch marks', rot: false },
-  { src: 'trim-mirror-control.jpg',  cap: 'Condition — mirror control trim: plastic crazing/cracking', rot: false },
-  { src: 'trim-switch-left.jpg',     cap: 'Condition — window/seat switch panel: soft-coat degradation', rot: false },
-  { src: 'trim-switch-right.jpg',    cap: 'Condition — PSM/seat panel: soft-coat degradation', rot: false },
-  { src: 'trim-vent-dash.jpg',       cap: 'Condition — dash vent surround: soft-coat degradation', rot: false },
-  { src: 'trim-ignition-surround.jpg', cap: 'Condition — ignition surround: wear/scuffing', rot: false },
-  { src: 'trim-console-overview.jpg',  cap: 'Condition — center console overview (Sony XAV-9000ES installed)', rot: false },
+  { src: 'interior-refreshed-console.jpg', cap: 'Console — trim replaced, Sony XAV-9000ES installed', rot: false },
+  { src: 'interior-refreshed-dash.jpg',    cap: 'Dash and vent trim — replaced, correct matte black finish', rot: false },
+  { src: 'interior-refreshed-wide.jpg',    cap: 'Full cabin — current condition after trim replacement', rot: false },
+  { src: 'trim-seat-back.jpg',       cap: 'Condition — seat back shell: scratch marks (not addressed)', rot: false },
 ];
 
 let cur = 0;
@@ -3136,13 +3788,63 @@ audioBtn.addEventListener('click', (e) => {
 ══════════════════════════════════ */
 const copyToast = document.getElementById('copyToast');
 let toastTimer;
-function copyEmail() {
-  navigator.clipboard.writeText('mberenji@gmail.com').then(() => {
-    clearTimeout(toastTimer);
-    copyToast.classList.add('show');
-    toastTimer = setTimeout(() => copyToast.classList.remove('show'), 2200);
-  });
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  copyToast.textContent = msg;
+  copyToast.classList.add('show');
+  toastTimer = setTimeout(() => copyToast.classList.remove('show'), 2200);
 }
+function copyEmail() {
+  navigator.clipboard.writeText('mberenji@gmail.com').then(() => showToast('Email copied!'));
+}
+
+/* ── SECTION ANCHORS: every section gets a share link (#market, #service, ...) ── */
+(function sectionLinks() {
+  const alias = {
+    'asking-price': 'price',
+    'every-angle-every-light': 'photos',
+    'the-cockpit': 'interior',
+    'sec-20-407-invested-all-documented': 'service',
+    'a-color-that-shifts-with-the-light': 'color',
+    'what-makes-it-special': 'special',
+    'recent-market-data': 'market',
+    'the-details': 'details',
+    'clean-record': 'record',
+    'the-mezger-sound': 'sound',
+    'interior-trim-condition': 'trim',
+    'serious-buyers-get-serious-answers': 'contact'
+  };
+  const canon = {};
+  Object.keys(alias).forEach(id => { canon[alias[id]] = id; });
+  function resolve() {
+    let h = ''; try { h = decodeURIComponent(location.hash.slice(1)); } catch (e) { h = location.hash.slice(1); }
+    if (!h) return;
+    const el = document.getElementById(canon[h] || h);
+    if (el) el.scrollIntoView({ block: 'start' });
+  }
+  window.addEventListener('hashchange', resolve);
+  window.addEventListener('load', () => { setTimeout(resolve, 80); setTimeout(resolve, 700); });
+  const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+  document.querySelectorAll('section[id]').forEach(sec => {
+    const short = alias[sec.id] || sec.id;
+    const host = sec.querySelector('.sh') || sec.querySelector('.eyebrow') || sec.querySelector('.int-title');
+    if (!host) return;
+    const a = document.createElement('a');
+    a.className = 'sec-link';
+    a.href = '#' + short;
+    a.title = 'Copy link to this section';
+    a.setAttribute('aria-label', 'Copy link to this section');
+    a.innerHTML = icon;
+    a.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const url = location.origin + location.pathname + '#' + short;
+      history.replaceState(null, '', '#' + short);
+      const done = () => { a.classList.add('done'); showToast('Link copied!'); setTimeout(() => a.classList.remove('done'), 1800); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, done); else done();
+    });
+    host.appendChild(a);
+  });
+})();
 </script>
 <!-- BEGIN concierge-kit embed (managed by `adopt stamp`; edits between markers are overwritten) -->
 <!-- ============================================================
@@ -3179,7 +3881,7 @@ window.PORSCHE_CONCIERGE_CONFIG = {
      are published as null — the widget treats null as "absent". -->
 <script>
 (function () {
-  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'recent-market-data', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
   var pageT0 = Date.now();
   var maxDepth = 0;
   function publishState() {
