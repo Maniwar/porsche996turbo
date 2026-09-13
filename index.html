@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -313,6 +313,23 @@
       transition: opacity 0.7s ease, transform 0.7s ease;
     }
     .rv.in { opacity:1; transform:none; }
+
+    /* ── NO-JAVASCRIPT FALLBACK ──
+       Every element the scripts reveal is shown outright when JavaScript
+       does not run, or fails before the reveal observers are wired up, so
+       the page reads as a complete listing instead of a blank screen. */
+    .no-js .rv,
+    .no-js .rv-repeat,
+    .no-js .mkt-op,
+    .no-js .mkt-tag,
+    .no-js .mkt-legend li,
+    .no-js .interior-section .int-label,
+    .no-js .interior-section .int-title,
+    .no-js .tip-card .tip-spec { opacity:1 !important; transform:none !important; }
+    .no-js .int-img { opacity:1 !important; }
+    .no-js .mkt-chart .mkt-band { transform:scaleX(1) !important; }
+    .no-js .mkt-chart .mkt-pin { transform:translate(-50%,-50%) scaleY(1) !important; opacity:1 !important; }
+    .no-js .mkt-chart .mkt-pin.ask { animation:none !important; }
 
     /* ── BTN ── */
     .btn {
@@ -1772,6 +1789,19 @@
     @media (min-width:900px) { .cx-panel { top: 62px !important; } }
     .cx-scrim { top: 62px !important; }
   </style>
+<script>
+  /* Progressive enhancement guard. Dropping .no-js turns the reveal
+     animations on. If the main script never finishes wiring the reveal
+     observers up - scripts blocked, or an error earlier in the file -
+     the class goes back on and the whole page renders visible. */
+  (function () {
+    var d = document.documentElement;
+    d.classList.remove('no-js');
+    function bail() { if (!window.__rvReady) d.classList.add('no-js'); }
+    window.addEventListener('error', bail);
+    setTimeout(bail, 2500);
+  })();
+</script>
 </head>
 <body>
 
@@ -1863,13 +1893,13 @@
     <div class="invest-inner rv">
       <div class="invest-main">
         <span class="invest-eyebrow">Repairs &amp; Maintenance</span>
-        <span class="invest-num">$<span id="ctrTotal">0</span></span>
+        <span class="invest-num">$<span id="ctrTotal">24,332</span></span>
         <span class="invest-label">Documented Service Investment</span>
       </div>
       <div class="invest-divider"></div>
       <div class="invest-stats">
         <div class="is-item">
-          <div class="is-n"><span id="ctrVisits">0</span></div>
+          <div class="is-n"><span id="ctrVisits">9</span></div>
           <div class="is-l">Service Visits<br>Mar 2025 &ndash; Jul 2026</div>
         </div>
         <div class="is-item">
@@ -2432,13 +2462,13 @@
     <p class="mkt-basis rv-repeat"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
 
     <div class="mkt-eq">
-      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB1" data-count="52506">0</span></div><div class="bl">A typical Tiptronic 996 Turbo<br>Classic.com benchmark, all mileages<a class="ref" href="#src-1">1</a></div></div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB1" data-count="52506">52,506</span></div><div class="bl">A typical Tiptronic 996 Turbo<br>Classic.com benchmark, all mileages<a class="ref" href="#src-1">1</a></div></div>
       <div class="mkt-op">+</div>
-      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB2" data-count="24332">0</span></div><div class="bl">The 996 Turbo list, if it has not been done<br>Water pump, AC condenser, suspension, heater core<a class="ref" href="#sec-20-407-invested-all-documented">&uarr;</a></div></div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB2" data-count="24332">24,332</span></div><div class="bl">The 996 Turbo list, if it has not been done<br>Water pump, AC condenser, suspension, heater core<a class="ref" href="#sec-20-407-invested-all-documented">&uarr;</a></div></div>
       <div class="mkt-op">=</div>
-      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB3" data-count="76838">0</span></div><div class="bl">What you would spend<br>to get a typical car to where this one is</div></div>
+      <div class="mkt-b rv-repeat js-glow"><div class="bv">$<span id="mktB3" data-count="76838">76,838</span></div><div class="bl">What you would spend<br>to get a typical car to where this one is</div></div>
       <div class="mkt-op gold">vs</div>
-      <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span id="mktB4" data-count="59900">0</span></div><div class="bl">This car, list done<br>$16,938 less to spend</div></div>
+      <div class="mkt-b result rv-repeat js-glow"><div class="bv gold">$<span id="mktB4" data-count="59900">59,900</span></div><div class="bl">This car, list done<br>$16,938 less to spend</div></div>
     </div>
     <p class="mkt-eqcap rv-repeat">Service does not add to resale dollar for dollar. It subtracts dollar for dollar from what you spend next. That is the only claim this row makes.</p>
 
@@ -2620,7 +2650,7 @@
         <p class="mkt-claim">Inside the 2026 sold band. $4,498 under the same-mileage ask. The $24,332 list already done.</p>
       </div>
       <div class="mkt-verdict">
-        <span class="vn">$<span id="mktV">0</span></span>
+        <span class="vn">$<span id="mktV">59,900</span></span>
         <span class="vl">Asking<br>Serious offers considered</span>
         <div class="vs">Inside the 2026 sold band<br>Work done. Receipts included.</div>
         <a class="btn btn-red" href="mailto:mberenji@gmail.com?subject=Offer%20on%20the%20Zanzibar%20Red%20996%20Turbo%20(WP0AB29983S687118)">Make an Offer</a>
@@ -3274,6 +3304,8 @@ const rvRepeatObs = new IntersectionObserver((entries) => {
   });
 }, { threshold: 0.07, rootMargin: '0px 0px -28px 0px' });
 document.querySelectorAll('.rv-repeat').forEach(el => rvRepeatObs.observe(el));
+/* Tells the head-guard the reveals are live, so it leaves .no-js off. */
+window.__rvReady = true;
 
 /* ── KEN BURNS pre-rasterisation ── */
 const kbImgEl = document.querySelector('.kb-img');
@@ -3587,6 +3619,7 @@ if (tipTorqueEl) {
   new IntersectionObserver(entries => {
     if (entries[0].isIntersecting && !tipFired) {
       tipFired = true;
+      tipTorqueEl.textContent = '0';
       countUp(tipTorqueEl, 415, '', '', 1400);
     }
   }, { threshold: 0.4 }).observe(tipTorqueEl.closest('.tip-card'));
