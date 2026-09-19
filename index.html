@@ -1776,10 +1776,21 @@
     .sound-embed-wrap { width:min(340px,72vw); margin:36px auto 0; border-radius:16px; box-shadow:0 28px 72px rgba(0,0,0,0.65), 0 0 0 1px var(--border); }
     .sound-embed-wrap iframe { display:block; width:100%; aspect-ratio:9/16; border:none; }
 
+    /* ── FILM (the widescreen cut; phones get the vertical cut and its poster) ── */
+    .film-section { text-align:center; }
+    .film-embed-wrap { width:min(960px,100%); margin:36px auto 0; border-radius:16px; overflow:hidden; box-shadow:0 28px 72px rgba(0,0,0,0.65), 0 0 0 1px var(--border); }
+    .film-embed-wrap .yt-thumb img, .film-embed-wrap iframe { display:block; width:100%; aspect-ratio:16/9; object-fit:cover; border:none; }
+    .film-embed-wrap[data-playing="portrait"] iframe { aspect-ratio:9/16; }
+    @media (max-width:600px) {
+      .film-embed-wrap { width:min(340px,82vw); }
+      .film-embed-wrap .yt-thumb img { aspect-ratio:9/16; }
+    }
+
     /* ── REPEAT REVEAL (CARFAX + video — replay on each scroll visit) ── */
     .rv-repeat { opacity:0; transform:translateY(32px); transition:opacity 0.7s ease, transform 0.7s ease; }
     .rv-repeat.in { opacity:1; transform:none; }
-    .sound-embed-wrap.rv-repeat { transform:translateY(20px) scale(0.95); transition:opacity 1s ease, transform 1s ease; }
+    .sound-embed-wrap.rv-repeat, .film-embed-wrap.rv-repeat { transform:translateY(20px) scale(0.95); transition:opacity 1s ease, transform 1s ease; }
+    .sound-embed-wrap.rv-repeat.in, .film-embed-wrap.rv-repeat.in { transform:none; }
     .cfx-badge.rv-repeat:nth-child(2) { transition-delay:0.15s; }
     .cfx-badge.rv-repeat:nth-child(3) { transition-delay:0.30s; }
     /* ── CONCIERGE ↔ NAV COEXISTENCE ──
@@ -1919,6 +1930,28 @@
     </div>
   </div>
 </div>
+
+<!-- ══ FILM ══ -->
+<section class="film-section" id="the-film">
+  <div class="container">
+    <div class="eyebrow rv-repeat">The Film</div>
+    <h2 class="sh rv-repeat">Look at Her</h2>
+    <p class="sp rv-repeat" style="max-width:560px;margin:0 auto 0;">Four minutes with the car, from afternoon sun to sodium-lit night, set to &ldquo;Look at Her&rdquo;, an original song by Maniwar written for this car.</p>
+    <div class="film-embed-wrap rv-repeat" id="filmWrap" data-yt="HiXvZFCGlJQ" data-yt-portrait="yUxx8Miultk" data-title="Look at Her — 2003 Porsche 911 Turbo, Zanzibar Red">
+      <div class="yt-thumb" onclick="loadYtEmbed(this)" role="button" tabindex="0" aria-label="Play the film">
+        <picture>
+          <source media="(max-width:600px)" srcset="film-poster-9x16.jpg">
+          <img src="film-poster-16x9.jpg" alt="Zanzibar Red 996 Turbo — the film" loading="lazy">
+        </picture>
+        <div class="yt-play">
+          <div class="yt-play-btn">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ══ GALLERY ══ -->
 <section id="every-angle-every-light">
@@ -2828,8 +2861,8 @@
     <div class="eyebrow rv-repeat">Cold Start</div>
     <h2 class="sh rv-repeat">The Mezger Sound</h2>
     <p class="sp rv-repeat" style="max-width:520px;margin:0 auto 0;">415 hp, 3.6-litre flat-six, twin turbochargers by K&uuml;hnle, Kopp &amp; Kausch &mdash; the German maker known today as BorgWarner. Turn up the volume.</p>
-    <div class="sound-embed-wrap rv-repeat" id="ytWrap">
-      <div class="yt-thumb" onclick="loadYtEmbed()" aria-label="Play cold start video">
+    <div class="sound-embed-wrap rv-repeat" id="ytWrap" data-yt="FuedB67vqxo" data-title="2003 Porsche 996 Turbo — Cold Start">
+      <div class="yt-thumb" onclick="loadYtEmbed(this)" role="button" tabindex="0" aria-label="Play cold start video">
         <img src="https://img.youtube.com/vi/FuedB67vqxo/maxresdefault.jpg"
              alt="2003 Porsche 996 Turbo — Cold Start" loading="lazy">
         <div class="yt-play">
@@ -3693,10 +3726,40 @@ document.addEventListener('keydown', e => {
 lbEl.addEventListener('click', e => { if (e.target === lbEl) closeLb(); });
 
 const cfxModal = document.getElementById('cfxModal');
-function loadYtEmbed() {
-  const wrap = document.getElementById('ytWrap');
-  wrap.innerHTML = '<iframe src="https://www.youtube.com/embed/FuedB67vqxo?autoplay=1&rel=0&modestbranding=1&playsinline=1" title="2003 Porsche 996 Turbo — Cold Start" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+/* Tap-to-play videos. A poster swaps in the YouTube player on the
+   privacy-enhanced domain (as privacy.html says), and the page's own song
+   steps aside: that counts as a manual pause, so scrolling does not bring it
+   back over the video, and the nav button still resumes it. A wrap with
+   data-yt-portrait plays that cut while its poster's portrait <source> matches. */
+function loadYtEmbed(thumb) {
+  const wrap = thumb.closest('[data-yt]');
+  const portraitSrc = wrap.querySelector('source[media]');
+  const portrait = !!(wrap.dataset.ytPortrait && portraitSrc && matchMedia(portraitSrc.media).matches);
+  quietSong();
+  const player = document.createElement('iframe');
+  player.src = 'https://www.youtube-nocookie.com/embed/' + (portrait ? wrap.dataset.ytPortrait : wrap.dataset.yt) + '?autoplay=1&rel=0&playsinline=1';
+  player.title = wrap.dataset.title;
+  player.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+  player.allowFullscreen = true;
+  wrap.dataset.playing = portrait ? 'portrait' : 'landscape';
+  wrap.replaceChildren(player);
+  return true;
 }
+/* Starts a listing video by its section id: playListingVideo('the-film') or ('the-mezger-sound'). */
+const LISTING_VIDEOS = { 'the-film': 'filmWrap', 'the-mezger-sound': 'ytWrap' };
+function playListingVideo(section) {
+  const wrap = document.getElementById(LISTING_VIDEOS[section]);
+  if (!wrap) return false;
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const thumb = wrap.querySelector('.yt-thumb');
+  return thumb ? loadYtEmbed(thumb) : true;
+}
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('yt-thumb')) {
+    e.preventDefault();
+    loadYtEmbed(e.target);
+  }
+});
 function openCfx() { cfxModal.classList.add('open'); document.body.style.overflow = 'hidden'; cfxModal.scrollTop = 0; }
 function closeCfx() { cfxModal.classList.remove('open'); document.body.style.overflow = ''; }
 function cfxBgClick(e) { if (e.target === cfxModal) closeCfx(); }
@@ -3782,6 +3845,8 @@ function gestureStart(e) {
      it, typing in it, or tapping its chips must never start the soundtrack
      (and must not burn the unlock: a later real page click still counts). */
   if (e.target && e.target.closest && e.target.closest('.cx-panel,.cx-launch,.cx-scrim,.cx-chip,.cx-outreach')) return;
+  /* A tap on a video poster is for the video: it must not start the song under it. */
+  if (e.target && e.target.closest && e.target.closest('.yt-thumb')) return;
   if (!bgAudio.paused) { gestureUnlocked = true; return; }
   gestureUnlocked = true;
   startMusic();
@@ -3802,6 +3867,21 @@ bgAudio.play().then(() => {
 const pulseTimer = setTimeout(() => {
   if (bgAudio.paused) audioBtn.classList.add('pulse-hint');
 }, 3000);
+
+/* A video is playing: stop the song as if the visitor had paused it, so the
+   scroll and tap triggers leave it off. The nav button still resumes it. */
+function quietSong() {
+  bgAudio.pause();
+  audioBtn.classList.remove('playing');
+  bgAudio.dataset.manualPause = '1';
+}
+/* A YouTube player the page did not start (the concierge plays clips inside
+   its chat) is a cross-origin frame: the page only sees the window lose focus
+   to it when the visitor presses play there. */
+window.addEventListener('blur', () => {
+  const f = document.activeElement;
+  if (f && f.tagName === 'IFRAME' && /^https:\/\/www\.youtube(-nocookie)?\.com\/embed\//.test(f.src)) quietSong();
+});
 
 audioBtn.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -3914,7 +3994,7 @@ window.PORSCHE_CONCIERGE_CONFIG = {
      are published as null — the widget treats null as "absent". -->
 <script>
 (function () {
-  var SECTIONS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'recent-market-data', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+  var SECTIONS = ['hero', 'asking-price', 'the-film', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'recent-market-data', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
   var pageT0 = Date.now();
   var maxDepth = 0;
   function publishState() {
