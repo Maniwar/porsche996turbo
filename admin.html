@@ -2945,7 +2945,7 @@ const KEY_PLACEHOLDER = ['__ANON', '_KEY__'].join('');
    publishes, so a starter saved under any other key never shows. 'default'
    is the fallback trio. (Was: 'section-3'/'intSection' — stale adoption ids
    whose trios never displayed.) */
-const STARTER_KEYS = ['hero', 'asking-price', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers', 'default'];
+const STARTER_KEYS = ['hero', 'asking-price', 'the-film', 'every-angle-every-light', 'the-cockpit', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers', 'default'];
 
 let sb = null;
 let adminPromise = null;
@@ -6066,7 +6066,7 @@ function goalEditor(row) {
 
   const fSec = el('div', 'field');
   fSec.appendChild(el('span', 'micro', 'Journey stages it fits — the concierge leads with this goal when the visitor is reading ANY checked section. Check more than one if it fits several; check none for a goal that applies anywhere.'));
-  const GOAL_SECTIONS = [['hero', 'hero'], ['section-3', 'section-3'], ['every-angle-every-light', 'every-angle-every-light'], ['intSection', 'intSection'], ['sec-20-407-invested-all-documented', 'sec-20-407-invested-all-documented'], ['a-color-that-shifts-with-the-light', 'a-color-that-shifts-with-the-light'], ['what-makes-it-special', 'what-makes-it-special'], ['the-details', 'the-details'], ['clean-record', 'clean-record'], ['the-mezger-sound', 'the-mezger-sound'], ['interior-trim-condition', 'interior-trim-condition'], ['serious-buyers-get-serious-answers', 'serious-buyers-get-serious-answers']];
+  const GOAL_SECTIONS = [['hero', 'hero'], ['section-3', 'section-3'], ['the-film', 'the-film'], ['every-angle-every-light', 'every-angle-every-light'], ['intSection', 'intSection'], ['sec-20-407-invested-all-documented', 'sec-20-407-invested-all-documented'], ['a-color-that-shifts-with-the-light', 'a-color-that-shifts-with-the-light'], ['what-makes-it-special', 'what-makes-it-special'], ['the-details', 'the-details'], ['clean-record', 'clean-record'], ['the-mezger-sound', 'the-mezger-sound'], ['interior-trim-condition', 'interior-trim-condition'], ['serious-buyers-get-serious-answers', 'serious-buyers-get-serious-answers']];
   const current = (Array.isArray(row.sections) && row.sections.length) ? row.sections
     : (row.section ? [row.section] : []);
   const curSet = {};
@@ -6277,7 +6277,7 @@ const EVAL_CHECK_KINDS = [
   ['toolCalled', 'a tool ran (status label)', 'text'],
   ['judge', 'LLM judge — binary criterion', 'area']
 ];
-const EVAL_SECTIONS = ['', 'hero', 'section-3', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
+const EVAL_SECTIONS = ['', 'hero', 'section-3', 'the-film', 'every-angle-every-light', 'intSection', 'sec-20-407-invested-all-documented', 'a-color-that-shifts-with-the-light', 'what-makes-it-special', 'the-details', 'clean-record', 'the-mezger-sound', 'interior-trim-condition', 'serious-buyers-get-serious-answers'];
 
 async function loadEvals() {
   const res = await sb.from('concierge_evals').select('*').order('sort_order', { ascending: true });

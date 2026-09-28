@@ -4,6 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · For Sale · McKinney TX</title>
+  <meta name="description" content="2003 Porsche 911 Turbo (996), Zanzibar Red special colour L1A8, Tiptronic S, ~94,900 miles, $24,332 documented service. For sale in McKinney, TX. $59,900.">
+  <link rel="canonical" href="https://maniwar.github.io/porsche996turbo/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="2003 Porsche 911 Turbo — Zanzibar Red">
+  <meta property="og:url" content="https://maniwar.github.io/porsche996turbo/">
+  <meta property="og:title" content="2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · $59,900">
+  <meta property="og:description" content="One of three known Zanzibar Red Tiptronics in the US. ~94,900 miles, $24,332 in documented service, clean Texas title. Watch the film, then check the math.">
+  <meta property="og:image" content="https://maniwar.github.io/porsche996turbo/film-poster-16x9.jpg">
+  <meta property="og:image:width" content="1920">
+  <meta property="og:image:height" content="1080">
+  <meta property="og:image:alt" content="Zanzibar Red 2003 Porsche 911 Turbo in afternoon sun, marked for sale at $59,900">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · $59,900">
+  <meta name="twitter:description" content="One of three known Zanzibar Red Tiptronics in the US. Watch the film, then check the math.">
+  <meta name="twitter:image" content="https://maniwar.github.io/porsche996turbo/film-poster-16x9.jpg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -39,6 +54,7 @@
       -webkit-font-smoothing: antialiased;
     }
     ::selection { background: rgba(191,58,28,0.35); }
+    body { overflow-x: clip; }
 
     /* ── SCROLL PROGRESS ── */
     #scrollBar {
@@ -327,6 +343,8 @@
     .no-js .interior-section .int-title,
     .no-js .tip-card .tip-spec { opacity:1 !important; transform:none !important; }
     .no-js .int-img { opacity:1 !important; }
+    .no-js .svc-items, .no-js .svc-detail { max-height:none !important; margin-top:12px; }
+    .no-js .svc-toggle { display:none; }
     .no-js .mkt-chart .mkt-band { transform:scaleX(1) !important; }
     .no-js .mkt-chart .mkt-pin { transform:translate(-50%,-50%) scaleY(1) !important; opacity:1 !important; }
     .no-js .mkt-chart .mkt-pin.ask { animation:none !important; }
@@ -737,6 +755,32 @@
       transition: color 0.2s; font-family: inherit;
     }
     .svc-toggle:hover { color: var(--gold); }
+    /* part numbers, as itemized on each invoice (native <details>: works without scripts) */
+    .svc-parts { margin-top:12px; border-top:1px solid var(--border); padding-top:10px; }
+    .svc-parts summary { cursor:pointer; list-style:none; display:inline-flex; align-items:center; gap:8px;
+      font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); transition:color 0.2s; }
+    .svc-parts summary::-webkit-details-marker { display:none; }
+    .svc-parts summary::before { content:'+'; font-size:13px; letter-spacing:0; width:10px; color:var(--gold); }
+    .svc-parts[open] summary::before { content:'\2212'; }
+    .svc-parts summary b { color:var(--gold); font-weight:700; letter-spacing:0; }
+    .svc-parts summary:hover, .svc-parts summary:focus-visible { color:var(--gold); outline:none; }
+    .svc-parts table { width:100%; border-collapse:collapse; margin-top:10px; font-size:12px; }
+    .svc-parts td { padding:6px 0; border-bottom:1px solid var(--border); vertical-align:top; color:var(--dim); line-height:1.45; }
+    .svc-parts td.pn { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11.5px; color:var(--text);
+      white-space:nowrap; padding-right:18px; width:1%; }
+    .svc-parts td.q { text-align:right; color:var(--muted); white-space:nowrap; padding-left:10px; width:1%; }
+    .svc-parts tr.grp td { padding:12px 0 4px; font-size:9.5px; letter-spacing:1.8px; text-transform:uppercase; color:var(--gold); border-bottom:none; }
+    .svc-parts em { font-style:normal; color:var(--muted); }
+    .svc-parts-note { font-size:11px; line-height:1.6; color:var(--muted); margin-top:10px; }
+    @media (max-width:600px) {
+      .svc-parts table, .svc-parts tbody { display:block; }
+      .svc-parts tr { display:grid; grid-template-columns:1fr auto; column-gap:10px; row-gap:2px; padding:7px 0; border-bottom:1px solid var(--border); }
+      .svc-parts td { padding:0; border-bottom:none; }
+      .svc-parts td.pn { grid-column:1; grid-row:1; }
+      .svc-parts td.q { grid-column:2; grid-row:1; }
+      .svc-parts td:not(.pn):not(.q) { grid-column:1 / -1; grid-row:2; font-size:11.5px; }
+      .svc-parts tr.grp { display:block; padding:12px 0 2px; border-bottom:none; }
+    }
     .svc-toggle .chev { display: inline-block; transition: transform 0.3s; }
     .svc-item.expanded .svc-toggle .chev { transform: rotate(180deg); }
     .svc-item.expanded .svc-toggle { color: var(--dim); }
@@ -1919,7 +1963,7 @@
         </div>
         <div class="is-item">
           <div class="is-n">OEM</div>
-          <div class="is-l">Genuine Porsche Parts<br>Throughout</div>
+          <div class="is-l">Every Part Itemized<br>by Part Number</div>
         </div>
       </div>
       <div class="invest-shop">
@@ -1936,7 +1980,7 @@
   <div class="container">
     <div class="eyebrow rv-repeat">The Film</div>
     <h2 class="sh rv-repeat">Look at Her</h2>
-    <p class="sp rv-repeat" style="max-width:560px;margin:0 auto 0;">Four minutes with the car, from afternoon sun to sodium-lit night, set to &ldquo;Look at Her&rdquo;, an original song by Maniwar written for this car.</p>
+    <p class="sp rv-repeat" style="max-width:560px;margin:0 auto 0;">Four minutes with the car, from afternoon sun to sodium-lit night, set to &ldquo;Look at Her&rdquo;, an original song by Mani Berenji-Jourshari written for this car.</p>
     <div class="film-embed-wrap rv-repeat" id="filmWrap" data-yt="HiXvZFCGlJQ" data-yt-portrait="yUxx8Miultk" data-title="Look at Her — 2003 Porsche 911 Turbo, Zanzibar Red">
       <div class="yt-thumb" onclick="loadYtEmbed(this)" role="button" tabindex="0" aria-label="Play the film">
         <picture>
@@ -2046,14 +2090,14 @@
   <div class="container">
     <div class="eyebrow rv">Verified Service History</div>
     <h2 class="sh rv">$24,332 Invested. All Documented.</h2>
-    <p class="sp rv">Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice with OEM Porsche part numbers. This is not a car that was deferred — it was driven by someone who maintained it properly.</p>
+    <p class="sp rv">Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice that lists every part by number. This is not a car that was deferred — it was driven by someone who maintained it properly.</p>
 
     <!-- Summary blocks -->
     <div class="service-total-block rv">
       <div class="stb featured">
         <span class="stb-tag">Total Documented Service</span>
         <div class="stb-num">$24,332</div>
-        <div class="stb-sub">8 RAC invoices + OEM windshield<br>Mar 2025 &ndash; Jul 2026</div>
+        <div class="stb-sub">8 RAC invoices + windshield<br>Mar 2025 &ndash; Jul 2026</div>
       </div>
       <div class="stb">
         <span class="stb-tag">Last Major Service</span>
@@ -2100,7 +2144,44 @@
             <span class="svc-tag">4-Wheel Alignment</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
-          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051120 &nbsp;&middot;&nbsp; All OEM Porsche parts</div>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>25</b></summary>
+            <table>
+              <tr class="grp"><td colspan="3">Front suspension</td></tr>
+              <tr><td class="pn">996 343 043 43</td><td>Front strut, Bilstein B4 <em>(invoice line reads &ldquo;B4 Strut Mount&rdquo;)</em></td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 343 015 04</td><td>Strut bearing</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 343 016 04</td><td>Strut bearing</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 343 501 00</td><td>Strut bearing</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 343 301 02</td><td>Strut stop</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 343 509 01</td><td>Strut bellow</td><td class="q">&times;2</td></tr>
+              <tr class="grp"><td colspan="3">Rear suspension</td></tr>
+              <tr><td class="pn">996 333 051 86</td><td>Rear strut, Bilstein B4</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 333 059 03</td><td>Strut mount</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">997 333 504 00</td><td>Spring retainer</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 333 105 02</td><td>Shock rubber mount</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">993 333 107 01</td><td>Shock bellow</td><td class="q">&times;2</td></tr>
+              <tr class="grp"><td colspan="3">Arms &amp; driveline</td></tr>
+              <tr><td class="pn">996 341 043 06</td><td>Trailing arm</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 341 053 19</td><td>Lower control arm</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 349 293 00</td><td>CV joint boot kit</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">996 349 291 00</td><td>CV boot</td><td class="q">&times;2</td></tr>
+              <tr><td class="pn">999 084 634 02</td><td>Axle nut</td><td class="q">&times;2</td></tr>
+              <tr class="grp"><td colspan="3">Tiptronic</td></tr>
+              <tr><td class="pn">996 426 033 52</td><td>Shifter cables</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">722 277 009 5</td><td>Transmission filter kit</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">000 043 305 43</td><td>ATF transmission fluid</td><td class="q">&times;6</td></tr>
+              <tr class="grp"><td colspan="3">Engine &amp; cooling</td></tr>
+              <tr><td class="pn">996 107 225 53</td><td>Oil filter</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">900 123 106 30</td><td>Aluminum sealing ring</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 106 250 74</td><td>Coolant hose</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">999 512 356 02</td><td>Hose screw</td><td class="q">&times;1</td></tr>
+              <tr class="grp"><td colspan="3">Body</td></tr>
+              <tr><td class="pn">3B1 837 016 P</td><td>Passenger door latch</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 731 903 01 01C</td><td>Vanity mirror repair kit</td><td class="q">&times;1</td></tr>
+            </table>
+            <p class="svc-parts-note">Descriptions follow the invoice, with abbreviations spelled out. Two numbers are not Porsche-prefixed: 722&nbsp;277&nbsp;009&nbsp;5 is a Mercedes-Benz number, because the Tiptronic&nbsp;S is built on Mercedes&rsquo; 722.6 gearbox, and 3B1&nbsp;837&nbsp;016&nbsp;P is a Volkswagen-group number. Also on the invoice without part numbers: Mobil&nbsp;1 5W-40, Porsche coolant, brake fluid, R-134a and a four-wheel alignment.</p>
+          </details>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051120</div>
         </div>
       </div>
 
@@ -2111,21 +2192,30 @@
           <div class="svc-meta">
             <div>
               <div class="svc-date">JUNE 2025 &nbsp;&middot;&nbsp; INSURANCE CLAIM #014254837-805</div>
-              <div class="svc-title">OEM Windshield Replacement</div>
+              <div class="svc-title">Windshield Replacement</div>
             </div>
             <div class="svc-total">$2,500</div>
           </div>
           <div class="svc-items">
-            <span class="svc-tag key">Premium OEM Glass (Green Tint / Solar)</span>
+            <span class="svc-tag key">Premium Glass (Green Tint / Solar)</span>
             <span class="svc-tag key">Rain Sensor</span>
             <span class="svc-tag key">Electrochromic Mirror (PAAS)</span>
             <span class="svc-tag key">Integrated Antenna</span>
-            <span class="svc-tag">Factory Windshield Seal (OEM Part 996 541 531 01)</span>
+            <span class="svc-tag">Porsche Windshield Seal (996 541 531 01)</span>
             <span class="svc-tag">High-Modulus Urethane Adhesive</span>
-            <span class="svc-tag">New Seal Molding</span>
+            <span class="svc-tag">Porsche Seal Molding (996 541 541 02)</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
-          <div class="svc-shop-badge">Blue Star Glass &mdash; Carrollton, TX &nbsp;&middot;&nbsp; Rock damage claim &nbsp;&middot;&nbsp; Premium glass spec</div>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>3</b></summary>
+            <table>
+              <tr><td class="pn">996 541 531 01</td><td>Windshield seal, Porsche</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 541 541 02</td><td>Seal molding, Porsche</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">FW02377GGYY</td><td>Windshield glass: green tint, rain sensor, electrochromic mirror, antenna, solar</td><td class="q">&times;1</td></tr>
+            </table>
+            <p class="svc-parts-note">FW02377 is the auto-glass industry (NAGS) code for this windshield, not a Porsche part number. The invoice lists the glass as a premium part and does not name its maker.</p>
+          </details>
+          <div class="svc-shop-badge">Blue Star Glass &mdash; Carrollton, TX &nbsp;&middot;&nbsp; Invoice #24113 &nbsp;&middot;&nbsp; Rock damage claim</div>
         </div>
       </div>
 
@@ -2145,6 +2235,13 @@
             <span class="svc-tag">OEM Oil Filter (996 107 225 53)</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>2</b></summary>
+            <table>
+              <tr><td class="pn">996 107 225 53</td><td>Oil filter</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">900 123 106 30</td><td>Aluminum sealing ring</td><td class="q">&times;1</td></tr>
+            </table>
+          </details>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051491</div>
         </div>
       </div>
@@ -2165,6 +2262,13 @@
             <span class="svc-tag key">Hood Actuator (New OEM)</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>2</b></summary>
+            <table>
+              <tr><td class="pn">996 511 053 02</td><td>Hood latch</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 511 127 00</td><td>Hood actuator</td><td class="q">&times;1</td></tr>
+            </table>
+          </details>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051495</div>
         </div>
       </div>
@@ -2185,7 +2289,14 @@
             <span class="svc-tag key">Brake Booster Vacuum Hose (New OEM)</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
-          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051566 &nbsp;&middot;&nbsp; Major labor job on 996</div>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>2</b></summary>
+            <table>
+              <tr><td class="pn">997 572 129 00</td><td>Heater core</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">996 355 577 43</td><td>Brake booster vacuum hose</td><td class="q">&times;1</td></tr>
+            </table>
+          </details>
+          <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051566</div>
         </div>
       </div>
 
@@ -2205,6 +2316,12 @@
             <span class="svc-tag">License Plate Bulbs (Complimentary)</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>1</b></summary>
+            <table>
+              <tr><td class="pn">996 606 203 03</td><td>Oil pressure sender</td><td class="q">&times;1</td></tr>
+            </table>
+          </details>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051905</div>
         </div>
       </div>
@@ -2223,9 +2340,16 @@
           <div class="svc-items">
             <span class="svc-tag key">4-Wheel Alignment (Fresh)</span>
             <span class="svc-tag">Oil Change &mdash; Mobil 1 5W-40</span>
-            <span class="svc-tag">OEM Oil Filter</span>
+            <span class="svc-tag">OEM Oil Filter (996 107 225 53)</span>
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>2</b></summary>
+            <table>
+              <tr><td class="pn">996 107 225 53</td><td>Oil filter</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">900 123 106 30</td><td>Aluminum sealing ring</td><td class="q">&times;1</td></tr>
+            </table>
+          </details>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #051923</div>
         </div>
       </div>
@@ -2251,9 +2375,16 @@
           </div>
           <button class="svc-toggle" onclick="toggleSvc(this)">Details <span class="chev">▼</span></button>
           <div class="svc-detail">
-            <p>The water pump is the 996 Turbo&rsquo;s known wear item, and it has now been replaced with the OEM unit rather than deferred to the next owner. Ten hours of labor went into this visit: five on the pump itself, one extra for rust, and four removing an oil line seized into the cooling manifold &mdash; the kind of job that gets skipped on a car being prepped to flip.</p>
-            <p>Noted on the invoice in the interest of full disclosure: the shop was unable to remove the heat shields, so those remain original.</p>
+            <p>The water pump is the 996 Turbo&rsquo;s known wear item, and it has now been replaced with the OEM unit rather than deferred to the next owner. Eleven hours of labor went into this visit: five on the pump itself, one extra for rust, four removing an oil line seized into the cooling manifold, and one cutting out rusted exhaust strap bolts &mdash; the kind of job that gets skipped on a car being prepped to flip.</p>
           </div>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>2</b></summary>
+            <table>
+              <tr><td class="pn">996 106 011 77</td><td>Water pump</td><td class="q">&times;1</td></tr>
+              <tr><td class="pn">999 701 789 40</td><td>Turbo oil line O-ring</td><td class="q">&times;2</td></tr>
+            </table>
+            <p class="svc-parts-note">The new turbo oil line is itemized on the invoice as a miscellaneous part, without a part number.</p>
+          </details>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #052064</div>
         </div>
       </div>
@@ -2278,6 +2409,12 @@
           <div class="svc-detail">
             <p>Twelve days after the water pump, the car went back in for a new OEM condenser with a full evacuate-and-recharge. Texas summers are the real test of a 23-year-old AC system, and this one now blows cold on fresh hardware.</p>
           </div>
+          <details class="svc-parts">
+            <summary>Part numbers on the invoice <b>1</b></summary>
+            <table>
+              <tr><td class="pn">997 573 911 05</td><td>AC condenser</td><td class="q">&times;1</td></tr>
+            </table>
+          </details>
           <div class="svc-shop-badge">RAC Performance &nbsp;&middot;&nbsp; Invoice #052087 &nbsp;&middot;&nbsp; Ready to drive</div>
         </div>
       </div>
@@ -2297,8 +2434,8 @@
         <div class="svh-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
         </div>
-        <h4>Premium OEM Windshield</h4>
-        <p>Factory-spec green-tint glass with integrated rain sensor, antenna, solar coating, and electrochromic mirror. Properly installed with OEM seal and molding. Insurance-covered rock damage claim.</p>
+        <h4>Premium Windshield</h4>
+        <p>Premium green-tint solar glass with integrated rain sensor, antenna and electrochromic mirror, installed with a Porsche seal and seal molding. Insurance-covered rock damage claim.</p>
       </div>
       <div class="svh js-glow">
         <div class="svh-icon">
@@ -2311,8 +2448,8 @@
         <div class="svh-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         </div>
-        <h4>Heater Core (Major Job)</h4>
-        <p>One of the most labor-intensive repairs on a 996 &mdash; requires significant disassembly of the dashboard. It's been done, with a new OEM heater core. The system works correctly.</p>
+        <h4>New Heater Core</h4>
+        <p>A new Porsche heater core, part 997&nbsp;572&nbsp;129&nbsp;00, fitted with a new brake booster vacuum hose in the same visit. The heat works as it should.</p>
       </div>
       <div class="svh js-glow">
         <div class="svh-icon">
@@ -2326,7 +2463,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
         <h4>All Receipts Available</h4>
-        <p>Every invoice has itemized OEM Porsche part numbers, labor line items, mileage stamps, and dated service records. Nothing is claimed without documentation to back it up.</p>
+        <p>Every invoice itemizes the parts by number, with labor line items, mileage stamps and dates. The part numbers are listed under each visit above. Nothing is claimed without the invoice to back it up.</p>
       </div>
     </div>
 
@@ -2426,7 +2563,7 @@
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
         <h4>$24,332 Documented Service</h4>
-        <p>Eight itemized visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX, plus an insurance-documented OEM windshield. Every invoice, every OEM part number, available to serious buyers.</p>
+        <p>Eight itemized visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX, plus an insurance-documented windshield replacement. Every invoice and every part number is listed on this page and available to serious buyers.</p>
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
@@ -3923,6 +4060,7 @@ function copyEmail() {
     'recent-market-data': 'market',
     'the-details': 'details',
     'clean-record': 'record',
+    'the-film': 'film',
     'the-mezger-sound': 'sound',
     'interior-trim-condition': 'trim',
     'serious-buyers-get-serious-answers': 'contact'
@@ -4036,5 +4174,16 @@ window.PORSCHE_CONCIERGE_CONFIG = {
 <script defer src="assets/concierge.js?v=6"></script>
 <!-- ================== end concierge embed snippet ================== -->
 <!-- END concierge-kit embed -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoObject",
+  "name": "Look at Her \u2014 2003 Porsche 911 Turbo, Zanzibar Red",
+  "description": "Four minutes with a Zanzibar Red 2003 Porsche 911 Turbo, from afternoon sun to sodium-lit night, set to \u201cLook at Her\u201d, an original song written for this car.",
+  "thumbnailUrl": "https://maniwar.github.io/porsche996turbo/film-poster-16x9.jpg",
+  "embedUrl": "https://www.youtube-nocookie.com/embed/HiXvZFCGlJQ",
+  "contentUrl": "https://www.youtube.com/watch?v=HiXvZFCGlJQ"
+}
+</script>
 </body>
 </html>
