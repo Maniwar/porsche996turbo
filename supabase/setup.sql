@@ -3106,7 +3106,7 @@ insert into public.concierge_config (key, value) values
   "Zanzibar Red (L1A8) · Factory Special Color 00501 · Tiptronic S · McKinney, TX",
   "Serious offers considered — PPI welcome and encouraged",
   "21 photos — click any image to open the full viewer. The shot at the top captures the color perfectly at golden sunset. Swipe or use arrow keys to navigate.",
-  "Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice with OEM Porsche part numbers. This is not a car that was deferred — it was driven by someone who maintained it properly.",
+  "Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice that lists every part by number. This is not a car that was deferred — it was driven by someone who maintained it properly.",
   "Zanzibar Red (L1A8) was a factory Sonderfarbe — an upcharge Special Color ordered in Zuffenhausen. It contains deep copper and burgundy undertones that read completely differently at noon, golden hour, and dusk."
 ]$cfg$::jsonb),   -- true, house-approved selling angles — every line traces to a scanned fact
   ('objections',$cfg$[
@@ -3161,19 +3161,50 @@ insert into public.concierge_kb (slug, title, content_md, enabled, sort_order) v
 ('every-angle-every-light', 'Every Angle, Every Light', $kb$- 21 photos — click any image to open the full viewer. The shot at the top captures the color perfectly at golden sunset. Swipe or use arrow keys to navigate.
 - The Color at Golden Hour: Zanzibar Red in Perfect Light$kb$, false, 30),
 
-('sec-20-407-invested-all-documented', '$20,407 Invested. All Documented.', $kb$- Every visit to RAC Performance (RUF Auto Centre) in Carrollton, TX is backed by an itemized invoice with OEM Porsche part numbers. This is not a car that was deferred — it was driven by someone who maintained it properly.
-- Every corner. New B4 rear struts, front strut mounts, bearings, bellows, both trailing arms, both lower control arms — fresh four-wheel alignment. The car drives on new suspension geometry.
-- Factory-spec green-tint glass with integrated rain sensor, antenna, solar coating, and electrochromic mirror. Properly installed with OEM seal and molding. Insurance-covered rock damage claim.
-- ATF pan dropped, new filter installed, full fresh fluid refill. The Tiptronic S is serviced and shifting cleanly — new shifter cables installed as well. This transmission is properly maintained.
-- One of the most labor-intensive repairs on a 996 — requires significant disassembly of the dashboard. It's been done, with a new OEM heater core. The system works correctly.
-- Consistent Mobil 1 5W-40 full-synthetic oil changes with OEM filters at RAC Performance. The Mezger engine runs on the correct fluid, changed on schedule, every time.
-- Every invoice has itemized OEM Porsche part numbers, labor line items, mileage stamps, and dated service records. Nothing is claimed without documentation to back it up.
-- Factory Windshield Seal (OEM Part 996 541 531 01)
-- Oil Change — Mobil 1 5W-40: OEM Oil Filter (996 107 225 53)
-- Hood Latch (New OEM): Hood Actuator (New OEM)
-- Heater Core (New OEM): Brake Booster Vacuum Hose (New OEM)
-- Oil Pressure Sender (New OEM): License Plate Bulbs (Complimentary)
-- 4-Wheel Alignment (Fresh): Oil Change — Mobil 1 5W-40: OEM Oil Filter$kb$, false, 40),
+('sec-20-407-invested-all-documented', '$24,332 Invested. All Documented.', $kb$- Every visit to RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX, is backed by an itemized invoice that lists every part by number. This is not a car that was deferred — it was driven by someone who maintained it properly.
+- Total documented service: $24,332 across nine visits — eight RAC invoices plus an insurance-documented windshield replacement, March 2025 to July 2026. The part numbers are listed on the page under each visit, and the invoices themselves are available to serious buyers.
+
+### March 28, 2025 — 89,600 mi — RAC invoice #051120 — $13,698.55
+Complete mechanical refresh: full suspension overhaul on all four corners, Tiptronic fluid and filter service, new shifter cables, front CV boots both sides, brake flush with the rear bleeders unclogged, AC evacuate and recharge, coolant hose and system bleed, oil change, passenger door latch, vanity mirror repair kit, four-wheel alignment.
+- Front: 996 343 043 43 front strut, Bilstein B4, x2 (the invoice line reads "B4 Strut Mount", but at $495 each it is the strut itself); 996 343 015 04 and 996 343 016 04 strut bearings, one each; 996 343 501 00 strut bearing x2; 996 343 301 02 strut stop x2; 996 343 509 01 strut bellow x2.
+- Rear: 996 333 051 86 rear strut, Bilstein B4, x2; 996 333 059 03 strut mount x2; 997 333 504 00 spring retainer x2; 996 333 105 02 shock rubber mount x2; 993 333 107 01 shock bellow x2.
+- Arms and driveline: 996 341 043 06 trailing arm x2; 996 341 053 19 lower control arm x2; 996 349 293 00 CV joint boot kit x2; 996 349 291 00 CV boot x2; 999 084 634 02 axle nut x2.
+- Tiptronic: 996 426 033 52 shifter cables; 722 277 009 5 transmission filter kit; 000 043 305 43 ATF x6.
+- Engine and cooling: 996 107 225 53 oil filter; 900 123 106 30 aluminum sealing ring; 996 106 250 74 coolant hose; 999 512 356 02 hose screw; Porsche coolant x2; Mobil 1 5W-40.
+- Body: 3B1 837 016 P passenger door latch; 996 731 903 01 01C vanity mirror repair kit.
+- Two numbers here are not Porsche-prefixed: 722 277 009 5 is a Mercedes-Benz number, because the Tiptronic S is built on Mercedes' 722.6 gearbox, and 3B1 837 016 P is a Volkswagen-group number.
+
+### June 9, 2025 — Blue Star Glass, Carrollton — invoice #24113 — $2,500.00
+Windshield replacement after rock damage, insurance claim #014254837-805. Premium green-tint solar glass with rain sensor, electrochromic mirror (PAAS) and integrated antenna; high-modulus urethane.
+- 996 541 531 01 windshield seal (Porsche); 996 541 541 02 seal molding (Porsche); FW02377GGYY windshield glass.
+- FW02377 is the auto-glass industry (NAGS) code, not a Porsche part number. The invoice lists the glass as a premium part and does not name its maker.
+
+### October 1, 2025 — 92,399 mi — RAC #051491 — $333.82
+Oil service, Mobil 1 5W-40. 996 107 225 53 oil filter; 900 123 106 30 aluminum sealing ring.
+
+### October 2, 2025 — 92,690 mi — RAC #051495 — $629.26
+996 511 053 02 hood latch; 996 511 127 00 hood actuator.
+
+### November 6, 2025 — 92,859 mi — RAC #051566 — $1,775.58
+997 572 129 00 heater core (3.0 hours labor); 996 355 577 43 brake booster vacuum hose (1.5 hours).
+
+### April 21, 2026 — 94,398 mi — RAC #051905 — $817.36
+996 606 203 03 oil pressure sender. Two license plate bulbs installed at no charge.
+
+### May 1, 2026 — 94,585 mi — RAC #051923 — $652.92
+Four-wheel alignment and oil service, Mobil 1 5W-40. 996 107 225 53 oil filter; 900 123 106 30 aluminum sealing ring.
+
+### July 10, 2026 — 94,890 mi — RAC #052064 — $2,707.39
+996 106 011 77 water pump; 999 701 789 40 turbo oil line O-ring x2; new turbo oil line (itemized as a miscellaneous part, no part number); Porsche coolant x2. Eleven hours of labor: five for the water pump, one extra for rust, four removing an oil line seized into the cooling manifold, and one cutting out rusted exhaust strap bolts. Disclosed on the invoice: the shop could not remove the heat shields, so those remain original. The water pump is the 996 Turbo's known wear item, replaced rather than deferred.
+
+### July 22, 2026 — 94,890 mi — RAC #052087 — $1,217.08 — most recent
+997 573 911 05 AC condenser; AC system evacuated and recharged with R-134a.
+
+### What not to say
+- Do not call the windshield glass OEM, factory or Porsche glass. Only the seal and seal molding are Porsche parts; the glass is a premium NAGS-coded part whose maker the invoice does not name.
+- Do not describe the heater core as one of the hardest or most labor-intensive jobs on a 996. The invoice shows 3.0 hours of labor.
+- Do not say every part is a genuine Porsche part. Say the parts are itemized by number, and name the two non-Porsche numbers if asked.
+- The water pump visit was eleven hours of labor, not ten.$kb$, false, 40),
 
 ('a-color-that-shifts-with-the-light', 'A Color That Shifts With The Light', $kb$- — an upcharge Special Color ordered in Zuffenhausen. It contains deep copper and burgundy undertones that read completely differently at noon, golden hour, and dusk.
 - Zanzibar Red was a Sonderfarbe available across the Porsche lineup but extraordinarily rare when ordered on the 996 Turbo. The build-sheet option code 00501 confirms it was applied at the factory — never resprayed, never touched. The color reads as factory-fresh because it is.
