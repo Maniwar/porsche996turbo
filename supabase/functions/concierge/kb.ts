@@ -52,7 +52,7 @@ Oil service, Mobil 1 5W-40. 996 107 225 53 oil filter; 900 123 106 30 aluminum s
 Four-wheel alignment and oil service, Mobil 1 5W-40. 996 107 225 53 oil filter; 900 123 106 30 aluminum sealing ring.
 
 ### July 10, 2026 — 94,890 mi — RAC #052064 — $2,707.39
-996 106 011 77 water pump; 999 701 789 40 turbo oil line O-ring x2; new turbo oil line (itemized as a miscellaneous part, no part number); Porsche coolant x2. Eleven hours of labor: five for the water pump, one extra for rust, four removing an oil line seized into the cooling manifold, and one cutting out rusted exhaust strap bolts. Disclosed on the invoice: the shop could not remove the heat shields, so those remain original. The water pump is the 996 Turbo's known wear item, replaced rather than deferred.
+996 106 011 77 water pump; 999 701 789 40 turbo oil line O-ring x2; new turbo oil line (itemized as a miscellaneous part, no part number); Porsche coolant x2. Eleven hours of labor: five for the water pump, one extra for rust, four removing an oil line seized into the cooling manifold, and one cutting out rusted exhaust strap bolts. The same invoice's exhaust-strap line also reads "Unable to Remove Heat Shields". That is a job note: the shields would not come off while the rusted strap bolts were being cut out. Nothing on the heat shields was quoted, charged or listed as needing repair. There is no need to raise it, but if a buyer asks about that line, explain it plainly. The water pump is the 996 Turbo's known wear item, replaced rather than deferred.
 
 ### July 22, 2026 — 94,890 mi — RAC #052087 — $1,217.08 — most recent
 997 573 911 05 AC condenser; AC system evacuated and recharged with R-134a.
