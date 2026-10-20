@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · For Sale · McKinney TX</title>
-  <meta name="description" content="2003 Porsche 911 Turbo (996), Zanzibar Red special colour L1A8, Tiptronic S, ~94,900 miles, $24,332 documented service. For sale in McKinney, TX. $59,900.">
+  <title>SOLD · 2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · McKinney TX</title>
+  <meta name="description" content="SOLD. 2003 Porsche 911 Turbo (996), Zanzibar Red special colour L1A8, Tiptronic S, ~94,900 miles, $24,332 documented service. Listed in McKinney, TX at $59,900. This car has found its new owner.">
   <link rel="canonical" href="https://maniwar.github.io/porsche996turbo/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="2003 Porsche 911 Turbo — Zanzibar Red">
   <meta property="og:url" content="https://maniwar.github.io/porsche996turbo/">
-  <meta property="og:title" content="2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · $59,900">
-  <meta property="og:description" content="One of three known Zanzibar Red Tiptronics in the US. ~94,900 miles, $24,332 in documented service, clean Texas title. Watch the film, then check the math.">
+  <meta property="og:title" content="SOLD · 2003 Porsche 911 Turbo — Zanzibar Red (L1A8)">
+  <meta property="og:description" content="Sold. One of three known Zanzibar Red Tiptronics in the US: ~94,900 miles, $24,332 in documented service, clean Texas title. Watch the film and see the numbers behind the price.">
   <meta property="og:image" content="https://maniwar.github.io/porsche996turbo/film-poster-16x9.jpg">
   <meta property="og:image:width" content="1920">
   <meta property="og:image:height" content="1080">
-  <meta property="og:image:alt" content="Zanzibar Red 2003 Porsche 911 Turbo in afternoon sun, marked for sale at $59,900">
+  <meta property="og:image:alt" content="Zanzibar Red 2003 Porsche 911 Turbo in afternoon sun, marked sold">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="2003 Porsche 911 Turbo — Zanzibar Red (L1A8) · $59,900">
-  <meta name="twitter:description" content="One of three known Zanzibar Red Tiptronics in the US. Watch the film, then check the math.">
+  <meta name="twitter:title" content="SOLD · 2003 Porsche 911 Turbo — Zanzibar Red (L1A8)">
+  <meta name="twitter:description" content="Sold. One of three known Zanzibar Red Tiptronics in the US. Watch the film and see the numbers behind the price.">
   <meta name="twitter:image" content="https://maniwar.github.io/porsche996turbo/film-poster-16x9.jpg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -118,6 +118,11 @@
       transition: box-shadow 0.2s, filter 0.2s;
     }
     .nav-cta:hover { filter: brightness(1.12); box-shadow: 0 4px 24px rgba(191,58,28,0.6); }
+    .nav-sold, .nav-sold:hover {
+      background: transparent; border: 1px solid rgba(223,82,48,0.6); color: var(--red-b);
+      box-shadow: none; filter: none; cursor: default;
+      font-size: 12px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; padding: 8px 18px;
+    }
     @media (max-width: 600px) { .nav { padding: 0 20px; } }
 
     /* ── HERO ── */
@@ -170,6 +175,7 @@
       .hero-content { max-width: none; width: 100%; padding: 92px 64px 0; }
       .hero-content .hero-pill {
         position: absolute; top: 92px; right: 64px; margin: 0;
+        max-width: 440px; border-radius: 26px;   /* wraps to two lines so it clears the title at laptop widths */
       }
       .hero-content h1        { margin: 0 0 14px; max-width: 15ch; }
       .hero-content .hero-sub { white-space: nowrap; margin: 0; }
@@ -181,6 +187,11 @@
       }
       .hero-content .hero-stats .hs { flex: 1; margin-right: 0; }
       .hero-content .hero-stats .hs:last-child { border-right: none; }
+    }
+    /* Narrow laptops / tablets in landscape: no room beside the title, so only the SOLD chip shows */
+    @media (min-width: 769px) and (max-width: 1180px) {
+      .hero-content .hero-pill { background: none; border: none; padding: 0; }
+      .hero-content .hero-pill .pill-text { display: none; }
     }
     .hero-pill {
       display: inline-flex;
@@ -198,15 +209,9 @@
       margin-bottom: 24px;
       animation: fadeSlideUp 0.8s 0.3s both ease;
     }
-    .hero-dot {
-      width: 6px; height: 6px;
-      background: var(--red-b);
-      border-radius: 50%;
-      animation: blink 2s ease-in-out infinite;
-    }
-    @keyframes blink {
-      0%,100%{opacity:1;transform:scale(1)}
-      50%{opacity:0.35;transform:scale(1.7)}
+    .pill-sold {
+      background: var(--red); color: #fff; font-weight: 800; letter-spacing: 3px;
+      padding: 4px 11px 4px 13px; border-radius: 100px; box-shadow: 0 0 18px rgba(191,58,28,0.55);
     }
     .hero h1 {
       font-size: clamp(52px, 8vw, 100px);
@@ -1364,137 +1369,20 @@
     /* ── CONTACT ── */
     .contact-section { background:var(--bg-1); text-align:center; }
     .contact-section .sp { margin: 0 auto 48px; }
-    .contact-cards {
-      display:grid;
-      grid-template-columns:repeat(3, minmax(0,1fr));
-      gap:16px;
-      max-width:860px;
-      margin:0 auto 32px;
-    }
-    .cc-card {
-      background: var(--bg-2);
-      border: 1px solid var(--border);
-      border-radius:14px;
-      padding:32px 24px;
-      text-decoration:none;
-      color:var(--text);
-      display:flex; flex-direction:column; align-items:center; gap:10px;
-      transition: border-color 0.3s, transform 0.2s;
-    }
-    .cc-card:hover { border-color:rgba(191,58,28,0.5); transform:translateY(-2px); }
-    .cc-icon {
-      width:52px; height:52px;
-      border-radius:50%;
-      background:var(--red-glow);
-      border:1px solid rgba(191,58,28,0.3);
-      display:flex; align-items:center; justify-content:center;
-      color:var(--red-b);
-    }
-    .cc-label { font-size:9px; text-transform:uppercase; letter-spacing:2.5px; color:var(--muted); }
-    .cc-val { font-size:17px; font-weight:600; }
-    .contact-note { font-size:13px; color:var(--muted); max-width:520px; margin:0 auto; line-height:1.7; }
-
-    /* ── KEYSAVVY SECURE PAYMENT ── */
-    @property --kvAngle { syntax:'<angle>'; initial-value:0deg; inherits:false; }
-    .kv-wrap {
-      max-width: 780px;
-      margin: 0 auto 48px;
-      padding: 1.5px;
-      border-radius: 16px;
-      background: conic-gradient(from var(--kvAngle),
-        rgba(201,168,117,0.05), var(--gold), rgba(191,58,28,0.9),
-        rgba(201,168,117,0.05), var(--gold), rgba(201,168,117,0.05));
-      animation: kvSpin 5s linear infinite;
-      position: relative;
-    }
-    @keyframes kvSpin { to { --kvAngle: 360deg; } }
-    .kv-wrap::before {
-      content:''; position:absolute; inset:-18px; z-index:-1; border-radius:24px;
-      background: radial-gradient(closest-side, rgba(201,168,117,0.12), transparent);
-      animation: kvBreathe 3.5s ease-in-out infinite;
-    }
-    @keyframes kvBreathe { 0%,100%{opacity:0.5} 50%{opacity:1} }
-    .kv-card {
-      background: linear-gradient(135deg, #120d07 0%, #0a0705 100%);
-      border-radius: 15px;
-      padding: 40px 44px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 40px;
-      align-items: center;
-      text-align: left;
-    }
-    .kv-badge {
-      display:inline-flex; align-items:center; gap:8px;
-      font-size:10px; text-transform:uppercase; letter-spacing:2.5px; color:var(--gold);
-      margin-bottom:14px;
-    }
-    .kv-badge svg { flex-shrink:0; }
-    .kv-card h3 { font-size:24px; font-weight:800; margin-bottom:12px; }
-    .kv-card h3 em { font-style:normal; color:var(--gold); }
-    .kv-card p { font-size:14px; color:var(--dim); line-height:1.75; margin-bottom:22px; }
-    .kv-lead { margin-bottom:14px !important; }
-    .kv-list { list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; gap:10px; }
-    .kv-list li { display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--dim); line-height:1.6; text-align:left; }
-    .kv-list svg { color:var(--gold); flex-shrink:0; margin-top:3px; }
-    .kv-list strong { color:var(--text); font-weight:700; }
-    .kv-tail { font-size:12.5px !important; color:var(--muted) !important; font-style:italic; }
-    @media (max-width:700px) { .kv-list li { text-align:left; } .kv-list { display:inline-flex; } }
-    .kv-btn {
-      display:inline-flex; align-items:center; gap:10px;
-      background: linear-gradient(135deg, var(--gold), #a8854f);
-      color:#0a0705; font-weight:800; font-size:14px; letter-spacing:0.02em;
-      padding:15px 30px; border-radius:100px; text-decoration:none;
-      position:relative; overflow:hidden;
-      transition: transform 0.25s, box-shadow 0.3s;
-      box-shadow: 0 8px 28px rgba(201,168,117,0.25);
-    }
-    .kv-btn:hover { transform:translateY(-2px); box-shadow:0 14px 40px rgba(201,168,117,0.4); }
-    .kv-btn::after {
-      content:''; position:absolute; top:0; bottom:0; width:44px;
-      background: linear-gradient(105deg, transparent, rgba(255,255,255,0.55), transparent);
-      transform: skewX(-20deg);
-      animation: kvSheen 2.6s ease-in-out infinite;
-    }
-    @keyframes kvSheen { 0%{left:-60px} 55%,100%{left:calc(100% + 60px)} }
-    .kv-qr { text-align:center; }
-    .kv-qr img {
-      width:230px; height:230px; border-radius:12px; display:block;
-      border:1px solid rgba(201,168,117,0.3);
-    }
-    .kv-qr span { display:block; font-size:9px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-top:10px; }
-    .kv-note { font-size:11px; color:var(--muted); margin-top:14px; margin-bottom:0 !important; }
-    @media (max-width:700px) {
-      .kv-card { grid-template-columns:1fr; padding:28px 22px; text-align:center; }
-      .kv-badge { justify-content:center; }
-      .kv-qr { display:none; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .kv-wrap, .kv-wrap::before, .kv-btn::after { animation:none; }
-    }
+    .sold-section .sp { margin-bottom:0; }
 
     /* ── PRICE BAND ── */
     .price-band { background:var(--bg-1); }
     .price-layout { display:grid; grid-template-columns:1fr 1fr; gap:72px; align-items:start; }
-    @keyframes priceSettle {
-      0%   { text-shadow: 0 0 80px rgba(191,58,28,0.8), 0 0 40px rgba(191,58,28,0.5); color: #ff9070; }
-      60%  { text-shadow: 0 0 30px rgba(191,58,28,0.3); color: var(--text); }
-      100% { text-shadow: none; color: var(--text); }
-    }
-    .price-tag {
-      font-size:clamp(52px,7vw,80px); font-weight:900; letter-spacing:-0.035em; line-height:1; margin-bottom:8px;
-      cursor: pointer; position: relative; display: inline-block;
-    }
-    .price-tag.price-settled { animation: priceSettle 1.8s ease forwards; }
-    .price-copied {
-      position: absolute; top: -22px; left: 0;
-      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
-      color: var(--gold); opacity: 0; transition: opacity 0.3s;
-      pointer-events: none; white-space: nowrap;
-    }
-    .price-tag.copied .price-copied { opacity: 1; }
     .price-note { color:var(--dim); font-size:15px; margin-bottom:32px; }
-    .btn-row { display:flex; gap:12px; flex-wrap:wrap; }
+    /* SOLD stamp */
+    .sold-stamp { margin:10px 0 26px; }
+    .sold-stamp span {
+      display:inline-block; font-size:clamp(52px,7vw,80px); font-weight:900; letter-spacing:0.1em; line-height:1;
+      color:var(--red-b); border:5px solid var(--red-b); border-radius:12px; text-transform:uppercase;
+      padding:0.08em 0.28em 0.12em 0.38em; transform:rotate(-3deg);
+      text-shadow:0 0 44px rgba(223,82,48,0.28);
+    }
     .snap-grid { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
     .snap-cell { padding:18px 22px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); }
     .snap-cell:nth-child(2n) { border-right:none; }
@@ -1653,7 +1541,6 @@
       backdrop-filter: blur(14px);
     }
     .copy-toast.show { opacity: 1; transform: translateY(0); }
-    .cc-card-btn { cursor: pointer; border: none; text-align: left; }
 
     /* ── FOOTER ── */
     footer { padding:36px 48px; border-top:1px solid var(--border-dim); display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted); }
@@ -1702,7 +1589,6 @@
       .specs-layout { grid-template-columns:1fr; gap:36px; }
       .specs-extra { grid-template-columns:1fr; gap:36px; }
       .svc-highlights { grid-template-columns:1fr; }
-      .contact-cards { grid-template-columns:1fr; max-width:360px; }
       .invest-stats { grid-template-columns:1fr; gap:16px; }
       .is-item { border-left:none; border-top:1px solid var(--border); padding:16px 0 0; }
       .is-item:first-child { border-top:none; padding-top:0; }
@@ -1882,10 +1768,7 @@
       <span class="ap-bar"></span>
     </span>
   </button>
-  <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20(WP0AB29983S687118)" class="nav-cta">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-    Inquire
-  </a>
+  <span class="nav-cta nav-sold">Sold</span>
 </nav>
 
 <!-- ══ HERO ══ -->
@@ -1893,12 +1776,12 @@
   <div id="heroBg"><canvas id="heroCanvas"></canvas></div>
   <div class="hero-overlay"></div>
   <div class="hero-content">
-    <div class="hero-pill"><span class="hero-dot"></span> Exceptionally Rare &mdash; One of Three Known Zanzibar Red Tiptronics in the US</div>
+    <div class="hero-pill"><span class="pill-sold">Sold</span> <span class="pill-text">One of Three Known Zanzibar Red Tiptronics in the US</span></div>
     <h1>2003 Porsche<br>911 <em>Turbo</em></h1>
     <p class="hero-sub">Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; Tiptronic S &nbsp;&middot;&nbsp; McKinney, TX</p>
     <div class="hero-img-mobile" role="presentation" aria-hidden="true"></div>
     <div class="hero-stats">
-      <div class="hs"><div class="hs-l">Asking</div><div class="hs-v">$59,900</div></div>
+      <div class="hs"><div class="hs-l">Status</div><div class="hs-v">Sold</div></div>
       <div class="hs"><div class="hs-l">Mileage</div><div class="hs-v">~94,900</div></div>
       <div class="hs"><div class="hs-l">Engine</div><div class="hs-v">Mezger 3.6TT</div></div>
       <div class="hs"><div class="hs-l">Transmission</div><div class="hs-v">Tiptronic S</div></div>
@@ -1913,20 +1796,9 @@
   <div class="container">
     <div class="price-layout">
       <div>
-        <div class="eyebrow rv">Asking Price</div>
-        <div class="price-tag rv" onclick="copyPrice(this)" title="Click to copy price">
-          <span class="price-copied">Copied!</span><span id="priceVal">$59,900</span></div>
-        <p class="price-note rv">Serious offers considered &mdash; PPI welcome and encouraged</p>
-        <div class="btn-row rv">
-          <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20Inquiry" class="btn btn-red">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            Email Inquiry
-          </a>
-          <button class="btn btn-ghost" onclick="copyEmail()" type="button">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy Email
-          </button>
-        </div>
+        <div class="eyebrow rv">Status</div>
+        <div class="sold-stamp rv"><span>Sold</span></div>
+        <p class="price-note rv">This car has found its new owner. Thank you to everyone who took a look. It was listed at $59,900.</p>
       </div>
       <div class="snap-grid rv">
         <div class="snap-cell"><div class="snap-l">Year</div><div class="snap-v">2003</div></div>
@@ -2107,7 +1979,7 @@
       <div class="stb">
         <span class="stb-tag">Shop</span>
         <div class="stb-n stb-n-lg">RAC Performance<br><span class="stb-n-sub">RUF Auto Centre</span></div>
-        <div class="stb-sub">Porsche specialist, Carrollton TX<br>OEM parts throughout &mdash; itemized invoices available</div>
+        <div class="stb-sub">Porsche specialist, Carrollton TX<br>OEM parts throughout &mdash; itemized invoices on file</div>
       </div>
     </div>
 
@@ -2462,7 +2334,7 @@
         <div class="svh-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
-        <h4>All Receipts Available</h4>
+        <h4>All Receipts On File</h4>
         <p>Every invoice itemizes the parts by number, with labor line items, mileage stamps and dates. The part numbers are listed under each visit above. Nothing is claimed without the invoice to back it up.</p>
       </div>
     </div>
@@ -2563,7 +2435,7 @@
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg></div>
         <h4>$24,332 Documented Service</h4>
-        <p>Eight itemized visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX, plus an insurance-documented windshield replacement. Every invoice and every part number is listed on this page and available to serious buyers.</p>
+        <p>Eight itemized visits at RAC Performance (RUF Auto Centre), a Porsche specialist in Carrollton, TX, plus an insurance-documented windshield replacement. Every invoice is itemized, and every part number is listed on this page.</p>
       </div>
       <div class="hl-card js-glow rv">
         <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
@@ -2628,7 +2500,7 @@
   <div class="container">
     <div class="eyebrow rv-repeat">Recent Market Data</div>
     <h2 class="sh rv-repeat">Do the Math on <span class="mkt-shimmer">$59,900</span></h2>
-    <p class="sp rv-repeat">Most listings ask you to trust the price. This one shows its work. Every figure below was researched in September 2026 and carries a numbered reference to its source at the bottom of this section, so you can check the math before you call. Every sale below is a dated auction lot with a link. No figure is estimated or adjusted; where two numbers are added, both are shown.</p>
+    <p class="sp rv-repeat">Most listings ask you to trust the price. This one shows its work. Every figure below was researched in September 2026 and carries a numbered reference to its source at the bottom of this section, so you can check the math yourself. Every sale below is a dated auction lot with a link. No figure is estimated or adjusted; where two numbers are added, both are shown.</p>
     <p class="mkt-basis rv-repeat"><strong>The car this data is measured against:</strong> 2003 Porsche 911 Turbo (996), Tiptronic S, approximately 94,900 miles, Zanzibar Red (factory special color, L1A8), clean Texas title, $24,332 in documented recent service, located in McKinney, TX.</p>
 
     <div class="mkt-eq">
@@ -2792,7 +2664,7 @@
       <div class="cz-row"><span><b>2004 cabriolet X50, Tiptronic</b></span><span>23,000</span><span>March 1, 2026, Lot #231,780<a class="ref" href="#src-19">19</a></span><span class="r">$65,000</span></div>
       <div class="cz-row"><span><b>2005 Turbo S coupe, Tiptronic</b></span><span>52,000</span><span>May 12, 2026, Lot #242,246<a class="ref" href="#src-20">20</a></span><span class="r">$61,500</span></div>
       <div class="cz-row"><span><b>2002 coupe, Tiptronic, no reserve</b></span><span>64,000</span><span>January 15, 2026, Lot #226,593<a class="ref" href="#src-17">17</a></span><span class="r">$61,000</span></div>
-      <div class="cz-row me"><span><b>2003 coupe, Tiptronic, Zanzibar Red</b></span><span>94,900</span><span>McKinney, TX, for sale now</span><span class="r">This car, $59,900 asking</span></div>
+      <div class="cz-row me"><span><b>2003 coupe, Tiptronic, Zanzibar Red</b></span><span>94,900</span><span>McKinney, TX, now sold</span><span class="r">This car, listed at $59,900, sold</span></div>
       <div class="cz-row"><span><b>2003 coupe, Tiptronic, Canadian-market</b></span><span>74,000</span><span>April 24, 2026, Lot #239,305<a class="ref" href="#src-18">18</a></span><span class="r">$51,500</span></div>
       <div class="cz-row"><span><b>2003 coupe, Tiptronic, modified, no reserve</b></span><span>79,000 shown, TMU</span><span>April 30, 2026, Lot #240,423<a class="ref" href="#src-21">21</a></span><span class="r">$42,250</span></div>
     </div>
@@ -2801,7 +2673,7 @@
     <div class="mkt-eqk rv-repeat">Every Zanzibar Red 996 Turbo we could find in the United States</div>
     <div class="mkt-census rv-repeat">
       <div class="cz-row head"><span>Car</span><span>Miles</span><span>Where and when</span><span>What happened</span></div>
-      <div class="cz-row me"><span><b>2003, Tiptronic</b></span><span>94,900</span><span>McKinney, TX, for sale now</span><span class="r">This car, $59,900 asking</span></div>
+      <div class="cz-row me"><span><b>2003, Tiptronic</b></span><span>94,900</span><span>McKinney, TX, now sold</span><span class="r">This car, listed at $59,900, sold</span></div>
       <div class="cz-row"><span><b>2003, Tiptronic</b></span><span>56,094</span><span>Orlando dealer, listed Sept 2026<a class="ref" href="#src-4">4</a></span><span class="r">Asking $149,995, unsold</span></div>
       <div class="cz-row"><span><b>2001, Tiptronic</b></span><span>27,000</span><span>Bring a Trailer, Sept 2024<a class="ref" href="#src-3">3</a></span><span class="r">Sold $62,000</span></div>
       <div class="cz-row"><span><b>2001, 6-speed</b></span><span>28,235</span><span>Pennsylvania dealer, Dec 2018<a class="ref" href="#src-13">13</a>; later a Miami dealer<a class="ref" href="#src-14">14</a></span><span class="r">Asked $69,900 in 2018</span></div>
@@ -2821,9 +2693,8 @@
       </div>
       <div class="mkt-verdict">
         <span class="vn">$<span id="mktV">59,900</span></span>
-        <span class="vl">Asking<br>Serious offers considered</span>
+        <span class="vl">Listed price<br>Now sold</span>
         <div class="vs">Inside the 2026 sold band<br>Work done. Receipts included.</div>
-        <a class="btn btn-red" href="mailto:mberenji@gmail.com?subject=Offer%20on%20the%20Zanzibar%20Red%20996%20Turbo%20(WP0AB29983S687118)">Make an Offer</a>
       </div>
     </div>
 
@@ -2942,9 +2813,9 @@
           <div class="sr"><span class="sr-k">Water Pump</span><span class="sr-v g">New OEM Jul 2026</span></div>
           <div class="sr"><span class="sr-k">AC Condenser</span><span class="sr-v g">New OEM Jul 2026</span></div>
           <div class="sr"><span class="sr-k">Accidents</span><span class="sr-v">None reported</span></div>
-          <div class="sr"><span class="sr-k">Service Records</span><span class="sr-v">All 9 invoices available</span></div>
-          <div class="sr"><span class="sr-k">PPI</span><span class="sr-v">Welcome &mdash; encouraged</span></div>
-          <div class="sr"><span class="sr-k">Asking Price</span><span class="sr-v g">$59,900</span></div>
+          <div class="sr"><span class="sr-k">Service Records</span><span class="sr-v">All 9 invoices on file</span></div>
+          <div class="sr"><span class="sr-k">Status</span><span class="sr-v g">Sold</span></div>
+          <div class="sr"><span class="sr-k">Listed Price</span><span class="sr-v">$59,900</span></div>
         </div>
       </div>
       <div class="specs-toggle-row">
@@ -3074,62 +2945,16 @@
 </section>
 
 <!-- ══ CONTACT ══ -->
-<section class="contact-section" id="serious-buyers-get-serious-answers">
+<section class="contact-section sold-section" id="serious-buyers-get-serious-answers">
   <div class="container">
-    <div class="eyebrow rv">Get In Touch</div>
-    <h2 class="sh rv">Serious Buyers Get Serious Answers</h2>
-    <p class="sp rv">All nine service invoices are available to qualified buyers. Pre-purchase inspections are welcome and encouraged. Cars in this exact configuration don&rsquo;t come up &mdash; when they do, they don&rsquo;t last.</p>
-    <div class="contact-cards rv">
-      <a href="tel:+14247991987" class="cc-card">
-        <div class="cc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.27a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/></svg></div>
-        <span class="cc-label">Call &middot; AI Concierge</span>
-        <span class="cc-val">+1 (424) 799-1987</span>
-      </a>
-      <a href="mailto:mberenji@gmail.com?subject=2003%20996%20Turbo%20Zanzibar%20Red%20Inquiry%20%E2%80%94%20WP0AB29983S687118&body=Hi%2C%0A%0AI%27m%20interested%20in%20the%202003%20Porsche%20911%20Turbo%20in%20Zanzibar%20Red.%0A%0A" class="cc-card">
-        <div class="cc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
-        <span class="cc-label">Email</span>
-        <span class="cc-val">mberenji@gmail.com</span>
-      </a>
-      <button class="cc-card cc-card-btn" onclick="copyEmail()" type="button">
-        <div class="cc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></div>
-        <span class="cc-label">Copy Email</span>
-        <span class="cc-val">mberenji@gmail.com</span>
-      </button>
-    </div>
-    <div class="kv-wrap rv">
-      <div class="kv-card">
-        <div>
-          <span class="kv-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
-            Verified Funds &middot; Protected Title Transfer
-          </span>
-          <h3>Buy It Like a <em>Professional</em></h3>
-          <p class="kv-lead">This sale is set up on <strong>KeySavvy</strong>, a licensed dealer that protects both sides of a private sale:</p>
-          <ul class="kv-list">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span><strong>Funds verified</strong> &mdash; no cashier&rsquo;s-check anxiety, no wiring money to a stranger</span></li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span><strong>Payment held securely</strong> &mdash; released only when the deal completes</span></li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span><strong>Title transfer handled</strong> &mdash; all the paperwork, no DMV guesswork</span></li>
-          </ul>
-          <p class="kv-tail">Protected from the moment you commit to the moment the title is in your name.</p>
-          <a class="kv-btn" href="https://www.keysavvy.com/pay/porsche-rmxkkf" target="_blank" rel="noopener">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            Pay Securely with KeySavvy
-          </a>
-          <p class="kv-note">keysavvy.com/pay/porsche-rmxkkf</p>
-        </div>
-        <div class="kv-qr">
-          <img src="keysavvy-qr.png" alt="KeySavvy secure payment QR code" loading="lazy">
-          <span>Scan to pay<br>on your phone</span>
-        </div>
-      </div>
-    </div>
-
-    <p class="contact-note rv">Prefer to talk? Call <a href="tel:+14247991987" style="color:var(--red-b);font-weight:600;text-decoration:none;">+1&nbsp;(424)&nbsp;799-1987</a> to ask the AI voice concierge about the car by phone. VIN, paint code, and all service documentation are verifiable. Located in McKinney, TX. Happy to work with transport brokers for out-of-state buyers. PPI at a local Porsche specialist can be arranged.</p>
+    <div class="eyebrow rv">Sold</div>
+    <h2 class="sh rv">This Car Has Found Its New Owner</h2>
+    <p class="sp rv">Thank you to everyone who took a look, asked a question or watched the film. This page is now a record of the car, its service history and the numbers behind the price.</p>
   </div>
 </section>
 
 <footer>
-  <div>2003 Porsche 911 Turbo &nbsp;&middot;&nbsp; VIN WP0AB29983S687118 &nbsp;&middot;&nbsp; McKinney, TX</div>
+  <div>SOLD &nbsp;&middot;&nbsp; 2003 Porsche 911 Turbo &nbsp;&middot;&nbsp; VIN WP0AB29983S687118 &nbsp;&middot;&nbsp; McKinney, TX</div>
   <div>Zanzibar Red (L1A8) &nbsp;&middot;&nbsp; Factory Special Color 00501 &nbsp;&middot;&nbsp; $24,332 Documented Service &nbsp;&middot;&nbsp; <a href="privacy.html" style="color:inherit;text-decoration:underline;text-underline-offset:2px">Privacy</a></div>
 </footer>
 
@@ -3573,59 +3398,6 @@ function toggleSpecs() {
   const open  = extra.classList.toggle('open');
   btn.innerHTML = open ? 'Hide &#9650;' : 'Show All Specs &#9660;';
 }
-
-function copyPrice(el) {
-  navigator.clipboard.writeText('$59,900').then(() => {
-    el.classList.add('copied');
-    setTimeout(() => el.classList.remove('copied'), 2000);
-  });
-}
-
-/* ══════════════════════════════════
-   PRICE SCRAMBLE ANIMATION
-══════════════════════════════════ */
-(function() {
-  const PRICE   = '$59,900';
-  const DIGITS  = '0123456789';
-  const numPos  = [...PRICE].map((c, i) => /\d/.test(c) ? i : -1).filter(i => i >= 0);
-
-  function scramble() {
-    const el  = document.getElementById('priceVal');
-    const tag = el && el.closest('.price-tag');
-    if (!el) return;
-    tag.classList.remove('price-settled');
-    const duration = 1600;
-    const start    = performance.now();
-
-    const timer = setInterval(() => {
-      const p    = Math.min((performance.now() - start) / duration, 1);
-      const lockP = Math.max(0, (p - 0.45) / 0.55);
-
-      let out = '';
-      let numIdx = 0;
-      for (let i = 0; i < PRICE.length; i++) {
-        if (!/\d/.test(PRICE[i])) { out += PRICE[i]; continue; }
-        const lockThreshold = (numIdx + 1) / numPos.length;
-        out += lockP >= lockThreshold
-          ? PRICE[i]
-          : DIGITS[Math.floor(Math.random() * 10)];
-        numIdx++;
-      }
-      el.textContent = out;
-
-      if (p >= 1) {
-        clearInterval(timer);
-        el.textContent = PRICE;
-        tag.classList.add('price-settled');
-      }
-    }, 40);
-  }
-
-  const priceTag = document.querySelector('.price-tag');
-  new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) setTimeout(scramble, 600);
-  }, { threshold: 0.6 }).observe(priceTag);
-})();
 
 /* ══════════════════════════════════
    INTERIOR SECTION
