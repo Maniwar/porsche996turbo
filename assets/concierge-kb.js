@@ -148,44 +148,33 @@
 
     suggested: {
     "every-angle-every-light": [
+      "Tell me about the color",
       "What makes this car different?",
-      "How much does it cost?",
-      "What is it made of?"
+      "Show me the interior"
     ],
     "what-makes-it-special": [
-      "Will it suit my room?",
+      "How rare is Zanzibar Red?",
       "What are the full specs?",
-      "How is it made?"
+      "Tell me about the engine"
     ],
     "sec-20-407-invested-all-documented": [
-      "How do I care for it?",
-      "What if it gets damaged?",
-      "How do returns work?"
+      "What was done to the car?",
+      "Tell me about the water pump",
+      "What is in the service history?"
     ],
     "serious-buyers-get-serious-answers": [
-      "How do I reserve one?",
-      "How long does delivery take?",
-      "Is it good as a gift?"
+      "Tell me about the history",
+      "Tell me about the film",
+      "How rare is Zanzibar Red?"
     ],
     "default": [
+      "Tell me about the history",
       "What are the full specs?",
-      "How much does it cost?",
-      "How do I order one?"
+      "Tell me about the color"
     ]
   },
 
     demo: [
-    {
-      "match": [
-        "call",
-        "phone",
-        "talk",
-        "speak",
-        "voice",
-        "number"
-      ],
-      "answer": "You can call and talk it through with the AI voice concierge for this car: **+1 (424) 799-1987**. It's an AI voice line (not the owner) that answers questions about the 996 by phone. Prefer to keep it here? Ask me anything — and for a serious offer or a viewing/PPI, the owner is reached through the form so it's captured properly."
-    },
     {
       "match": [
         "price",
@@ -194,46 +183,29 @@
         "expensive",
         "afford"
       ],
-      "answer": "The price is listed on this page, and there are no surprises added at the end. In this demonstration I can walk you through everything published here; for anything beyond it, write mberenji@gmail.com and a maker will reply."
+      "answer": "This car was listed at $59,900 and has now sold. I'm happy to walk you through the car and its history, everything published on this page."
     },
     {
       "match": [
-        "deliver",
-        "delivery",
-        "ship",
-        "shipping",
-        "arrive",
-        "how long",
-        "track",
-        "tracking"
-      ],
-      "answer": "Each car is made in small numbered batches, so delivery is confirmed when you reserve. Order-specific questions — tracking, address changes — go to mberenji@gmail.com."
-    },
-    {
-      "match": [
-        "return",
-        "returns",
-        "refund",
-        "guarantee",
-        "warranty",
-        "repair",
-        "damage"
-      ],
-      "answer": "Returns, repairs, and the guarantee are handled directly by the workshop. Write mberenji@gmail.com and a maker will reply with the details."
-    },
-    {
-      "match": [
-        "reserve",
         "buy",
-        "order",
         "purchase",
-        "checkout",
-        "get one"
+        "available",
+        "for sale",
+        "offer",
+        "reserve",
+        "order",
+        "view",
+        "viewing",
+        "inspect",
+        "inspection",
+        "test drive",
+        "deposit",
+        "pay"
       ],
-      "answer": "Reserving takes a moment — the page explains how, and nothing ships in this demonstration. If you would rather write, mberenji@gmail.com reaches the makers directly."
+      "answer": "This car has been sold and is no longer available. Thank you for your interest. I'm still happy to tell you about the car, its service history and its color."
     }
   ],
 
-    greeting: "Good evening — I keep the desk for 2003 Porsche 911 Turbo. Ask me anything about the car; I'll answer straight from the record.\n\n{{reply:Tell me about the history}}\n{{reply:What's the price?}}\n{{reply:Just looking}}"
+    greeting: "Hello. This 2003 Porsche 911 Turbo has now sold, but I'm happy to tell you about the car and its history. Ask me anything and I'll answer straight from the record.\n\n{{reply:Tell me about the history}}\n{{reply:What was done to it?}}\n{{reply:Tell me about the color}}"
   };
 })();
